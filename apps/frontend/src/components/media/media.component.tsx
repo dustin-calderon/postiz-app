@@ -226,6 +226,10 @@ export const MediaBox: FC<{
   const ZOOM_LEVELS = [3, 4, 5, 6, 8, 10] as const;
   type ZoomLevel = typeof ZOOM_LEVELS[number];
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(6);
+  /** Sidebar visibility — collapsed by default in standalone (modal) mode. */
+  const [sidebarOpen, setSidebarOpen] = useState(!standalone);
+  /** Set of brand-level paths (first path segment) that are expanded in the tree. */
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
@@ -265,18 +269,27 @@ export const MediaBox: FC<{
     if (!trimmed) return;
     /**
      * Folders are virtual: they materialise in the DB the moment at least one
-     * media item is moved into them (via moveToFolder). Here we:
-     *  1. Switch the active filter tab so the user sees the (empty) folder view.
-     *  2. Show a targeted instruction toast.
-     *  3. Do NOT call mutateFolders yet — the folder doesn't exist in DB until
-     *     an item is moved into it, so the tab will appear only after a move.
-     * If the user wants a persistent empty folder, they must move at least one
-     * item. This is by design (virtual-folder architecture).
+     * media item is moved into them (via moveToFolder). Here we only set the
+     * pending state with the correct path:
+     *   - If activeFolder is a folder path → create as child: "Brand/NewSub"
+     *   - If activeFolder is undefined or '__root__' → create as brand-level
+     *
+     * The pending folder appears in the sidebar with a dashed style until
+     * the user moves at least one item into it.
      */
-    setPendingFolderName(trimmed);
+    const parentPath =
+      activeFolder && activeFolder !== '__root__'
+        ? activeFolder.split('/')[0] // always parent at brand level
+        : undefined;
+    const fullPath = parentPath ? `${parentPath}/${trimmed}` : trimmed;
+    setPendingFolderName(fullPath);
+    // Auto-expand the parent brand in the sidebar tree.
+    if (parentPath) {
+      setExpandedBrands((prev) => new Set(prev).add(parentPath));
+    }
     setNewFolderName('');
     setCreatingFolder(false);
-  }, [newFolderName]);
+  }, [newFolderName, activeFolder]);
 
   const moveToFolder = useCallback(
     async (mediaIds: string[], folder: string | null) => {
@@ -307,23 +320,31 @@ export const MediaBox: FC<{
   );
 
   const renameFolderHandler = useCallback(
-    async (oldName: string) => {
-      const newName = window.prompt(
+    async (oldPath: string) => {
+      // Prompt shows only the last segment (leaf name) for a cleaner UX.
+      const leafName = oldPath.split('/').pop() ?? oldPath;
+      const newLeaf = window.prompt(
         t('rename_folder_prompt', 'New folder name:'),
-        oldName
+        leafName
       );
-      if (!newName) return;
-      const trimmedNew = newName.trim();
-      if (!trimmedNew || trimmedNew === oldName) return;
+      if (!newLeaf) return;
+      const trimmedNew = newLeaf.trim();
+      if (!trimmedNew || trimmedNew === leafName) return;
+      // Reconstruct the full new path by replacing only the last segment.
+      const segments = oldPath.split('/');
+      segments[segments.length - 1] = trimmedNew;
+      const newPath = segments.join('/');
       try {
         await fetch('/media/rename-folder', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ oldName, newName: trimmedNew }),
+          body: JSON.stringify({ oldName: oldPath, newName: newPath }),
         });
-        if (activeFolder === oldName) setActiveFolder(trimmedNew);
-        // Refresh both: folder tabs strip AND media items (which carry the
-        // folder name badge). Without mutate() the old badge persists until reload.
+        // If the user is currently viewing the renamed folder (or a sub-path of
+        // it), update activeFolder to the new path so the SWR key stays valid.
+        if (activeFolder && activeFolder.startsWith(oldPath)) {
+          setActiveFolder(activeFolder.replace(oldPath, newPath));
+        }
         await Promise.all([mutateFolders(), mutate()]);
       } catch (err) {
         console.error('[MediaBox] renameFolderHandler failed:', err);
@@ -516,114 +537,329 @@ export const MediaBox: FC<{
 
   return (
     <DropFiles disabled={loading} className="flex flex-col flex-1" onDrop={dragAndDrop}>
-      <div className="flex flex-col flex-1">
-        {/* ── Folder tab strip ── */}
-        <div className="flex items-center gap-[6px] mb-[10px] flex-wrap">
-          <button
-            onClick={() => setActiveFolder(undefined)}
-            className={clsx(
-              'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
-              activeFolder === undefined
+      {/* ── Root layout: sidebar + content ── */}
+      <div className="flex flex-1 gap-0 min-h-0">
+
+        {/* ════════════════════════════════════════════
+            Collapsible folder sidebar
+            - parseFolderTree builds a 2-level tree from string[]
+            - Brand node: click navigates, chevron toggles expansion
+            - Sub-folder node: click navigates directly
+            ════════════════════════════════════════════ */}
+        {(() => {
+          /**
+           * Builds a 2-level folder tree from the flat string[] returned by
+           * GET /media/folders. Paths use "/" as separator.
+           *
+           * Input:  ["AmoRismo", "Citem", "Citem/Diseños", "Citem/Eventos"]
+           * Output: [{ name:"AmoRismo", path:"AmoRismo", children:[] },
+           *          { name:"Citem",    path:"Citem",    children:[
+           *            { name:"Diseños", path:"Citem/Diseños" },
+           *            { name:"Eventos", path:"Citem/Eventos" }
+           *          ]}]
+           */
+          interface FolderNode { name: string; path: string; children: FolderNode[]; }
+          const tree: FolderNode[] = [];
+          const map: Record<string, FolderNode> = {};
+
+          // Sort to guarantee parents appear before children when iterating
+          const sorted = [...(folders as string[])].sort();
+          for (const path of sorted) {
+            const segments = path.split('/');
+            const name = segments[segments.length - 1];
+            const node: FolderNode = { name, path, children: [] };
+            map[path] = node;
+            if (segments.length === 1) {
+              tree.push(node);
+            } else {
+              // Find or create the parent brand node (we only support 2 levels
+              // in the UI tree; deeper paths appear under the brand).
+              const parentPath = segments[0];
+              if (!map[parentPath]) {
+                const parentNode: FolderNode = { name: parentPath, path: parentPath, children: [] };
+                map[parentPath] = parentNode;
+                tree.push(parentNode);
+              }
+              map[parentPath].children.push(node);
+            }
+          }
+
+          // Merge pending folder into the tree for display (without DB presence).
+          if (pendingFolderName) {
+            const segs = pendingFolderName.split('/');
+            if (segs.length === 1 && !map[pendingFolderName]) {
+              // Brand-level pending: add at end of tree
+              tree.push({ name: pendingFolderName, path: pendingFolderName, children: [], });
+            } else if (segs.length > 1) {
+              const parentPath = segs[0];
+              if (map[parentPath]) {
+                const alreadyIn = map[parentPath].children.some(c => c.path === pendingFolderName);
+                if (!alreadyIn) {
+                  map[parentPath].children.push({ name: segs[segs.length - 1], path: pendingFolderName, children: [] });
+                }
+              }
+            }
+          }
+
+          const itemCls = (path: string) =>
+            clsx(
+              'flex items-center w-full px-[10px] h-[30px] rounded-[6px] text-[12px] font-[500] transition-colors cursor-pointer group/item',
+              activeFolder === path
                 ? 'bg-[#612BD3] text-white'
-                : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
+                : 'text-textColor hover:bg-[#612BD3]/10'
+            );
+
+          const renderNode = (node: FolderNode, depth = 0) => {
+            const isBrand = depth === 0;
+            const isExpanded = expandedBrands.has(node.path);
+            const isPending = node.path === pendingFolderName;
+            const hasChildren = node.children.length > 0;
+
+            return (
+              <div key={node.path}>
+                <div
+                  className={clsx(
+                    itemCls(node.path),
+                    isPending && 'border border-dashed border-[#612BD3]/60 opacity-80',
+                    depth > 0 && 'pl-[22px]'
+                  )}
+                >
+                  {/* Chevron toggle (only for brand-level nodes with children) */}
+                  {isBrand && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedBrands((prev) => {
+                          const next = new Set(prev);
+                          next.has(node.path) ? next.delete(node.path) : next.add(node.path);
+                          return next;
+                        });
+                      }}
+                      className="mr-[4px] w-[14px] h-[14px] flex items-center justify-center flex-shrink-0 opacity-60 hover:opacity-100"
+                    >
+                      {hasChildren ? (isExpanded ? '▼' : '▶') : <span className="w-[14px]" />}
+                    </button>
+                  )}
+                  {/* Folder icon */}
+                  <span className="mr-[6px] text-[11px] flex-shrink-0">
+                    {isPending ? '✨' : isBrand ? '🗂' : '📁'}
+                  </span>
+                  {/* Folder name — navigates on click */}
+                  <button
+                    className="flex-1 text-left truncate"
+                    onClick={() => {
+                      setActiveFolder(node.path);
+                      // Auto-expand brand when navigating into it or its children
+                      if (isBrand) setExpandedBrands((prev) => new Set(prev).add(node.path));
+                    }}
+                  >
+                    {node.name}
+                  </button>
+                  {/* Context actions: rename + add sub-folder (shown on hover, not for pending) */}
+                  {!isPending && (
+                    <div className="hidden group-hover/item:flex items-center gap-[2px] flex-shrink-0">
+                      {isBrand && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveFolder(node.path);
+                            setExpandedBrands((prev) => new Set(prev).add(node.path));
+                            setCreatingFolder(true);
+                          }}
+                          className="w-[16px] h-[16px] flex items-center justify-center text-[10px] rounded hover:text-[#a78bfa]"
+                          title={t('add_subfolder', 'Add sub-folder')}
+                        >+</button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); renameFolderHandler(node.path); }}
+                        className="w-[16px] h-[16px] flex items-center justify-center text-[10px] rounded hover:text-[#a78bfa]"
+                        title={t('rename_folder', 'Rename')}
+                      >✎</button>
+                    </div>
+                  )}
+                  {/* Discard button for pending folder */}
+                  {isPending && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingFolderName(null);
+                        if (activeFolder === pendingFolderName) setActiveFolder(undefined);
+                      }}
+                      className="w-[14px] h-[14px] flex items-center justify-center text-[10px] flex-shrink-0 hover:text-red-400"
+                      title={t('discard_folder', 'Discard')}
+                    >✕</button>
+                  )}
+                </div>
+                {/* Render children when brand is expanded */}
+                {isBrand && isExpanded && node.children.map((child) => renderNode(child, 1))}
+              </div>
+            );
+          };
+
+          return (
+            <>
+              {/* Sidebar toggle button — always visible */}
+              <button
+                onClick={() => setSidebarOpen((p) => !p)}
+                className="flex-shrink-0 self-start mt-[7px] mr-[4px] w-[22px] h-[22px] flex items-center justify-center rounded-[4px] text-[11px] text-textColor bg-newColColor hover:bg-[#612BD3]/20 transition-colors"
+                title={sidebarOpen ? t('collapse_sidebar', 'Collapse folders') : t('expand_sidebar', 'Expand folders')}
+              >
+                {sidebarOpen ? '◀' : '▶'}
+              </button>
+
+              {sidebarOpen && (
+                <div className="w-[176px] flex-shrink-0 flex flex-col gap-[2px] pr-[8px] border-r border-newColColor/30 mr-[12px] overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-transparent max-h-full">
+                  {/* Static entries */}
+                  <button
+                    onClick={() => setActiveFolder(undefined)}
+                    className={itemCls(undefined as any).replace('undefined', activeFolder === undefined ? 'bg-[#612BD3] text-white' : '')}
+                  >
+                    <span className="mr-[6px] text-[11px]">📋</span>
+                    {t('all', 'All media')}
+                  </button>
+                  <button
+                    onClick={() => setActiveFolder('__root__')}
+                    className={clsx(
+                      'flex items-center w-full px-[10px] h-[30px] rounded-[6px] text-[12px] font-[500] transition-colors cursor-pointer',
+                      activeFolder === '__root__'
+                        ? 'bg-[#612BD3] text-white'
+                        : 'text-textColor hover:bg-[#612BD3]/10'
+                    )}
+                  >
+                    <span className="mr-[6px] text-[11px]">📎</span>
+                    {t('no_folder', 'No folder')}
+                  </button>
+
+                  {/* Separator */}
+                  {tree.length > 0 && <div className="border-t border-newColColor/30 my-[4px]" />}
+
+                  {/* Folder tree */}
+                  {tree.map((node) => renderNode(node, 0))}
+
+                  {/* New folder inline input or button */}
+                  <div className="border-t border-newColColor/30 mt-[4px] pt-[4px]">
+                    {!creatingFolder ? (
+                      <button
+                        onClick={() => setCreatingFolder(true)}
+                        className="flex items-center gap-[4px] w-full px-[10px] h-[30px] rounded-[6px] text-[12px] font-[500] text-textColor hover:bg-[#612BD3]/10 transition-colors"
+                      >
+                        <PlusIcon size={10} />
+                        {activeFolder && activeFolder !== '__root__'
+                          ? t('new_subfolder', 'New sub-folder')
+                          : t('new_brand', 'New brand')}
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-[4px] px-[4px]">
+                        <input
+                          autoFocus
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') createFolder();
+                            if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                          }}
+                          placeholder={
+                            activeFolder && activeFolder !== '__root__'
+                              ? t('subfolder_name', 'Sub-folder name…')
+                              : t('brand_name', 'Brand name…')
+                          }
+                          className="h-[28px] px-[8px] rounded-[6px] bg-newBgColorInner border border-newColColor text-[12px] outline-none focus:border-[#612BD3]"
+                        />
+                        <div className="flex gap-[4px]">
+                          <button
+                            onClick={createFolder}
+                            className="flex-1 h-[24px] rounded-[4px] bg-[#612BD3] text-white text-[11px] font-[600]"
+                          >
+                            {t('create', 'Create')}
+                          </button>
+                          <button
+                            onClick={() => { setCreatingFolder(false); setNewFolderName(''); }}
+                            className="h-[24px] px-[8px] rounded-[4px] bg-newColColor text-textColor text-[11px]"
+                          >✕</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ════════════════════════════════════════════
+            Right column: toolbar + bulk move bar + media grid
+            ════════════════════════════════════════════ */}
+        <div className="flex flex-col flex-1 min-w-0">
+          {/* ── Toolbar: search + view toggle + zoom + upload ── */}
+          <div
+            className={clsx(
+              'flex items-center gap-[12px] mb-[10px]',
+              !isLoading && !data?.results?.length && !debouncedSearch && 'hidden'
             )}
           >
-            {t('all', 'All')}
-          </button>
-          <button
-            onClick={() => setActiveFolder('__root__')}
-            className={clsx(
-              'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
-              activeFolder === '__root__'
-                ? 'bg-[#612BD3] text-white'
-                : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
-            )}
-          >
-            {t('no_folder', 'No folder')}
-          </button>
-          {(folders as string[]).map((folder) => (
-            <div key={folder} className="relative group/folder">
-              <button
-                onClick={() => setActiveFolder(folder)}
-                className={clsx(
-                  'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
-                  activeFolder === folder
-                    ? 'bg-[#612BD3] text-white'
-                    : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
-                )}
-              >
-                📁 {folder}
-              </button>
-              <button
-                onClick={() => renameFolderHandler(folder)}
-                className="absolute -top-[6px] -right-[6px] hidden group-hover/folder:flex w-[16px] h-[16px] rounded-full bg-newBgColorInner border border-newColColor items-center justify-center text-[9px] text-textColor hover:text-white"
-                title={t('rename_folder', 'Rename folder')}
-              >
-                ✎
-              </button>
-            </div>
-          ))}
-          {/* ── Pending (unpersisted) folder tab — dashed style ── */}
-          {pendingFolderName && (
-            <div className="relative flex items-center">
-              <button
-                onClick={() => setActiveFolder(pendingFolderName)}
-                className={clsx(
-                  'px-[12px] pr-[26px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors border border-dashed',
-                  activeFolder === pendingFolderName
-                    ? 'bg-[#612BD3] border-[#612BD3] text-white opacity-100'
-                    : 'border-[#612BD3]/60 text-textColor opacity-70 hover:opacity-100'
-                )}
-              >
-                ✨ {pendingFolderName}
-              </button>
-              <button
-                onClick={() => { setPendingFolderName(null); if (activeFolder === pendingFolderName) setActiveFolder(undefined); }}
-                className="absolute right-[6px] text-[10px] text-textColor hover:text-white"
-                title={t('discard_folder', 'Discard folder')}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-          {!creatingFolder ? (
-            <button
-              onClick={() => setCreatingFolder(true)}
-              className="flex items-center gap-[4px] px-[10px] h-[30px] rounded-[6px] text-[12px] font-[600] bg-newColColor text-textColor hover:bg-[#612BD3]/20 transition-colors"
-            >
-              <PlusIcon size={10} />
-              {t('new_folder', 'New folder')}
-            </button>
-          ) : (
-            <div className="flex items-center gap-[4px]">
+            <div className="flex-1">
               <input
-                autoFocus
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') createFolder();
-                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
-                }}
-                placeholder={t('folder_name', 'Folder name…')}
-                className="h-[30px] px-[8px] rounded-[6px] bg-newBgColorInner border border-newColColor text-[12px] outline-none focus:border-[#612BD3] w-[140px]"
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('search_media_by_name', 'Search by file name')}
+                className="w-full h-[44px] px-[14px] rounded-[8px] bg-newBgColorInner border border-newColColor text-[14px] outline-none focus:border-[#612BD3]"
               />
-              <button
-                onClick={createFolder}
-                className="px-[10px] h-[30px] rounded-[6px] bg-[#612BD3] text-white text-[12px] font-[600]"
-              >
-                {t('create', 'Create')}
-              </button>
-              <button
-                onClick={() => { setCreatingFolder(false); setNewFolderName(''); }}
-                className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px]"
-              >
-                ✕
-              </button>
             </div>
-          )}
+            <input
+              type="file"
+              ref={uploaderRef}
+              onChange={addToUpload}
+              className="hidden"
+              multiple={true}
+            />
+            <div className="flex items-center gap-[8px]">
+              {/* View toggle */}
+              <div className="flex items-center rounded-[6px] border border-newColColor overflow-hidden">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'grid' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
+                  title="Vista de cuadrícula"
+                >⊞</button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'list' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
+                  title="Vista de lista"
+                >≡</button>
+              </div>
+              {/* Zoom controls — grid mode only */}
+              {viewMode === 'grid' && (
+                <div className="flex items-center gap-[4px]">
+                  <button
+                    onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.max(0, idx - 1)]; })}
+                    disabled={zoomLevel === ZOOM_LEVELS[0]}
+                    className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
+                    title="Menos archivos, más grandes"
+                  >−</button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={ZOOM_LEVELS.length - 1}
+                    value={ZOOM_LEVELS.indexOf(zoomLevel)}
+                    onChange={(e) => setZoomLevel(ZOOM_LEVELS[Number(e.target.value)] as ZoomLevel)}
+                    className="w-[70px] accent-[#612BD3]"
+                  />
+                  <button
+                    onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)]; })}
+                    disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+                    className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
+                    title="Más archivos, más pequeños"
+                  >+</button>
+                </div>
+              )}
+              {btn}
+              <ThirdPartyMediaLibrary onImported={() => mutate()} />
+            </div>
+          </div>
+
           {/* ── Bulk move bar ── */}
           {selectedForMove.length > 0 && (
-            <div className="flex items-center gap-[6px] flex-wrap mt-[4px] w-full">
+            <div className="flex items-center gap-[6px] flex-wrap mb-[8px]">
               <span className="text-[12px] text-textColor">
                 {selectedForMove.length} {t('selected', 'selected')}
               </span>
@@ -634,148 +870,101 @@ export const MediaBox: FC<{
                 >
                   {t('move_to', 'Move to…')}
                 </button>
-                {showMoveMenu && (
-                  <div className="absolute top-[34px] right-0 z-[200] bg-newBgColorInner border border-newColColor rounded-[8px] shadow-xl min-w-[160px] py-[4px]">
-                    <button
-                      onClick={() => moveToFolder(selectedForMove, null)}
-                      className="w-full text-left px-[12px] py-[6px] text-[12px] text-textColor hover:bg-newColColor"
-                    >
-                      {t('no_folder', 'No folder (root)')}
-                    </button>
-                    {/* Pending (newly created, unpersisted) folder appears first */}
-                    {pendingFolderName && (
+                {showMoveMenu && (() => {
+                  // Build move-to tree from same data — reuse the folders SWR array.
+                  // Renders as an indented list: brand level + sub-folder level.
+                  interface MoveNode { name: string; path: string; children: MoveNode[]; }
+                  const moveTree: MoveNode[] = [];
+                  const moveMap: Record<string, MoveNode> = {};
+                  const allPaths = [
+                    ...(folders as string[]),
+                    ...(pendingFolderName && !(folders as string[]).includes(pendingFolderName) ? [pendingFolderName] : []),
+                  ].sort();
+                  for (const p of allPaths) {
+                    const segs = p.split('/');
+                    const node: MoveNode = { name: segs[segs.length - 1], path: p, children: [] };
+                    moveMap[p] = node;
+                    if (segs.length === 1) {
+                      moveTree.push(node);
+                    } else {
+                      const parentPath = segs[0];
+                      if (!moveMap[parentPath]) {
+                        const pNode: MoveNode = { name: parentPath, path: parentPath, children: [] };
+                        moveMap[parentPath] = pNode;
+                        moveTree.push(pNode);
+                      }
+                      moveMap[parentPath].children.push(node);
+                    }
+                  }
+
+                  const renderMoveNode = (node: MoveNode, depth = 0): React.ReactNode => (
+                    <Fragment key={node.path}>
                       <button
-                        key={`pending-${pendingFolderName}`}
-                        onClick={() => moveToFolder(selectedForMove, pendingFolderName)}
-                        className="w-full text-left px-[12px] py-[6px] text-[12px] font-[600] text-[#a78bfa] hover:bg-newColColor"
+                        onClick={() => moveToFolder(selectedForMove, node.path)}
+                        className="w-full text-left px-[12px] py-[5px] text-[12px] text-textColor hover:bg-newColColor flex items-center gap-[4px]"
+                        style={{ paddingLeft: `${12 + depth * 14}px` }}
                       >
-                        ✨ {pendingFolderName}
+                        <span className="text-[10px]">{node.path === pendingFolderName ? '✨' : depth === 0 ? '🗂' : '📁'}</span>
+                        {node.name}
                       </button>
-                    )}
-                    {(folders as string[]).map((f) => (
+                      {node.children.map((c) => renderMoveNode(c, depth + 1))}
+                    </Fragment>
+                  );
+
+                  return (
+                    <div className="absolute top-[34px] right-0 z-[200] bg-newBgColorInner border border-newColColor rounded-[8px] shadow-xl min-w-[180px] py-[4px] max-h-[300px] overflow-y-auto">
                       <button
-                        key={f}
-                        onClick={() => moveToFolder(selectedForMove, f)}
-                        className="w-full text-left px-[12px] py-[6px] text-[12px] text-textColor hover:bg-newColColor"
+                        onClick={() => moveToFolder(selectedForMove, null)}
+                        className="w-full text-left px-[12px] py-[5px] text-[12px] text-textColor hover:bg-newColColor flex items-center gap-[4px]"
                       >
-                        📁 {f}
+                        <span className="text-[10px]">📎</span>
+                        {t('no_folder', 'No folder (root)')}
                       </button>
-                    ))}
-                  </div>
-                )}
+                      {moveTree.length > 0 && <div className="border-t border-newColColor/30 my-[2px]" />}
+                      {moveTree.map((n) => renderMoveNode(n, 0))}
+                    </div>
+                  );
+                })()}
                 <button
                   onClick={() => setSelectedForMove([])}
                   className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] hover:text-white"
-                >
-                  ✕
-                </button>
+                >✕</button>
               </div>
             </div>
           )}
 
-          {/* Banner amarillo eliminado — sustituido por el tab pendiente con estilo dashed */}
-
-        </div>
-        <div
-          className={clsx(
-            'flex items-center gap-[12px]',
-            !isLoading &&
-              !data?.results?.length &&
-              !debouncedSearch &&
-              'hidden'
-          )}
-        >
-          <div className="flex-1">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('search_media_by_name', 'Search by file name')}
-              className="w-full h-[44px] px-[14px] rounded-[8px] bg-newBgColorInner border border-newColColor text-[14px] outline-none focus:border-[#612BD3]"
-            />
-          </div>
-          <input
-            type="file"
-            ref={uploaderRef}
-            onChange={addToUpload}
-            className="hidden"
-            multiple={true}
-          />
-          <div className="flex items-center gap-[8px]">
-            {/* ── View toggle: Grid / List ── */}
-            <div className="flex items-center rounded-[6px] border border-newColColor overflow-hidden">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'grid' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
-                title="Vista de cuadrícula"
-              >⊞</button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'list' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
-                title="Vista de lista"
-              >≡</button>
+          {/* ── Uppy progress bar ── */}
+          <div className="w-full pointer-events-none relative mt-[5px] mb-[5px]">
+            <div className="w-full h-[46px] overflow-hidden absolute left-0 bg-newBgColorInner uppyChange">
+              <Dashboard
+                height={46}
+                uppy={uppy}
+                id={`uploader`}
+                showProgressDetails={true}
+                hideUploadButton={true}
+                hideRetryButton={true}
+                hidePauseResumeButton={true}
+                hideCancelButton={true}
+                hideProgressAfterFinish={true}
+              />
             </div>
-            {/* ── Zoom controls — only in grid view ── */}
-            {viewMode === 'grid' && (
-              <div className="flex items-center gap-[4px]">
-                <button
-                  onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.max(0, idx - 1)]; })}
-                  disabled={zoomLevel === ZOOM_LEVELS[0]}
-                  className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
-                  title="Menos archivos, más grandes"
-                >−</button>
-                <input
-                  type="range"
-                  min={0}
-                  max={ZOOM_LEVELS.length - 1}
-                  value={ZOOM_LEVELS.indexOf(zoomLevel)}
-                  onChange={(e) => setZoomLevel(ZOOM_LEVELS[Number(e.target.value)] as ZoomLevel)}
-                  className="w-[70px] accent-[#612BD3]"
-                />
-                <button
-                  onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)]; })}
-                  disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-                  className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
-                  title="Más archivos, más pequeños"
-                >+</button>
-              </div>
-            )}
-            {btn}
-            <ThirdPartyMediaLibrary onImported={() => mutate()} />
+            <div className="w-full h-[46px] uppyChange" />
           </div>
-        </div>
-        <div className="w-full pointer-events-none relative mt-[5px] mb-[5px]">
-          <div className="w-full h-[46px] overflow-hidden absolute left-0 bg-newBgColorInner uppyChange">
-            <Dashboard
-              height={46}
-              uppy={uppy}
-              id={`uploader`}
-              showProgressDetails={true}
-              hideUploadButton={true}
-              hideRetryButton={true}
-              hidePauseResumeButton={true}
-              hideCancelButton={true}
-              hideProgressAfterFinish={true}
-            />
-          </div>
-          <div className="w-full h-[46px] uppyChange" />
-        </div>
-        <div
-          className={clsx(
-            'flex-1 relative',
-            !isLoading &&
-              !data?.results?.length &&
-              'bg-newTextColor/[0.02] rounded-[12px]'
-          )}
-        >
+
+          {/* ── Media area ── */}
           <div
             className={clsx(
-              'absolute -left-[3px] -top-[3px] withp3 h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner',
-              !isLoading &&
-                !data?.results?.length &&
-                'flex justify-center items-center gap-[20px] flex-col'
+              'flex-1 relative',
+              !isLoading && !data?.results?.length && 'bg-newTextColor/[0.02] rounded-[12px]'
             )}
           >
+            <div
+              className={clsx(
+                'absolute -left-[3px] -top-[3px] withp3 h-full overflow-x-hidden overflow-y-auto scrollbar scrollbar-thumb-newColColor scrollbar-track-newBgColorInner',
+                !isLoading && !data?.results?.length && 'flex justify-center items-center gap-[20px] flex-col'
+              )}
+            >
+
             {!isLoading && !data?.results?.length && (
               <>
                 {/* ── Contextual empty state for pending folder ── */}
@@ -976,7 +1165,9 @@ export const MediaBox: FC<{
               </div>
             )}
           </div>
+          {/* end scrollable inner div */}
         </div>
+        {/* end media area div */}
         {(data?.pages || 0) > 1 && (
           <Pagination
             current={page}
@@ -1003,7 +1194,10 @@ export const MediaBox: FC<{
             )}
           </div>
         )}
+        </div>
+        {/* end right column */}
       </div>
+      {/* end root flex layout */}
     </DropFiles>
   );
 };
