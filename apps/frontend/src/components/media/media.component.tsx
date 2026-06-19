@@ -759,9 +759,10 @@ export const MultiMediaComponent: FC<{
           {!!currentMedia && (
             <ReactSortable
               list={currentMedia}
-              setList={(value) =>
-                onChange({ target: { name: 'upload', value } })
-              }
+              setList={(value) => {
+                setCurrentMedia(value);
+                onChange({ target: { name: 'upload', value } });
+              }}
               className="flex gap-[10px] sortable-container"
               animation={200}
               swap={true}
