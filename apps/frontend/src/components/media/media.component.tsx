@@ -214,7 +214,13 @@ export const MediaBox: FC<{
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [selectedForMove, setSelectedForMove] = useState<string[]>([]);
-  const [showMoveMenu, setShowMoveMenu] = useState<string | null>(null);
+  const [showMoveMenu, setShowMoveMenu] = useState<boolean>(false);
+  /**
+   * Holds the name of a newly created folder that has not yet been populated.
+   * Used to show a "move selected items here" banner and to appear in the
+   * Move-to dropdown before the first item is persisted.
+   */
+  const [pendingFolderName, setPendingFolderName] = useState<string | null>(null);
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
@@ -237,7 +243,8 @@ export const MediaBox: FC<{
   );
   const loadFolders = useCallback(async () => {
     return (await fetch('/media/folders')).json() as Promise<string[]>;
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetch]);
   const { data: folders = [], mutate: mutateFolders } = useSWR(
     'get-media-folders',
     loadFolders
@@ -252,20 +259,19 @@ export const MediaBox: FC<{
     const trimmed = newFolderName.trim();
     if (!trimmed) return;
     /**
-     * Folders are virtual (inferred via DISTINCT on Media.folder).
-     * They materialise the moment at least one media item is moved into them.
-     * Here we just switch the active tab so the user can immediately drag
-     * items into the new folder. The folder becomes persistent once moveToFolder
-     * is called with at least one media id.
+     * Folders are virtual: they materialise in the DB the moment at least one
+     * media item is moved into them (via moveToFolder). Here we:
+     *  1. Switch the active filter tab so the user sees the (empty) folder view.
+     *  2. Show a targeted instruction toast.
+     *  3. Do NOT call mutateFolders yet — the folder doesn't exist in DB until
+     *     an item is moved into it, so the tab will appear only after a move.
+     * If the user wants a persistent empty folder, they must move at least one
+     * item. This is by design (virtual-folder architecture).
      */
-    setActiveFolder(trimmed);
+    setPendingFolderName(trimmed);
     setNewFolderName('');
     setCreatingFolder(false);
-    toaster.show(
-      t('folder_created_tip', 'Folder ready — select items and move them here to save it.'),
-      'warning'
-    );
-  }, [newFolderName, toaster, t]);
+  }, [newFolderName]);
 
   const moveToFolder = useCallback(
     async (mediaIds: string[], folder: string | null) => {
@@ -275,14 +281,24 @@ export const MediaBox: FC<{
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ids: mediaIds, folder }),
         });
+        // Refresh both the media list and the folder tab strip atomically.
+        // mutateFolders() is critical: it makes newly populated folders
+        // appear in the tab bar on the next render.
         await Promise.all([mutate(), mutateFolders()]);
         setSelectedForMove([]);
-        setShowMoveMenu(null);
-      } catch {
+        setShowMoveMenu(false);
+        // If items were moved into the pending (new) folder, it now exists in
+        // the DB — clear the pending state and navigate to the folder tab.
+        if (folder !== null && folder === pendingFolderName) {
+          setPendingFolderName(null);
+          setActiveFolder(folder);
+        }
+      } catch (err) {
+        console.error('[MediaBox] moveToFolder failed:', err);
         toaster.show(t('move_failed', 'Failed to move items. Please try again.'), 'warning');
       }
     },
-    [fetch, mutate, mutateFolders, toaster, t]
+    [fetch, mutate, mutateFolders, pendingFolderName, toaster, t]
   );
 
   const renameFolderHandler = useCallback(
@@ -294,15 +310,22 @@ export const MediaBox: FC<{
       if (!newName) return;
       const trimmedNew = newName.trim();
       if (!trimmedNew || trimmedNew === oldName) return;
-      await fetch('/media/rename-folder', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldName, newName: trimmedNew }),
-      });
-      if (activeFolder === oldName) setActiveFolder(trimmedNew);
-      await mutateFolders();
+      try {
+        await fetch('/media/rename-folder', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldName, newName: trimmedNew }),
+        });
+        if (activeFolder === oldName) setActiveFolder(trimmedNew);
+        // Refresh both: folder tabs strip AND media items (which carry the
+        // folder name badge). Without mutate() the old badge persists until reload.
+        await Promise.all([mutateFolders(), mutate()]);
+      } catch (err) {
+        console.error('[MediaBox] renameFolderHandler failed:', err);
+        toaster.show(t('rename_failed', 'Failed to rename folder. Please try again.'), 'warning');
+      }
     },
-    [fetch, activeFolder, mutateFolders, t]
+    [fetch, activeFolder, mutateFolders, mutate, toaster, t]
   );
 
   const uppy = useUppyUploader({
@@ -572,13 +595,13 @@ export const MediaBox: FC<{
           )}
           {/* ── Bulk move bar ── */}
           {selectedForMove.length > 0 && (
-            <div className="flex items-center gap-[6px] ml-auto">
+            <div className="flex items-center gap-[6px] flex-wrap mt-[4px] w-full">
               <span className="text-[12px] text-textColor">
                 {selectedForMove.length} {t('selected', 'selected')}
               </span>
-              <div className="relative">
+              <div className="relative ml-auto flex items-center gap-[6px]">
                 <button
-                  onClick={() => setShowMoveMenu(showMoveMenu ? null : 'open')}
+                  onClick={() => setShowMoveMenu((prev) => !prev)}
                   className="px-[10px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] font-[600] hover:bg-[#612BD3]/20"
                 >
                   {t('move_to', 'Move to…')}
@@ -591,6 +614,16 @@ export const MediaBox: FC<{
                     >
                       {t('no_folder', 'No folder (root)')}
                     </button>
+                    {/* Pending (newly created, unpersisted) folder appears first */}
+                    {pendingFolderName && (
+                      <button
+                        key={`pending-${pendingFolderName}`}
+                        onClick={() => moveToFolder(selectedForMove, pendingFolderName)}
+                        className="w-full text-left px-[12px] py-[6px] text-[12px] font-[600] text-[#a78bfa] hover:bg-newColColor"
+                      >
+                        ✨ {pendingFolderName}
+                      </button>
+                    )}
                     {(folders as string[]).map((f) => (
                       <button
                         key={f}
@@ -602,12 +635,34 @@ export const MediaBox: FC<{
                     ))}
                   </div>
                 )}
+                <button
+                  onClick={() => setSelectedForMove([])}
+                  className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] hover:text-white"
+                >
+                  ✕
+                </button>
               </div>
+            </div>
+          )}
+
+          {/* ── Pending folder guidance banner ── */}
+          {pendingFolderName && (
+            <div className="flex items-center gap-[8px] w-full mt-[4px] px-[10px] py-[8px] rounded-[8px] bg-[#612BD3]/10 border border-[#612BD3]/30 text-[12px]">
+              <span className="text-[14px]">✨</span>
+              <span className="flex-1 text-textColor">
+                {t(
+                  'pending_folder_tip',
+                  'New folder '
+                )}
+                <strong className="text-white">{pendingFolderName}</strong>
+                {t('pending_folder_tip2', ' — select items using the checkboxes and click "Move to…" to save it.')}
+              </span>
               <button
-                onClick={() => setSelectedForMove([])}
-                className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] hover:text-white"
+                onClick={() => setPendingFolderName(null)}
+                className="text-textColor hover:text-white text-[11px]"
+                title={t('discard_folder', 'Discard folder')}
               >
-                ✕
+                {t('discard', 'Discard')}
               </button>
             </div>
           )}
