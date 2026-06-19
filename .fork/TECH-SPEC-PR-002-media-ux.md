@@ -125,38 +125,51 @@ async renameFolder(org: string, dto: RenameFolderDto): Promise<void> {
 
 ## 5. Frontend — `parseFolderTree`
 
-### Función de parseo (nativa, sin deps)
+### Implementación real — IIFE inline en el JSX
+
+No es una función nombrada separada. Es una IIFE (`(() => { ... })()`) dentro del `return` del componente, que construye el árbol y retorna directamente el JSX del sidebar. Esto evita re-renders innecesarios y mantiene el scope de `expandedBrands`, `pendingFolderName`, etc. sin props drilling.
 
 ```typescript
-interface FolderNode {
-  name: string;    // segmento display (último path component)
-  path: string;    // path completo para setActiveFolder()
-  children: FolderNode[];
-}
+// Dentro del JSX de MediaBox — IIFE que construye árbol y retorna JSX
+{(() => {
+  interface FolderNode { name: string; path: string; children: FolderNode[]; }
+  const tree: FolderNode[] = [];
+  const map: Record<string, FolderNode> = {};
 
-function parseFolderTree(folders: string[]): FolderNode[] {
-  const roots = new Map<string, FolderNode>();
-
-  for (const f of folders) {
-    const parts = f.split('/');
-    const rootName = parts[0];
-
-    if (!roots.has(rootName)) {
-      roots.set(rootName, { name: rootName, path: rootName, children: [] });
+  // Sort garantiza que padres aparecen antes que hijos en la iteración
+  const sorted = [...(folders as string[])].sort();
+  for (const path of sorted) {
+    const segments = path.split('/');
+    const name = segments[segments.length - 1];
+    const node: FolderNode = { name, path, children: [] };
+    map[path] = node;
+    if (segments.length === 1) {
+      tree.push(node);
+    } else {
+      // Solo 2 niveles en UI — sub-paths más profundos van bajo el brand (segments[0])
+      const parentPath = segments[0];
+      if (!map[parentPath]) {
+        const parentNode: FolderNode = { name: parentPath, path: parentPath, children: [] };
+        map[parentPath] = parentNode;
+        tree.push(parentNode);
+      }
+      map[parentPath].children.push(node);
     }
-
-    if (parts.length === 2) {
-      roots.get(rootName)!.children.push({
-        name: parts[1],
-        path: f,
-        children: [],
-      });
-    }
-    // Nivel > 2 ignorado deliberadamente (2 niveles cubre el caso de uso)
   }
 
-  return Array.from(roots.values());
-}
+  // Merge pendingFolderName en el árbol (sin presencia en DB)
+  if (pendingFolderName) {
+    const segs = pendingFolderName.split('/');
+    if (segs.length === 1 && !map[pendingFolderName]) {
+      tree.push({ name: pendingFolderName, path: pendingFolderName, children: [] });
+    } else if (segs.length > 1 && map[segs[0]]) {
+      const alreadyIn = map[segs[0]].children.some(c => c.path === pendingFolderName);
+      if (!alreadyIn) map[segs[0]].children.push({ name: segs[segs.length-1], path: pendingFolderName, children: [] });
+    }
+  }
+
+  // ... renderNode() + return JSX
+})()}
 ```
 
 **Input:** `["Nike", "Nike/Diseños", "Nike/Videos", "Adidas"]`
@@ -195,14 +208,17 @@ function parseFolderTree(folders: string[]): FolderNode[] {
 ### Comportamientos del sidebar
 
 | Elemento | Acción | Resultado |
-|----------|--------|-----------|
-| Nodo raíz (click) | `setActiveFolder("Nike")` | Filtra todos los items bajo "Nike" y sus sub |
-| Nodo raíz (chevron) | toggle `expandedBrands` | Expande/colapsa los hijos sin cambiar `activeFolder` |
-| Nodo hijo (click) | `setActiveFolder("Nike/Diseños")` | Filtra solo esa subcarpeta |
-| Hover nodo raíz | Muestra `✎` (rename) + `⊕` (subfolder) | — |
-| `⊕` new subfolder | `setPendingFolderName("Nike/NuevaSub")` | Nodo dashed en el árbol bajo Nike |
-| `✎` rename | `renameFolderHandler("Nike")` | prompt → `PUT /media/rename-folder` |
-| Nodo dashed (click) | `setActiveFolder("Nike/NuevaSub")` | Empty state contextual |
+|----------|--------|--------|
+| Nodo raíz (click) | `setActiveFolder("Nike")` + auto-expand | Filtra exact match `folder = 'Nike'` |
+| Nodo raíz (chevron) | toggle `expandedBrands` | Expande/colapsa hijos sin cambiar `activeFolder` |
+| Nodo hijo (click) | `setActiveFolder("Nike/Diseños")` | Filtra exact match `folder = 'Nike/Diseños'` |
+| Hover nodo raíz | Muestra `+` (subfolder) + `✎` (rename) | Solo para nodos no-pending |
+| `+` new subfolder | `setActiveFolder(brand)` + `setExpandedBrands` + `setCreatingFolder(true)` | Abre el input inline en el sidebar |
+| `✎` rename | `renameFolderHandler(path)` | prompt → `PUT /media/rename-folder` con cascada SQL |
+| Nodo dashed (click) | `setActiveFolder(pendingPath)` | Empty state contextual |
+| Nodo dashed (`✕`) | `setPendingFolderName(null)` | Descarta la carpeta virtual |
+
+> ⚠️ El `+` de subfolder NO llama directamente a `setPendingFolderName`. Abre el input inline del sidebar y navega al nodo brand. Es el `createFolder()` (al confirmar el input) el que construye el path y llama `setPendingFolderName("brand/sub")`.
 
 ### Estado
 
@@ -220,23 +236,32 @@ const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
 ```
 MediaBox mount
   ├─ loadMedia() → GET /media?page=N[&search=S][&folder=F]
-  │    SWR key: ['get-media', page, search, activeFolder]
+  │    SWR key: `get-media-${page}-${debouncedSearch}-${activeFolder ?? 'all'}`
   │    Respuesta: { results: Media[], pages: number }
   │
   └─ loadFolders() → GET /media/folders
        SWR key: 'get-media-folders'
        Respuesta: string[]  — ["Nike", "Nike/Diseños", "Adidas"]
-       → parseFolderTree() → árbol para sidebar
+       → árbol construido por IIFE inline en el JSX del sidebar
 ```
+
+> ℹ️ La SWR key de media es un **template string** (no un array tuple). Cualquier cambio en `page`, `debouncedSearch` o `activeFolder` invalida la caché automáticamente.
 
 ### 7.2 Creación de subcarpeta
 
 ```
-Usuario en sidebar, hover "Nike" → click ⊕
-  └─ setPendingFolderName("Nike/NombreNueva")
-     → sidebar muestra nodo dashed bajo Nike
-     → setActiveFolder("Nike/NombreNueva")
-     → empty state contextual
+Usuario en sidebar, hover "Nike" → click + (add subfolder)
+  ├─ setActiveFolder("Nike")
+  ├─ setExpandedBrands(prev => prev.add("Nike"))
+  └─ setCreatingFolder(true)  ← abre el input inline en el sidebar
+
+Usuario escribe "NombreNueva" → Enter
+  └─ createFolder() se ejecuta:
+       const parentPath = activeFolder.split('/')[0]  // = "Nike"
+       const fullPath = "Nike/NombreNueva"
+       setPendingFolderName("Nike/NombreNueva")
+       setExpandedBrands(prev => prev.add("Nike"))
+       → sidebar muestra nodo dashed bajo Nike
 
 Usuario selecciona items → Move to → [Nike/NombreNueva]
   └─ PUT /media/move  { ids: [...], folder: "Nike/NombreNueva" }
@@ -314,11 +339,11 @@ Usuario hover "Nike" → click ✎ → prompt "Adidas"
 | 0 | 3 | 400px | Ver detalles grandes |
 | 1 | 4 | 300px | Thumbnails cómodos |
 | 2 | 5 | 240px | Balance |
-| 3 | 6 | 200px | **Default** |
+| 3 | 6 | 200px | **Default (useState inicial)** |
 | 4 | 8 | 150px | Muchos archivos |
 | 5 | 10 | 120px | Densidad máxima |
 
-Implementación: `style={{ width: \`calc(100% / ${zoomLevel})\` }}` en tile y skeleton. Los controles (slider + `−`/`+`) se ocultan en `viewMode === 'list'`.
+Implementación: `style={{ width: \`calc(100% / ${zoomLevel})\`, maxWidth: \`calc(100% / ${zoomLevel})\` }}` en tile y en cada skeleton. Los controles (slider + `−`/`+`) se ocultan con `{viewMode === 'grid' && <ZoomControls />}`.
 
 ---
 
@@ -351,16 +376,17 @@ Implementación: `style={{ width: \`calc(100% / ${zoomLevel})\` }}` en tile y sk
 
 ## 12. Referencias de código (post-refactor)
 
-| Referencia | Descripción |
-|-----------|-------------|
-| `parseFolderTree()` | Líneas ~265–290 en `media.component.tsx` — string[] → FolderNode[] |
-| Sidebar JSX | Líneas ~538–790 en `media.component.tsx` — árbol colapsable |
-| `createFolder()` | Path-aware: detecta `activeFolder` para construir sub-path |
-| `renameFolderHandler()` | Actualiza solo el último segmento del path; refresca `activeFolder` |
-| Move-to dropdown | Árbol indentado con depth visual (misma `parseFolderTree`) |
-| `renameFolder()` backend | `media.repository.ts` L~120–175 — SQL REPLACE()+LIKE cascada |
-| `MediaController` | `media.controller.ts` — orden de rutas crítico (folders antes de /:id) |
-| `ZOOM_LEVELS` | Constante en `media.component.tsx` — `[3, 4, 5, 6, 8, 10]` |
+| Referencia | Línea real | Descripción |
+|-----------|------------|-------------|
+| IIFE árbol (parseFolderTree inline) | ~549–787 | IIFE que construye `FolderNode[]` y retorna JSX del sidebar |
+| Estado `sidebarOpen` + `expandedBrands` | ~229–232 | `useState(!standalone)` + `useState(new Set())` |
+| `createFolder()` | ~267–292 | `activeFolder.split('/')[0]` = parent brand; construye fullPath |
+| `renameFolderHandler()` | ~322–355 | `split('/').pop()` para label; reconstruye path completo nuevo |
+| SWR key media | ~250 | Template string: `` `get-media-${page}-${search}-${folder ?? 'all'}` `` |
+| Move-to dropdown | ~790–900 | Usa misma lógica de árbol con indent por depth |
+| `renameFolder()` backend | `media.repository.ts` L130–163 | SQL REPLACE()+LIKE cascada, $queryRaw con cast PrismaClient |
+| `ZOOM_LEVELS` | ~226 | `[3, 4, 5, 6, 8, 10] as const` — declarado dentro del componente |
+| Iconos de nodo | ~644–645 | Brand raíz: `🗂`, sub-carpeta: `📁`, pendiente: `✨` |
 
 ---
 
