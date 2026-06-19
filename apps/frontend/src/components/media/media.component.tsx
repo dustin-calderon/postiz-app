@@ -681,7 +681,7 @@ export const MultiMediaComponent: FC<{
   const t = useT();
   const [currentMedia, setCurrentMedia] = useState(value);
   useEffect(() => {
-    if (value) {
+    if (value !== undefined) {
       setCurrentMedia(value);
     }
   }, [value]);
@@ -760,11 +760,12 @@ export const MultiMediaComponent: FC<{
               list={currentMedia}
               setList={(value) => {
                 setCurrentMedia(value);
-                onChange({ target: { name: 'upload', value } });
+                onChange({ target: { name, value } });
               }}
               className="flex gap-[10px] sortable-container"
               animation={200}
-              swap={true}
+              ghostClass="opacity-40"
+              chosenClass="scale-105"
               handle=".dragging"
             >
               {currentMedia.map((media, index) => (
@@ -781,18 +782,17 @@ export const MultiMediaComponent: FC<{
                                 media={media as any}
                                 onClose={close}
                                 onSelect={(value: any) => {
+                                  const updatedMedia = currentMedia.map((p) => {
+                                    if (p.id === media.id) {
+                                      return { ...p, ...value };
+                                    }
+                                    return p;
+                                  });
+                                  setCurrentMedia(updatedMedia);
                                   onChange({
                                     target: {
-                                      name: 'upload',
-                                      value: currentMedia.map((p) => {
-                                        if (p.id === media.id) {
-                                          return {
-                                            ...p,
-                                            ...value,
-                                          };
-                                        }
-                                        return p;
-                                      }),
+                                      name,
+                                      value: updatedMedia,
                                     },
                                   });
                                 }}
