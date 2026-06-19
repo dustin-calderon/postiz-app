@@ -1,4 +1,4 @@
-# PR-002 — `feat(media): virtual folder organization + list/grid view`
+# PR-002 — `feat(media): virtual folder organization + list/grid view + zoom`
 
 > **Rama upstream (PR limpio):** `feature/media-folders` → upstream `main`
 > **Estado:** 🔄 EN ESTABILIZACIÓN — `custom/postiz-dc` (producción) actualizado. PR upstream pendiente de expandir scope.
@@ -9,6 +9,8 @@
 > - `99304d78` — fix: audit post-implementación (8 bugs)
 > - `5e93f531` — fix: 10 bugs de UX/estado (pendingFolderName, SWR, bulk-move)
 
+> 📘 **Spec técnico detallado:** `.fork/TECH-SPEC-PR-002-media-ux.md` — flujo de datos completo, mapa de archivos, invariantes, tabla de zoom levels.
+
 ---
 
 ## 1. Contexto
@@ -16,10 +18,11 @@
 La biblioteca de medios de Postiz no ofrecía ningún mecanismo de organización ni modos de visualización.
 Todos los assets vivían en una lista plana paginada, sin filtro por carpeta, sin toggle de layout.
 
-Este PR implementa dos features cohesivas bajo el paraguas de "gestión de media library":
+Este PR implementa tres features cohesivas bajo el paraguas de "gestión de media library":
 
 1. **Carpetas virtuales** — campo `folder` (string nullable) en `Media`. Sin tabla nueva. Carpetas inferidas por `DISTINCT`. Footprint de schema mínimo.
 2. **Toggle grid / list view** — mismo dataset, dos templates de renderizado. Sin nuevo endpoint, sin nuevo estado de SWR.
+3. **Control de zoom (tamaño de tile)** — estado `zoomLevel` que controla el número de columnas del grid (3–10). Sustituye la clase CSS fija `.w8-max` por `style` inline calculado. Solo aplica en vista grid.
 
 ---
 
@@ -35,6 +38,8 @@ Este PR implementa dos features cohesivas bajo el paraguas de "gestión de media
 | **Carpeta "pendiente" = `pendingFolderName` en estado local** | Crear entrada dummy en DB | Sin escrituras especulativas — la carpeta persiste solo cuando tiene ≥1 item |
 | **View mode = estado local `'grid' \| 'list'`** | Persistencia en DB/cookie | Sin round-trip — preferencia de sesión, no dato de negocio |
 | **Vista de lista usa el mismo `data` de SWR** | Nuevo endpoint con proyección diferente | Reutiliza datos ya cacheados, cero impacto backend |
+| **Zoom = `zoomLevel` int (cols count)** | Clases CSS estáticas tipo `.w4-max`, `.w6-max`... | `style` inline calculado — sin tocar `global.scss`, sin proliferación de clases |
+| **`.w8-max` sustituida por `style` inline** | Modificar `global.scss` | `global.scss` es global y compartido — no se debe tocar para features específicas |
 
 **Estructura plana (no jerárquica):** Sin anidamiento padre-hijo deliberadamente.
 
@@ -167,15 +172,16 @@ Implementación:
 #### C. Impacto en el flujo completo con ambas features
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ [All] [No folder] [📁 Campaigns] [✨ Citam] [+ New folder]  [⊞][≡] │
-│                                                                     │
-│ Vista Grid:                        │ Vista List:                    │
-│ ┌──────┐ ┌──────┐ ┌──────┐       │ ☐ img.png   Campaigns  img 2MB │
-│ │☐ img │ │☐ img │ │☐ img │       │ ☐ video.mp4 —          vid 18MB│
-│ │Cli.. │ │      │ │      │       │ ☐ logo.svg  Citam       img 4KB│
-│ └──────┘ └──────┘ └──────┘       │                                 │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [All] [No folder] [📁 Campaigns] [✨ Citam] [+ New folder]                   │
+│ [Search..........................]  [⊞][≡]  [−]──●──[+]  [+ Subir]          │
+│─────────────────────────────────────────────────────────────────────────────│
+│ Vista Grid (zoom=4 cols):          │ Vista List:                              │
+│ ┌──────────┐ ┌──────────┐         │ ☐ 🖼 img.png      Campaigns  img         │
+│ │ ☐  img   │ │ ☐  img   │         │ ☐ 🎬 video.mp4    —          vid         │
+│ │          │ │          │         │ ☐ 🖼 logo.svg     Citam       img         │
+│ └──────────┘ └──────────┘         │                                          │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -233,9 +239,13 @@ Implementación:
 - [x] Dropdown Move-to: root + pendingFolder (✨) + persistidas
 
 ### Frontend — pendiente 🔲
-- [ ] Tab pendiente visible en strip (estilo dashed, empty state contextual, botón discard)
-- [ ] Toggle grid/list view (`viewMode` state + dos templates de render)
-- [ ] Empty state específico al navegar a tab pendiente (distinto del "no tienes media")
+- [ ] Tab pendiente visible en strip (dashed, empty state contextual, botón `✕` discard)
+- [ ] Eliminar banner amarillo (sustituido por el tab visible)
+- [ ] Toggle grid/list view (`viewMode` state + ListView template)
+- [ ] Empty state específico al navegar a tab pendiente
+- [ ] Zoom: estado `zoomLevel`, constante `ZOOM_LEVELS`, slider + botones `−`/`+`
+- [ ] Zoom: sustituir `w8-max` en tiles y skeletons por `style` inline
+- [ ] Zoom: ocultar controles en `viewMode === 'list'`
 
 ### Deployment
 - [x] `prisma-db-push` ejecutado en Beelink — columna `folder` confirmada en `\d "Media"`
