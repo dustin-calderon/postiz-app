@@ -238,20 +238,20 @@ Implementación:
 - [x] Badge de carpeta en thumbnail
 - [x] Dropdown Move-to: root + pendingFolder (✨) + persistidas
 
-### Frontend — pendiente 🔲
-- [ ] Tab pendiente visible en strip (dashed, empty state contextual, botón `✕` discard)
-- [ ] Eliminar banner amarillo (sustituido por el tab visible)
-- [ ] Toggle grid/list view (`viewMode` state + ListView template)
-- [ ] Empty state específico al navegar a tab pendiente
-- [ ] Zoom: estado `zoomLevel`, constante `ZOOM_LEVELS`, slider + botones `−`/`+`
-- [ ] Zoom: sustituir `w8-max` en tiles y skeletons por `style` inline
-- [ ] Zoom: ocultar controles en `viewMode === 'list'`
+### Frontend — features A/B/C ✅ completo
+- [x] Tab pendiente visible en strip (dashed, empty state contextual, botón `✕` discard)
+- [x] Eliminar banner amarillo (sustituido por el tab visible)
+- [x] Toggle grid/list view (`viewMode` state + ListView template)
+- [x] Empty state específico al navegar a tab pendiente
+- [x] Zoom: estado `zoomLevel`, constante `ZOOM_LEVELS`, slider + botones `−`/`+`
+- [x] Zoom: sustituir `w8-max` en tiles y skeletons por `style` inline
+- [x] Zoom: ocultar controles en `viewMode === 'list'`
 
 ### Deployment
 - [x] `prisma-db-push` ejecutado en Beelink — columna `folder` confirmada en `\d "Media"`
 - [x] Build `5e93f531` desplegado — container `postiz` healthy
-- [ ] Validación manual completa en producción tras implementar A + B
-- [ ] Actualizar rama `feature/media-folders` con los cambios adicionales para upstream PR
+- [x] Build `2bf89ea6` desplegado — container `postiz` healthy ✅
+- [x] Validación manual completa en producción tras implementar A + B + C
 
 ---
 
@@ -259,11 +259,12 @@ Implementación:
 
 ```
 custom/postiz-dc (producción):
+  2bf89ea6  feat(media): pending folder tab + grid/list toggle + zoom control
   5e93f531  fix(media): remediate 10 bugs in virtual folder UX
   99304d78  fix(media-folders): audit — remediate 8 bugs post-implementation
   d0ea38fe  docs(.fork): add PR-002 doc + STRATEGY sync protocol
   cae1892c  feat(media): add virtual folder organization  ← base
-
+```
 feature/media-folders (rama limpia upstream PR):
   eb458a50  feat(media): add virtual folder organization
   ↑ pendiente de actualizar con fixes + nuevas features antes de expandir PR
