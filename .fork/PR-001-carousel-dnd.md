@@ -1,7 +1,7 @@
 # PR-001 — `fix(carousel): sync local state on drag-drop reorder`
 
-> **Rama:** `feature/carousel-dnd` (a crear desde `upstream/main`)
-> **Estado:** ✅ VALIDADO — persistencia end-to-end confirmada (2026-06-19)
+> **Rama:** `feature/carousel-dnd` → upstream `main`
+> **Estado:** ✅ PR #1613 ABIERTO — https://github.com/gitroomhq/postiz-app/pull/1613
 > **Fecha inicio:** 2026-06-19 | **Fork:** `dustin-calderon/postiz-app`
 
 ---
