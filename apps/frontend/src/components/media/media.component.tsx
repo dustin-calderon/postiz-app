@@ -217,10 +217,15 @@ export const MediaBox: FC<{
   const [showMoveMenu, setShowMoveMenu] = useState<boolean>(false);
   /**
    * Holds the name of a newly created folder that has not yet been populated.
-   * Used to show a "move selected items here" banner and to appear in the
-   * Move-to dropdown before the first item is persisted.
+   * Appears as a dashed tab in the strip; persisted only after first item is moved in.
    */
   const [pendingFolderName, setPendingFolderName] = useState<string | null>(null);
+  /** Grid/list view toggle — session preference only, not persisted. */
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  /** Zoom: number of columns in the grid. Maps to ZOOM_LEVELS indices. */
+  const ZOOM_LEVELS = [3, 4, 5, 6, 8, 10] as const;
+  type ZoomLevel = typeof ZOOM_LEVELS[number];
+  const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(6);
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
@@ -558,6 +563,29 @@ export const MediaBox: FC<{
               </button>
             </div>
           ))}
+          {/* ── Pending (unpersisted) folder tab — dashed style ── */}
+          {pendingFolderName && (
+            <div className="relative flex items-center">
+              <button
+                onClick={() => setActiveFolder(pendingFolderName)}
+                className={clsx(
+                  'px-[12px] pr-[26px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors border border-dashed',
+                  activeFolder === pendingFolderName
+                    ? 'bg-[#612BD3] border-[#612BD3] text-white opacity-100'
+                    : 'border-[#612BD3]/60 text-textColor opacity-70 hover:opacity-100'
+                )}
+              >
+                ✨ {pendingFolderName}
+              </button>
+              <button
+                onClick={() => { setPendingFolderName(null); if (activeFolder === pendingFolderName) setActiveFolder(undefined); }}
+                className="absolute right-[6px] text-[10px] text-textColor hover:text-white"
+                title={t('discard_folder', 'Discard folder')}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {!creatingFolder ? (
             <button
               onClick={() => setCreatingFolder(true)}
@@ -645,27 +673,7 @@ export const MediaBox: FC<{
             </div>
           )}
 
-          {/* ── Pending folder guidance banner ── */}
-          {pendingFolderName && (
-            <div className="flex items-center gap-[8px] w-full mt-[4px] px-[10px] py-[8px] rounded-[8px] bg-[#612BD3]/10 border border-[#612BD3]/30 text-[12px]">
-              <span className="text-[14px]">✨</span>
-              <span className="flex-1 text-textColor">
-                {t(
-                  'pending_folder_tip',
-                  'New folder '
-                )}
-                <strong className="text-white">{pendingFolderName}</strong>
-                {t('pending_folder_tip2', ' — select items using the checkboxes and click "Move to…" to save it.')}
-              </span>
-              <button
-                onClick={() => setPendingFolderName(null)}
-                className="text-textColor hover:text-white text-[11px]"
-                title={t('discard_folder', 'Discard folder')}
-              >
-                {t('discard', 'Discard')}
-              </button>
-            </div>
-          )}
+          {/* Banner amarillo eliminado — sustituido por el tab pendiente con estilo dashed */}
 
         </div>
         <div
@@ -693,7 +701,45 @@ export const MediaBox: FC<{
             className="hidden"
             multiple={true}
           />
-          <div className="flex gap-[8px]">
+          <div className="flex items-center gap-[8px]">
+            {/* ── View toggle: Grid / List ── */}
+            <div className="flex items-center rounded-[6px] border border-newColColor overflow-hidden">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'grid' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
+                title="Vista de cuadrícula"
+              >⊞</button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={clsx('px-[8px] h-[30px] text-[14px] transition-colors', viewMode === 'list' ? 'bg-[#612BD3] text-white' : 'text-textColor hover:bg-[#612BD3]/20')}
+                title="Vista de lista"
+              >≡</button>
+            </div>
+            {/* ── Zoom controls — only in grid view ── */}
+            {viewMode === 'grid' && (
+              <div className="flex items-center gap-[4px]">
+                <button
+                  onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.max(0, idx - 1)]; })}
+                  disabled={zoomLevel === ZOOM_LEVELS[0]}
+                  className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
+                  title="Menos archivos, más grandes"
+                >−</button>
+                <input
+                  type="range"
+                  min={0}
+                  max={ZOOM_LEVELS.length - 1}
+                  value={ZOOM_LEVELS.indexOf(zoomLevel)}
+                  onChange={(e) => setZoomLevel(ZOOM_LEVELS[Number(e.target.value)] as ZoomLevel)}
+                  className="w-[70px] accent-[#612BD3]"
+                />
+                <button
+                  onClick={() => setZoomLevel((prev) => { const idx = ZOOM_LEVELS.indexOf(prev); return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)]; })}
+                  disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
+                  className="px-[6px] h-[30px] rounded-[6px] bg-newColColor text-textColor disabled:opacity-30 hover:bg-[#612BD3]/20"
+                  title="Más archivos, más pequeños"
+                >+</button>
+              </div>
+            )}
             {btn}
             <ThirdPartyMediaLibrary onImported={() => mutate()} />
           </div>
@@ -732,42 +778,43 @@ export const MediaBox: FC<{
           >
             {!isLoading && !data?.results?.length && (
               <>
-                <NoMediaIcon />
-                <div className="text-[20px] font-[600]">
-                  {debouncedSearch
-                    ? t(
-                        'no_media_match_search',
-                        'No media matches your search'
-                      )
-                    : t(
-                        'you_dont_have_any_media_yet',
-                        "You don't have any media yet"
-                      )}
-                </div>
-                <div className="whitespace-pre-line text-newTextColor/[0.6] text-center">
-                  {t(
-                    'select_or_upload_pictures_max_1gb',
-                    'Select or upload pictures (maximum 1 GB per upload).'
-                  )}{' '}
-                  {'\n'}
-                  {t(
-                    'you_can_drag_drop_pictures',
-                    'You can also drag & drop pictures.'
-                  )}
-                </div>
-                <div className="forceChange flex gap-[8px]">
-                  {btn}
-                  <ThirdPartyMediaLibrary onImported={() => mutate()} />
-                </div>
+                {/* ── Contextual empty state for pending folder ── */}
+                {activeFolder === pendingFolderName && pendingFolderName ? (
+                  <>
+                    <div className="text-[40px] opacity-30">📂</div>
+                    <div className="text-[20px] font-[600]">Esta carpeta está vacía</div>
+                    <div className="text-[13px] text-textColor/60 text-center">
+                      Selecciona archivos con los checkboxes y usa &ldquo;Move to…&rdquo; para añadirlos aquí.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <NoMediaIcon />
+                    <div className="text-[20px] font-[600]">
+                      {debouncedSearch
+                        ? t('no_media_match_search', 'No media matches your search')
+                        : t('you_dont_have_any_media_yet', "You don't have any media yet")}
+                    </div>
+                    <div className="whitespace-pre-line text-newTextColor/[0.6] text-center">
+                      {t('select_or_upload_pictures_max_1gb', 'Select or upload pictures (maximum 1 GB per upload).')}{' '}
+                      {'\n'}
+                      {t('you_can_drag_drop_pictures', 'You can also drag & drop pictures.')}
+                    </div>
+                    <div className="forceChange flex gap-[8px]">
+                      {btn}
+                      <ThirdPartyMediaLibrary onImported={() => mutate()} />
+                    </div>
+                  </>
+                )}
               </>
             )}
-            {isLoading && (
+            {/* ── Grid skeleton ── */}
+            {isLoading && viewMode === 'grid' && (
               <>
                 {[...new Array(16)].map((_, i) => (
                   <div
-                    className={clsx(
-                      'px-[3px] py-[3px] float-left rounded-[6px] cursor-pointer w8-max aspect-square'
-                    )}
+                    style={{ width: `calc(100% / ${zoomLevel})`, maxWidth: `calc(100% / ${zoomLevel})` }}
+                    className="px-[3px] py-[3px] float-left rounded-[6px] cursor-pointer aspect-square"
                     key={i}
                   >
                     <div className="w-full h-full bg-newSep rounded-[6px] animate-pulse" />
@@ -775,21 +822,29 @@ export const MediaBox: FC<{
                 ))}
               </>
             )}
-            {data?.results
+            {/* ── List skeleton ── */}
+            {isLoading && viewMode === 'list' && (
+              <>
+                {[...new Array(8)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-[12px] h-[52px] px-[8px] w-full">
+                    <div className="w-[40px] h-[40px] bg-newSep rounded-[4px] animate-pulse flex-shrink-0" />
+                    <div className="flex-1 h-[12px] bg-newSep rounded animate-pulse" />
+                    <div className="w-[80px] h-[12px] bg-newSep rounded animate-pulse" />
+                  </div>
+                ))}
+              </>
+            )}
+            {/* ── Grid view ── */}
+            {viewMode === 'grid' && data?.results
               ?.filter((f: any) => {
-                if (type === 'video') {
-                  return hasExtension(f.path, 'mp4');
-                } else if (type === 'image') {
-                  return !hasExtension(f.path, 'mp4');
-                }
+                if (type === 'video') return hasExtension(f.path, 'mp4');
+                if (type === 'image') return !hasExtension(f.path, 'mp4');
                 return true;
               })
               .map((media: any) => (
                 <div
-                  className={clsx(
-                    'group px-[3px] py-[3px] float-left rounded-[6px] w8-max aspect-square',
-                    !standalone && 'cursor-pointer'
-                  )}
+                  style={{ width: `calc(100% / ${zoomLevel})`, maxWidth: `calc(100% / ${zoomLevel})` }}
+                  className={clsx('group px-[3px] py-[3px] float-left rounded-[6px] aspect-square', !standalone && 'cursor-pointer')}
                   key={media.id}
                 >
                   <div
@@ -873,6 +928,53 @@ export const MediaBox: FC<{
                   </div>
                 </div>
               ))}
+            {/* ── List view ── */}
+            {viewMode === 'list' && !isLoading && (
+              <div className="flex flex-col w-full divide-y divide-newColColor/30">
+                {data?.results
+                  ?.filter((f: any) => {
+                    if (type === 'video') return hasExtension(f.path, 'mp4');
+                    if (type === 'image') return !hasExtension(f.path, 'mp4');
+                    return true;
+                  })
+                  .map((media: any) => (
+                    <div
+                      key={media.id}
+                      className="flex items-center gap-[12px] h-[52px] px-[8px] hover:bg-newColColor/10 group/row cursor-pointer"
+                      onClick={addRemoveSelected(media)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedForMove.includes(media.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedForMove((prev) =>
+                            prev.includes(media.id)
+                              ? prev.filter((id) => id !== media.id)
+                              : [...prev, media.id]
+                          );
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-[14px] h-[14px] cursor-pointer accent-[#612BD3] flex-shrink-0"
+                      />
+                      <div className="w-[40px] h-[40px] rounded-[4px] overflow-hidden flex-shrink-0">
+                        {hasExtension(media.path, 'mp4')
+                          ? <VideoFrame url={mediaDirectory.set(media.path)} />
+                          : <img src={mediaDirectory.set(media.path)} className="w-full h-full object-cover" alt="media" />}
+                      </div>
+                      <span className="flex-1 text-[13px] truncate">{media.originalName}</span>
+                      <span className="w-[100px] text-[12px] text-textColor/60 truncate">{media.folder ?? '—'}</span>
+                      <span className="w-[36px] text-[11px] text-textColor/50 uppercase">
+                        {hasExtension(media.path, 'mp4') ? 'vid' : 'img'}
+                      </span>
+                      <button
+                        onClick={deleteImage(media)}
+                        className="hidden group-hover/row:block text-red-400 text-[12px] flex-shrink-0"
+                      >✕</button>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
         {(data?.pages || 0) > 1 && (
