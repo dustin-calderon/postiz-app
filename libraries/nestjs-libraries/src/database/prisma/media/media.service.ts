@@ -4,6 +4,8 @@ import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { Organization } from '@prisma/client';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
+import { MoveMediaDto } from '@gitroom/nestjs-libraries/dtos/media/move.media.dto';
+import { RenameFolderDto } from '@gitroom/nestjs-libraries/dtos/media/rename.folder.dto';
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
@@ -56,8 +58,20 @@ export class MediaService {
     return this._mediaRepository.saveFile(org, fileName, filePath, originalName);
   }
 
-  getMedia(org: string, page: number, search?: string) {
-    return this._mediaRepository.getMedia(org, page, search);
+  getMedia(org: string, page: number, search?: string, folder?: string) {
+    return this._mediaRepository.getMedia(org, page, search, folder);
+  }
+
+  getFolders(org: string) {
+    return this._mediaRepository.getFolders(org);
+  }
+
+  moveMedia(org: string, dto: MoveMediaDto) {
+    return this._mediaRepository.moveMedia(org, dto);
+  }
+
+  renameFolder(org: string, dto: RenameFolderDto) {
+    return this._mediaRepository.renameFolder(org, dto);
   }
 
   saveMediaInformation(org: string, data: SaveMediaInformationDto) {
