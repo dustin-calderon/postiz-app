@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -23,6 +24,8 @@ import { CustomFileValidationPipe } from '@gitroom/nestjs-libraries/upload/custo
 import { SubscriptionService } from '@gitroom/nestjs-libraries/database/prisma/subscriptions/subscription.service';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
+import { MoveMediaDto } from '@gitroom/nestjs-libraries/dtos/media/move.media.dto';
+import { RenameFolderDto } from '@gitroom/nestjs-libraries/dtos/media/rename.folder.dto';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { VideoFunctionDto } from '@gitroom/nestjs-libraries/dtos/videos/video.function.dto';
 
@@ -182,9 +185,31 @@ export class MediaController {
   getMedia(
     @GetOrgFromRequest() org: Organization,
     @Query('page') page: number,
-    @Query('search') search?: string
+    @Query('search') search?: string,
+    @Query('folder') folder?: string
   ) {
-    return this._mediaService.getMedia(org.id, page, search);
+    return this._mediaService.getMedia(org.id, page, search, folder);
+  }
+
+  @Get('/folders')
+  getFolders(@GetOrgFromRequest() org: Organization) {
+    return this._mediaService.getFolders(org.id);
+  }
+
+  @Put('/move')
+  moveMedia(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: MoveMediaDto
+  ) {
+    return this._mediaService.moveMedia(org.id, body);
+  }
+
+  @Put('/rename-folder')
+  renameFolder(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: RenameFolderDto
+  ) {
+    return this._mediaService.renameFolder(org.id, body);
   }
 
   @Get('/video-options')

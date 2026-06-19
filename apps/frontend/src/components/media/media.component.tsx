@@ -209,28 +209,87 @@ export const MediaBox: FC<{
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebounce(search, 300);
+  /** `undefined` = all media. `'__root__'` = unfoldered. A name = that folder. */
+  const [activeFolder, setActiveFolder] = useState<string | undefined>(undefined);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [selectedForMove, setSelectedForMove] = useState<string[]>([]);
+  const [moveTargetFolder, setMoveTargetFolder] = useState<string | null>(null);
+  const [showMoveMenu, setShowMoveMenu] = useState<string | null>(null);
   const fetch = useFetch();
   const modals = useModals();
   const toaster = useToaster();
   useEffect(() => {
     setPage(0);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, activeFolder]);
   const loadMedia = useCallback(async () => {
     const params = new URLSearchParams({ page: String(page + 1) });
     if (debouncedSearch.trim()) {
       params.set('search', debouncedSearch.trim());
     }
+    if (activeFolder !== undefined) {
+      params.set('folder', activeFolder);
+    }
     return (await fetch(`/media?${params.toString()}`)).json();
-  }, [page, debouncedSearch]);
+  }, [page, debouncedSearch, activeFolder]);
   const { data, mutate, isLoading } = useSWR(
-    `get-media-${page}-${debouncedSearch}`,
+    `get-media-${page}-${debouncedSearch}-${activeFolder ?? 'all'}`,
     loadMedia
+  );
+  const loadFolders = useCallback(async () => {
+    return (await fetch('/media/folders')).json() as Promise<string[]>;
+  }, []);
+  const { data: folders = [], mutate: mutateFolders } = useSWR(
+    'get-media-folders',
+    loadFolders
   );
   const [selected, setSelected] = useState([]);
   const t = useT();
   const uploaderRef = useRef<any>(null);
   const mediaDirectory = useMediaDirectory();
   const [loading, setLoading] = useState(false);
+
+  const createFolder = useCallback(async () => {
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    // If name already exists, just navigate to it (idempotent)
+    setActiveFolder(trimmed);
+    setNewFolderName('');
+    setCreatingFolder(false);
+    await mutateFolders();
+  }, [newFolderName, mutateFolders]);
+
+  const moveToFolder = useCallback(
+    async (mediaIds: string[], folder: string | null) => {
+      await fetch('/media/move', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: mediaIds, folder }),
+      });
+      await Promise.all([mutate(), mutateFolders()]);
+      setSelectedForMove([]);
+      setShowMoveMenu(null);
+    },
+    [fetch, mutate, mutateFolders]
+  );
+
+  const renameFolderHandler = useCallback(
+    async (oldName: string) => {
+      const newName = window.prompt(
+        t('rename_folder_prompt', 'New folder name:'),
+        oldName
+      );
+      if (!newName || newName.trim() === oldName) return;
+      await fetch('/media/rename-folder', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldName, newName: newName.trim() }),
+      });
+      if (activeFolder === oldName) setActiveFolder(newName.trim());
+      await mutateFolders();
+    },
+    [fetch, activeFolder, mutateFolders, t]
+  );
 
   const uppy = useUppyUploader({
     allowedFileTypes:
@@ -416,6 +475,136 @@ export const MediaBox: FC<{
   return (
     <DropFiles disabled={loading} className="flex flex-col flex-1" onDrop={dragAndDrop}>
       <div className="flex flex-col flex-1">
+        {/* ── Folder tab strip ── */}
+        <div className="flex items-center gap-[6px] mb-[10px] flex-wrap">
+          <button
+            onClick={() => setActiveFolder(undefined)}
+            className={clsx(
+              'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
+              activeFolder === undefined
+                ? 'bg-[#612BD3] text-white'
+                : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
+            )}
+          >
+            {t('all', 'All')}
+          </button>
+          <button
+            onClick={() => setActiveFolder('__root__')}
+            className={clsx(
+              'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
+              activeFolder === '__root__'
+                ? 'bg-[#612BD3] text-white'
+                : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
+            )}
+          >
+            {t('no_folder', 'No folder')}
+          </button>
+          {(folders as string[]).map((folder) => (
+            <div key={folder} className="relative group/folder">
+              <button
+                onClick={() => setActiveFolder(folder)}
+                className={clsx(
+                  'px-[12px] h-[30px] rounded-[6px] text-[12px] font-[600] transition-colors',
+                  activeFolder === folder
+                    ? 'bg-[#612BD3] text-white'
+                    : 'bg-newColColor text-textColor hover:bg-[#612BD3]/20'
+                )}
+              >
+                📁 {folder}
+              </button>
+              <button
+                onClick={() => renameFolderHandler(folder)}
+                className="absolute -top-[6px] -right-[6px] hidden group-hover/folder:flex w-[16px] h-[16px] rounded-full bg-newBgColorInner border border-newColColor items-center justify-center text-[9px] text-textColor hover:text-white"
+                title={t('rename_folder', 'Rename folder')}
+              >
+                ✎
+              </button>
+            </div>
+          ))}
+          {!creatingFolder ? (
+            <button
+              onClick={() => setCreatingFolder(true)}
+              className="flex items-center gap-[4px] px-[10px] h-[30px] rounded-[6px] text-[12px] font-[600] bg-newColColor text-textColor hover:bg-[#612BD3]/20 transition-colors"
+            >
+              <PlusIcon size={10} />
+              {t('new_folder', 'New folder')}
+            </button>
+          ) : (
+            <div className="flex items-center gap-[4px]">
+              <input
+                autoFocus
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') createFolder();
+                  if (e.key === 'Escape') { setCreatingFolder(false); setNewFolderName(''); }
+                }}
+                placeholder={t('folder_name', 'Folder name…')}
+                className="h-[30px] px-[8px] rounded-[6px] bg-newBgColorInner border border-newColColor text-[12px] outline-none focus:border-[#612BD3] w-[140px]"
+              />
+              <button
+                onClick={createFolder}
+                className="px-[10px] h-[30px] rounded-[6px] bg-[#612BD3] text-white text-[12px] font-[600]"
+              >
+                {t('create', 'Create')}
+              </button>
+              <button
+                onClick={() => { setCreatingFolder(false); setNewFolderName(''); }}
+                className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px]"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {/* ── Bulk move bar ── */}
+          {selectedForMove.length > 0 && (
+            <div className="flex items-center gap-[6px] ml-auto">
+              <span className="text-[12px] text-textColor">
+                {selectedForMove.length} {t('selected', 'selected')}
+              </span>
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoveMenu(showMoveMenu ? null : 'open')}
+                  className="px-[10px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] font-[600] hover:bg-[#612BD3]/20"
+                >
+                  {t('move_to', 'Move to…')}
+                </button>
+                {showMoveMenu && (
+                  <div className="absolute top-[34px] right-0 z-[200] bg-newBgColorInner border border-newColColor rounded-[8px] shadow-xl min-w-[160px] py-[4px]">
+                    <button
+                      onClick={() => moveToFolder(selectedForMove, null)}
+                      className="w-full text-left px-[12px] py-[6px] text-[12px] text-textColor hover:bg-newColColor"
+                    >
+                      {t('no_folder', 'No folder (root)')}
+                    </button>
+                    {(folders as string[]).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => moveToFolder(selectedForMove, f)}
+                        className="w-full text-left px-[12px] py-[6px] text-[12px] text-textColor hover:bg-newColColor"
+                      >
+                        📁 {f}
+                      </button>
+                    ))}
+                    {activeFolder !== undefined && activeFolder !== '__root__' && (
+                      <button
+                        onClick={() => moveToFolder(selectedForMove, activeFolder)}
+                        className="hidden"
+                        aria-hidden
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setSelectedForMove([])}
+                className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
         <div
           className={clsx(
             'flex items-center gap-[12px]',
@@ -558,6 +747,27 @@ export const MediaBox: FC<{
                         className="cursor-pointer hidden z-[100] group-hover:block absolute -top-[5px] -end-[5px]"
                         onClick={deleteImage(media)}
                       />
+                    )}
+                    {/* Move-to-folder checkbox — top-left, appears on hover */}
+                    <input
+                      type="checkbox"
+                      checked={selectedForMove.includes(media.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        setSelectedForMove((prev) =>
+                          prev.includes(media.id)
+                            ? prev.filter((id) => id !== media.id)
+                            : [...prev, media.id]
+                        );
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute top-[2px] start-[2px] z-[101] opacity-0 group-hover:opacity-100 w-[16px] h-[16px] cursor-pointer accent-[#612BD3]"
+                      title={t('select_for_move', 'Select to move to folder')}
+                    />
+                    {media.folder && (
+                      <div className="absolute top-[2px] end-[2px] z-[100] text-[9px] bg-black/50 text-white px-[4px] py-[1px] rounded-[3px] max-w-[80px] truncate">
+                        {media.folder}
+                      </div>
                     )}
                     <div className="absolute bottom-[10px] end-[10px] z-[100]">{media.originalName}</div>
                     <div className="w-full h-full rounded-[6px] overflow-hidden relative">
