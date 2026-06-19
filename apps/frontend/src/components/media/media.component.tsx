@@ -679,13 +679,12 @@ export const MultiMediaComponent: FC<{
   const user = useUser();
   const modals = useModals();
   const t = useT();
+  const [currentMedia, setCurrentMedia] = useState(value);
   useEffect(() => {
     if (value) {
       setCurrentMedia(value);
     }
   }, [value]);
-
-  const [currentMedia, setCurrentMedia] = useState(value);
   const mediaDirectory = useMediaDirectory();
   const changeMedia = useCallback(
     (
@@ -709,7 +708,7 @@ export const MultiMediaComponent: FC<{
         },
       });
     },
-    [currentMedia]
+    [currentMedia, onChange]
   );
   const showModal = useCallback(() => {
     modals.openModal({

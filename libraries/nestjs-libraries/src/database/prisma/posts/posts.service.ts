@@ -82,16 +82,6 @@ export class PostsService {
   }
 
 
-    try {
-      // Send parsed object so axios manages Content-Length correctly;
-      // HMAC was computed over the canonical JSON string before this point.
-      await axios.post(webhookUrl, JSON.parse(payload), { headers, timeout: 5000 });
-    } catch (err) {
-      // Non-fatal: log and continue. Publishing is already done.
-      console.error('[PostsService] outbound webhook dispatch failed:', err instanceof Error ? err.message : err);
-    }
-  }
-
   async getMissingContent(
     orgId: string,
     postId: string,
