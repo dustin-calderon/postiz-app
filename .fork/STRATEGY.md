@@ -55,7 +55,7 @@ custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
 
 | ID | Rama | Estado | Commits |
 |----|------|--------|---------|
-| PR-001 | `feature/carousel-dnd` | 🟡 En preparación | `6cef56a2`, `171ca8bc`, `40bd9ab0` → squash limpio |
+| PR-001 | `feature/carousel-dnd` | 🟡 Rama lista — pendiente test manual | Squash de `6cef56a2`, `7967c8d7`, `171ca8bc`, `40bd9ab0` → commit `3d78636e` |
 
 ### PR-001 — carousel drag-and-drop
 
@@ -208,8 +208,9 @@ Docker build:     ./build.sh desde custom/postiz-dc
 upstream fetch:   ✅ configurado (git fetch upstream)
 
 Delta vs upstream (excl. infra privada):
-  → 2 archivos (carousel fix) — pendiente de limpiar en PR
+  → 2 archivos (carousel fix) — en feature/carousel-dnd esperando test manual
 
 PRs:
-  PR-001 carousel-dnd:  🟡 en preparación — test manual pendiente
+  PR-001 carousel-dnd:  🟡 rama lista en origin — test manual pendiente
+  URL futura: https://github.com/gitroomhq/postiz-app/pull/new
 ```
