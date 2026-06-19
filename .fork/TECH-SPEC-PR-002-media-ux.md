@@ -1,7 +1,8 @@
-# TECH-SPEC — Media Library UX: Folders Tab + List View + Zoom Control
+# TECH-SPEC — Media Library UX: Hierarchical Folder Sidebar + List View + Zoom
 
-> **Asociado a:** PR-002 (`feat(media): virtual folder organization + list/grid view + zoom`)
-> **Rama:** `custom/postiz-dc` (producción) / `feature/media-folders` (upstream PR)
+> **Asociado a:** PR-002 (`feat(media): virtual folder organization + hierarchical sidebar + list/grid view + zoom`)
+> **Rama:** `custom/postiz-dc` (producción) / `feature/media-folders` (upstream PR pendiente)
+> **Commit actual:** `a9b58852`
 > **Última actualización:** 2026-06-19
 
 ---
@@ -10,413 +11,282 @@
 
 ### El problema original
 
-La biblioteca de medios de Postiz (`/media`) presentaba tres carencias funcionales:
+La biblioteca de medios de Postiz presentaba dos carencias estructurales:
 
-1. **Sin organización:** todos los assets en una lista plana sin filtros — inmanejable con >50 archivos.
-2. **Sin modos de vista:** el grid de 6 columnas fijas es la única opción — no hay densidad ajustable.
-3. **Sin zoom:** el tamaño de thumbnail es fijo (`w8-max = calc(100% / 6)`) — no permite ver más o menos en pantalla.
+1. **Sin organización jerárquica sostenible:** los tabs planos (un tab por carpeta) no escalan — con 20-30 carpetas el strip colapsa a múltiples líneas.
+2. **Sin modos de vista ni zoom:** el grid de 6 columnas fijas es la única opción.
 
 ### La solución
 
-Tres mejoras cohesivas bajo el paraguas "gestión de media library":
+Cuatro mejoras cohesivas:
 
 | Feature | Complejidad | Backend | Frontend |
 |---------|-------------|---------|----------|
-| A. Tab de carpeta pendiente visible | Mínima | ❌ sin cambios | ✅ solo JSX |
-| B. Toggle Grid / List view | Baja | ❌ sin cambios | ✅ estado + template |
-| C. Control de zoom (tamaño de tile) | Mínima | ❌ sin cambios | ✅ estado + CSS inline |
+| A. Sidebar jerárquico colapsable | Media | ✅ SQL cascada en rename | ✅ parseFolderTree + árbol 2 niveles |
+| B. Tab de carpeta pendiente visible | Mínima | ❌ sin cambios | ✅ solo JSX |
+| C. Toggle Grid / List view | Baja | ❌ sin cambios | ✅ estado + template |
+| D. Control de zoom (tamaño de tile) | Mínima | ❌ sin cambios | ✅ estado + CSS inline |
 
 ---
 
 ## 2. Mapa de archivos involucrados
 
-### Frontend (único layer afectado por las features A, B, C)
-
 ```
 apps/frontend/src/
-├── components/media/
-│   └── media.component.tsx          ← ARCHIVO PRINCIPAL — toda la UI de MediaBox
-├── app/
-│   └── global.scss                  ← Define .w8-max (clase CSS del grid actual)
-└── (ningún otro archivo de frontend)
-```
-
-### Backend (implementado en PR-002 base, sin cambios adicionales)
-
-```
-apps/backend/src/api/routes/
-└── media.controller.ts              ← endpoints /media/folders, /media/move, /media/rename-folder
+└── components/media/
+    └── media.component.tsx          ← ARCHIVO PRINCIPAL — toda la UI de MediaBox
 
 libraries/nestjs-libraries/src/
 ├── database/prisma/
 │   ├── schema.prisma                ← Media.folder String? + @@index([folder])
 │   └── media/
-│       ├── media.repository.ts      ← getFolders(), moveMedia(), renameFolder(), getMedia()
-│       └── media.service.ts         ← proxies delgados de repositorio
+│       ├── media.repository.ts      ← getFolders(), moveMedia(), renameFolder() (SQL cascada)
+│       └── media.service.ts         ← proxies delgados
 └── dtos/media/
     ├── move.media.dto.ts            ← { ids: string[], folder: string | null }
     └── rename.folder.dto.ts         ← { oldName: string, newName: string }
+
+apps/backend/src/api/routes/
+└── media.controller.ts              ← endpoints /media/folders, /media/move, /media/rename-folder
 ```
 
 ---
 
-## 3. Flujo de datos completo (estado actual, post-PR-002-base)
+## 3. Modelo de datos — Path-based hierarchy
 
-### 3.1 Carga de media
+### Principio fundamental
 
-```
-MediaBox mount
-  │
-  ├─ loadMedia() → GET /media?page=N[&search=S][&folder=F]
-  │    ↑ deps: [page, debouncedSearch, activeFolder]
-  │    ↓ SWR key: ['get-media', page, search, folder]
-  │    ↓ respuesta: { results: Media[], pages: number }
-  │
-  └─ loadFolders() → GET /media/folders
-       ↑ deps: [fetch]
-       ↓ SWR key: 'get-media-folders'
-       ↓ respuesta: string[]  — ej: ["Campaigns", "Clientes", "Q2-2026"]
-```
-
-### 3.2 Creación de carpeta (flujo pendiente actual)
+No hay tabla `Folder`. Las carpetas son **valores del campo `folder: String?`** en `Media`.
+La jerarquía se expresa como un path-string separado por `/`:
 
 ```
-Usuario escribe nombre → Enter / click "Create"
-  │
-  ├─ setCreatingFolder(false)
-  ├─ setNewFolderName('')
-  └─ setPendingFolderName(nombre)   ← SIN llamada API — solo estado React
-
-  Resultado: banner amarillo visible, NINGÚN tab nuevo en el strip
+folder = null            → Root (sin carpeta asignada)
+folder = "Nike"          → Carpeta raíz "Nike"
+folder = "Nike/Diseños"  → Subcarpeta "Diseños" bajo "Nike"
+folder = "Nike/Videos"   → Subcarpeta "Videos" bajo "Nike"
 ```
 
-### 3.3 Mover items a carpeta
+### Por qué este modelo es correcto
 
-```
-Usuario activa checkboxes → selectedForMove = ['id1', 'id2']
-  │
-  ├─ showMoveMenu toggle → dropdown con: [root, ✨ pendingFolder, ...folders persistidas]
-  │
-  └─ moveToFolder(ids, folder) → PUT /media/move
-        body: { ids: string[], folder: string | null }
-        └─ onSuccess:
-             ├─ mutateFolders()   → invalida SWR 'get-media-folders' → GET /media/folders
-             ├─ mutate()          → invalida SWR ['get-media', ...]   → GET /media?...
-             ├─ setSelectedForMove([])
-             ├─ setShowMoveMenu(false)
-             └─ si folder === pendingFolderName:
-                  ├─ setPendingFolderName(null)   ← carpeta ya persistida
-                  └─ setActiveFolder(folder)      ← navega al nuevo tab
-```
-
-### 3.4 API endpoints de media
-
-| Método | Ruta | Descripción | Parámetros |
-|--------|------|-------------|------------|
-| `GET` | `/media` | Lista media paginada | `?page, ?search, ?folder` |
-| `GET` | `/media/folders` | Lista carpetas existentes | — |
-| `PUT` | `/media/move` | Mueve items a carpeta | body: `MoveMediaDto` |
-| `PUT` | `/media/rename-folder` | Renombra carpeta | body: `RenameFolderDto` |
-| `POST`| `/media` | Sube archivo nuevo | multipart/form-data |
-| `DELETE` | `/media/:id` | Elimina archivo | — |
-
-> ⚠️ El orden de registro en `media.controller.ts` es crítico:
-> `GET /media/folders` y `PUT /media/move` deben estar registrados **antes** de `GET /media/:id`
-> para evitar que Express interprete `folders` como un `:id` wildcard.
+| Propiedad | Garantía |
+|-----------|---------|
+| **Cero schema extra** | Usa el campo `folder` ya existente, mismo tipo `String?` |
+| **Rename cascada atómica** | Una query SQL con `REPLACE()+LIKE` actualiza todos los hijos |
+| **Parseable en cliente** | `split('/')` + `reduce()` → árbol en < 10 líneas |
+| **Backwards compatible** | `folder = null` = root; `GET /media` sin `?folder=` = todo el catálogo |
+| **Sin orphans** | Si mueves todos los items de `Nike/Diseños`, el DISTINCT deja de devolver ese path |
 
 ---
 
-## 4. Feature A — Tab de carpeta pendiente visible en el strip
+## 4. Backend — `renameFolder` con SQL cascada
 
-### 4.1 Problema actual
+### El problema del rename jerárquico
 
-Al crear una carpeta nueva, el `pendingFolderName` solo genera un banner amarillo.
-El tab de la carpeta **no aparece en el strip** hasta que tiene ≥1 item en DB.
-Esto viola la expectativa del usuario: "creé la carpeta, ¿dónde está?".
+Con el `updateMany` de Prisma (exact-match), renombrar `"Nike"` a `"Adidas"` no afectaría a `"Nike/Diseños"`. Quedaría `"Nike/Diseños"` huérfano.
 
-### 4.2 Solución
-
-Renderizar el tab del `pendingFolderName` directamente en el strip con estilo diferenciado:
-
-```
-[All] [No folder] [📁 Campaigns] [✨ NuevaCarpeta] [+ New folder]
-                                   ↑ dashed, opacity-70
-```
-
-**Comportamiento del tab pendiente:**
-- Estilo: `border border-dashed border-[#612BD3]/60 opacity-70` (no activo)
-- Estilo activo: `bg-[#612BD3] text-white opacity-100` (al hacer click sobre él)
-- Botón `✕` pequeño en el tab → `setPendingFolderName(null)` (descartar)
-- Al navegar a él (`setActiveFolder(pendingFolderName)`): empty state contextual
-- Cuando `moveToFolder` persiste el primer item → `setPendingFolderName(null)` → tab pasa a ser "normal" (aparecerá como persistido tras `mutateFolders()`)
-
-### 4.3 Empty state del tab pendiente
-
-```tsx
-// Mostrar cuando: activeFolder === pendingFolderName && !data?.results?.length
-<div className="flex flex-col items-center gap-[12px] text-center p-[40px]">
-  <FolderIcon size={48} className="opacity-30" />
-  <p className="text-[16px] font-[600]">Esta carpeta está vacía</p>
-  <p className="text-[13px] text-textColor/60">
-    Selecciona archivos con los checkboxes y usa "Move to…" para añadirlos aquí.
-  </p>
-</div>
-```
-
-### 4.4 Eliminar banner amarillo
-
-El banner amarillo actual es redundante con el tab visible. Se elimina.
-El estado `pendingFolderName` se mantiene — solo cambia su presentación.
-
-### 4.5 Código afectado
-
-- **Archivo:** `media.component.tsx`
-- **Zona:** Sección del tab strip (líneas ~539–595 actuales)
-- **Cambio:** insertar `{pendingFolderName && <TabPending />}` antes del botón `+ New folder`
-- **Cambio:** eliminar el bloque del banner amarillo
-
----
-
-## 5. Feature B — Toggle Grid / List view
-
-### 5.1 Estado nuevo
+### La solución
 
 ```typescript
-type ViewMode = 'grid' | 'list';
-const [viewMode, setViewMode] = useState<ViewMode>('grid');
-```
+// media.repository.ts
+async renameFolder(org: string, dto: RenameFolderDto): Promise<void> {
+  const { oldName, newName } = dto;
+  const oldTrimmed = oldName.trim();
+  const newTrimmed = newName.trim();
 
-Sin persistencia backend ni localStorage. Es preferencia de sesión, no dato de negocio.
+  // Guard: no-op si nombre no cambia
+  if (oldTrimmed === newTrimmed) return;
 
-### 5.2 Controles de toggle
+  const prefix = `${oldTrimmed}/`;
 
-Añadidos en la barra superior, a la izquierda del botón "+ Subir":
+  // Cast explícito: PrismaRepository<'media'>.model es Pick<PrismaService, 'media'>
+  // en tipos, pero en runtime ES PrismaService (extends PrismaClient → tiene $queryRaw).
+  const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
 
-```tsx
-<div className="flex items-center gap-[2px] rounded-[6px] border border-newColColor overflow-hidden">
-  <button
-    onClick={() => setViewMode('grid')}
-    className={clsx('px-[8px] h-[30px] text-[14px]', viewMode === 'grid' && 'bg-[#612BD3] text-white')}
-    title="Vista de cuadrícula"
-  >
-    ⊞
-  </button>
-  <button
-    onClick={() => setViewMode('list')}
-    className={clsx('px-[8px] h-[30px] text-[14px]', viewMode === 'list' && 'bg-[#612BD3] text-white')}
-    title="Vista de lista"
-  >
-    ≡
-  </button>
-</div>
-```
-
-### 5.3 Vista Grid (existente, sin cambios)
-
-Clase CSS actual: `w8-max` (`width: calc(100% / 6)`) + `aspect-square` + `float: left`.
-La feature C (zoom) modifica el divisor de columnas dinámicamente.
-
-### 5.4 Vista List
-
-Mismo `data.results` del SWR. Template alternativo:
-
-```tsx
-// Contenedor: reemplaza el div float con flex-col
-<div className="flex flex-col w-full divide-y divide-newColColor/30">
-  {data?.results.map((media) => (
-    <div className="flex items-center gap-[12px] h-[52px] px-[8px] hover:bg-newColColor/10 group">
-      {/* Columna 0: checkbox selección move */}
-      <input type="checkbox" checked={...} onChange={...} className="w-[14px] h-[14px] accent-[#612BD3]" />
-      {/* Columna 1: thumbnail 40×40 */}
-      <div className="w-[40px] h-[40px] rounded-[4px] overflow-hidden flex-shrink-0">
-        {isVideo ? <VideoFrame url={...} /> : <img src={...} className="w-full h-full object-cover" />}
-      </div>
-      {/* Columna 2: nombre (ocupa espacio disponible) */}
-      <span className="flex-1 text-[13px] truncate">{media.originalName}</span>
-      {/* Columna 3: carpeta */}
-      <span className="w-[100px] text-[12px] text-textColor/60 truncate">{media.folder ?? '—'}</span>
-      {/* Columna 4: tipo inferido */}
-      <span className="w-[40px] text-[11px] text-textColor/50 uppercase">
-        {hasExtension(media.path, 'mp4') ? 'video' : 'img'}
-      </span>
-      {/* Columna 5: acciones en hover */}
-      <button onClick={deleteImage(media)} className="hidden group-hover:block text-red-400">✕</button>
-    </div>
-  ))}
-</div>
-```
-
-**Invariantes de la vista list:**
-- El mecanismo "select for insert" (borde morado, número de orden) NO aplica en list view — solo aplica en modo standalone/modal.
-- El `selectedForMove` (checkbox de carpeta) SÍ aplica y funciona igual.
-- Click en la fila → `addRemoveSelected(media)` si `!standalone`.
-- Sin scroll horizontal — columnas se colapsan en viewports pequeños con `truncate`.
-
----
-
-## 6. Feature C — Control de zoom (tamaño de tile)
-
-### 6.1 Cómo funciona el grid actual
-
-```scss
-/* global.scss — línea 800 */
-.w8-max {
-  width: calc(100% / 6);      /* 6 columnas fijas */
-  max-width: calc(100% / 6);
+  await prisma.$queryRaw<{ count: bigint }[]>(
+    Prisma.sql`
+      UPDATE "Media"
+      SET folder = REPLACE(folder, ${oldTrimmed}, ${newTrimmed})
+      WHERE "organizationId" = ${org}
+        AND (
+          folder = ${oldTrimmed}
+          OR folder LIKE ${prefix + '%'}
+        )
+    `
+  );
 }
 ```
 
-Cada tile es `1/6` del ancho del contenedor, con `aspect-square` para mantener la proporción.
-El grid usa `float: left` — no es CSS Grid ni Flexbox.
-
-### 6.2 Estrategia de zoom
-
-**No modificar `global.scss`**. En su lugar, sustituir la clase `w8-max` por una anchura
-calculada en línea a partir de un estado `zoomLevel`:
-
-```typescript
-const ZOOM_LEVELS = [3, 4, 5, 6, 8, 10] as const;
-type ZoomLevel = typeof ZOOM_LEVELS[number];
-const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(6); // default = 6 cols (actual)
-```
-
-El valor de `zoomLevel` representa el **número de columnas** visibles.
-
-```tsx
-// Estilo inline en el div de cada tile (reemplaza w8-max):
-style={{ width: `calc(100% / ${zoomLevel})`, maxWidth: `calc(100% / ${zoomLevel})` }}
-className="group px-[3px] py-[3px] float-left rounded-[6px] aspect-square"
-```
-
-### 6.3 Controles de zoom
-
-Slider + botones de `-` y `+`, en la barra superior junto al toggle de vista:
-
-```
-[⊞][≡]  [−] ────●──── [+]
-         ↑ zoom slider
-```
-
-```tsx
-<div className="flex items-center gap-[6px]">
-  <button
-    onClick={() => setZoomLevel(prev => {
-      const idx = ZOOM_LEVELS.indexOf(prev);
-      return ZOOM_LEVELS[Math.max(0, idx - 1)];
-    })}
-    disabled={zoomLevel === ZOOM_LEVELS[0]}
-    className="px-[6px] h-[30px] rounded-[6px] bg-newColColor disabled:opacity-30"
-    title="Menos archivos, más grandes"
-  >−</button>
-  <input
-    type="range"
-    min={0}
-    max={ZOOM_LEVELS.length - 1}
-    value={ZOOM_LEVELS.indexOf(zoomLevel)}
-    onChange={(e) => setZoomLevel(ZOOM_LEVELS[Number(e.target.value)])}
-    className="w-[80px] accent-[#612BD3]"
-  />
-  <button
-    onClick={() => setZoomLevel(prev => {
-      const idx = ZOOM_LEVELS.indexOf(prev);
-      return ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, idx + 1)];
-    })}
-    disabled={zoomLevel === ZOOM_LEVELS[ZOOM_LEVELS.length - 1]}
-    className="px-[6px] h-[30px] rounded-[6px] bg-newColColor disabled:opacity-30"
-    title="Más archivos, más pequeños"
-  >+</button>
-</div>
-```
-
-### 6.4 Tabla de niveles de zoom
-
-| Index | Cols | Tile aprox (en 1200px) | Caso de uso |
-|-------|------|------------------------|-------------|
-| 0 | 3 | 400px | Ver detalles grandes |
-| 1 | 4 | 300px | Thumbnails cómodos |
-| 2 | 5 | 240px | Balance |
-| 3 | 6 | 200px | **Default actual** |
-| 4 | 8 | 150px | Muchos archivos |
-| 5 | 10 | 120px | Density máxima |
-
-### 6.5 El zoom solo aplica en vista Grid
-
-En vista List el zoom no tiene sentido (filas de altura fija).
-Los controles de zoom se muestran condicionalmente: `{viewMode === 'grid' && <ZoomControls />}`.
+**Garantías:**
+- **Inyección-safe:** usa `Prisma.sql` (tagged template) — parámetros escapados por Prisma.
+- **Precision:** el `LIKE 'Nike/%'` evita renombrar `"NikeAlt"` cuando se renombra `"Nike"`.
+- **Atómico:** una sola `UPDATE` — sin ventana de inconsistencia entre registros.
 
 ---
 
-## 7. Interacción entre las tres features
+## 5. Frontend — `parseFolderTree`
 
-### 7.1 Barra de controles unificada
-
-La barra superior de la media library queda:
-
-```
-[All] [No folder] [📁 Campaigns] [✨ NuevaCarpeta] [+ New folder]
-─────────────────────────────────────────────────────────────────
-[Search..............................]  [⊞][≡]  [−]──●──[+]  [+ Subir]
-                                        ↑ view  ↑ zoom (grid only)
-```
-
-### 7.2 Estado combinado
+### Función de parseo (nativa, sin deps)
 
 ```typescript
-// Nuevos estados añadidos al MediaBox
-const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(6);
-// Estados existentes — sin modificar:
-// activeFolder, pendingFolderName, selectedForMove, showMoveMenu, ...
+interface FolderNode {
+  name: string;    // segmento display (último path component)
+  path: string;    // path completo para setActiveFolder()
+  children: FolderNode[];
+}
+
+function parseFolderTree(folders: string[]): FolderNode[] {
+  const roots = new Map<string, FolderNode>();
+
+  for (const f of folders) {
+    const parts = f.split('/');
+    const rootName = parts[0];
+
+    if (!roots.has(rootName)) {
+      roots.set(rootName, { name: rootName, path: rootName, children: [] });
+    }
+
+    if (parts.length === 2) {
+      roots.get(rootName)!.children.push({
+        name: parts[1],
+        path: f,
+        children: [],
+      });
+    }
+    // Nivel > 2 ignorado deliberadamente (2 niveles cubre el caso de uso)
+  }
+
+  return Array.from(roots.values());
+}
 ```
 
-### 7.3 Lógica de renderizado condicional
-
-```tsx
-{/* Zona de contenido principal */}
-{viewMode === 'grid' ? (
-  <GridView
-    data={data}
-    zoomLevel={zoomLevel}
-    selectedForMove={selectedForMove}
-    // ... resto de props
-  />
-) : (
-  <ListView
-    data={data}
-    selectedForMove={selectedForMove}
-    // ... resto de props
-  />
-)}
+**Input:** `["Nike", "Nike/Diseños", "Nike/Videos", "Adidas"]`
+**Output:**
+```json
+[
+  { "name": "Nike", "path": "Nike", "children": [
+    { "name": "Diseños", "path": "Nike/Diseños", "children": [] },
+    { "name": "Videos",  "path": "Nike/Videos",  "children": [] }
+  ]},
+  { "name": "Adidas", "path": "Adidas", "children": [] }
+]
 ```
-
-Ambas vistas reciben el mismo `data` del SWR — **cero llamadas API adicionales**.
 
 ---
 
-## 8. Skeleton / loading states
+## 6. Frontend — Sidebar UI
 
-### Grid loading (actual)
+### Layout
 
-```tsx
-{isLoading && [...new Array(16)].map((_, i) => (
-  <div style={{ width: `calc(100% / ${zoomLevel})`, maxWidth: `calc(100% / ${zoomLevel})` }}
-       className="px-[3px] py-[3px] float-left aspect-square">
-    <div className="w-full h-full bg-newSep rounded-[6px] animate-pulse" />
-  </div>
-))}
+```
+╔═══════════════╗  ╔══════════════════════════════════════════╗
+║ ☰ Folders     ║  ║ [Search................] [⊞][≡] [−●+] [+]║
+║               ║  ║──────────────────────────────────────────║
+║ ● All media   ║  ║ ☐ 🖼 banner.png  Nike/Diseños  img  ✕   ║
+║ ○ No folder   ║  ║ ☐ 🎬 spot.mp4   Nike/Videos   vid  ✕   ║
+║               ║  ║ ☐ 🖼 logo.svg   Adidas         img  ✕   ║
+║ ▼ Nike        ║  ║                                          ║
+║   ├ Diseños   ║  ║                                          ║
+║   └ Videos    ║  ║                                          ║
+║ ▶ Adidas      ║  ║                                          ║
+║               ║  ║ [← Cancel]           [Add selected media]║
+╚═══════════════╝  ╚══════════════════════════════════════════╝
 ```
 
-### List loading (nuevo)
+### Comportamientos del sidebar
 
-```tsx
-{isLoading && [...new Array(8)].map((_, i) => (
-  <div className="flex items-center gap-[12px] h-[52px] px-[8px]">
-    <div className="w-[40px] h-[40px] bg-newSep rounded-[4px] animate-pulse" />
-    <div className="flex-1 h-[12px] bg-newSep rounded animate-pulse" />
-    <div className="w-[80px] h-[12px] bg-newSep rounded animate-pulse" />
-  </div>
-))}
+| Elemento | Acción | Resultado |
+|----------|--------|-----------|
+| Nodo raíz (click) | `setActiveFolder("Nike")` | Filtra todos los items bajo "Nike" y sus sub |
+| Nodo raíz (chevron) | toggle `expandedBrands` | Expande/colapsa los hijos sin cambiar `activeFolder` |
+| Nodo hijo (click) | `setActiveFolder("Nike/Diseños")` | Filtra solo esa subcarpeta |
+| Hover nodo raíz | Muestra `✎` (rename) + `⊕` (subfolder) | — |
+| `⊕` new subfolder | `setPendingFolderName("Nike/NuevaSub")` | Nodo dashed en el árbol bajo Nike |
+| `✎` rename | `renameFolderHandler("Nike")` | prompt → `PUT /media/rename-folder` |
+| Nodo dashed (click) | `setActiveFolder("Nike/NuevaSub")` | Empty state contextual |
+
+### Estado
+
+```typescript
+const [sidebarOpen, setSidebarOpen]       = useState<boolean>(!standalone);
+const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
 ```
+
+---
+
+## 7. Flujo de datos completo
+
+### 7.1 Carga
+
+```
+MediaBox mount
+  ├─ loadMedia() → GET /media?page=N[&search=S][&folder=F]
+  │    SWR key: ['get-media', page, search, activeFolder]
+  │    Respuesta: { results: Media[], pages: number }
+  │
+  └─ loadFolders() → GET /media/folders
+       SWR key: 'get-media-folders'
+       Respuesta: string[]  — ["Nike", "Nike/Diseños", "Adidas"]
+       → parseFolderTree() → árbol para sidebar
+```
+
+### 7.2 Creación de subcarpeta
+
+```
+Usuario en sidebar, hover "Nike" → click ⊕
+  └─ setPendingFolderName("Nike/NombreNueva")
+     → sidebar muestra nodo dashed bajo Nike
+     → setActiveFolder("Nike/NombreNueva")
+     → empty state contextual
+
+Usuario selecciona items → Move to → [Nike/NombreNueva]
+  └─ PUT /media/move  { ids: [...], folder: "Nike/NombreNueva" }
+     └─ onSuccess:
+          ├─ mutateFolders() → GET /media/folders → árbol actualizado
+          ├─ mutate()        → GET /media?folder=Nike/NombreNueva
+          ├─ setSelectedForMove([])
+          └─ setPendingFolderName(null)  ← ya persistida
+```
+
+### 7.3 Rename de marca (cascada)
+
+```
+Usuario hover "Nike" → click ✎ → prompt "Adidas"
+  └─ PUT /media/rename-folder  { oldName: "Nike", newName: "Adidas" }
+     └─ backend SQL:
+          UPDATE Media SET folder = REPLACE(folder, 'Nike', 'Adidas')
+          WHERE org = X AND (folder = 'Nike' OR folder LIKE 'Nike/%')
+          → "Nike"         → "Adidas"
+          → "Nike/Diseños" → "Adidas/Diseños"
+          → "Nike/Videos"  → "Adidas/Videos"
+     └─ onSuccess:
+          ├─ activeFolder prefix update (si activo era "Nike/Diseños" → "Adidas/Diseños")
+          ├─ mutateFolders()
+          └─ mutate()
+```
+
+---
+
+## 8. API contract
+
+### `GET /media?folder=<value>`
+
+| Valor | SQL generado | Comportamiento |
+|-------|-------------|----------------|
+| Omitido | Sin `WHERE folder` | Todo el catálogo |
+| `__root__` | `WHERE folder IS NULL` | Solo root |
+| `"Nike"` | `WHERE folder = 'Nike'` | Exact match (solo esa carpeta) |
+| `"Nike/Diseños"` | `WHERE folder = 'Nike/Diseños'` | Exact match subcarpeta |
+
+> ℹ️ El sidebar muestra `Nike` → filtra `folder = 'Nike'` (no incluye hijos). Para ver TODO bajo Nike, el usuario navega nodo a nodo o clicamos en el nodo raíz que podría en el futuro hacer `LIKE 'Nike%'` si se requiere. Actualmente el exact-match es deliberado y más predecible.
+
+### `GET /media/folders` → `string[]`
+
+### `PUT /media/move` → `{ ids: string[], folder: string | null }`
+
+### `PUT /media/rename-folder` → `{ oldName: string, newName: string }`
+
+> ⚠️ El orden de registro en `media.controller.ts` es crítico:
+> `GET /media/folders` y `PUT /media/move` deben registrarse **antes** de `GET /media/:id`.
 
 ---
 
@@ -425,64 +295,73 @@ Ambas vistas reciben el mismo `data` del SWR — **cero llamadas API adicionales
 | Invariante | Descripción |
 |-----------|-------------|
 | SWR key estable | `['get-media', page, search, activeFolder]` — no cambia con `viewMode` ni `zoomLevel` |
-| `selectedForMove` cross-view | Un item seleccionado en grid sigue seleccionado al cambiar a list |
+| `selectedForMove` cross-view | Items seleccionados en grid siguen seleccionados al pasar a list |
 | Paginación intacta | `<Pagination>` aparece en ambas vistas si `data.pages > 1` |
-| Modal standalone | En modo modal (insertar media en post), la vista default es siempre grid |
-| Float layout | La clase `float-left` + `aspect-square` se mantiene en grid; list usa flex-col |
-| `w8-max` eliminada de los tiles | Reemplazada por `style` inline — `global.scss` no se toca |
-| Badge de carpeta en list | Columna "Carpeta" en list view sustituye el badge overlay del grid |
-| Checkbox de selección | Funciona igual en grid (top-left overlay) y list (columna 0) |
-| Acciones delete | Grid: `DeleteCircleIcon` en hover top-right. List: botón en hover al final de fila |
+| Modal standalone | En modo modal, sidebar oculto por defecto (`sidebarOpen = false`) |
+| Rename precision | `LIKE 'Nike/%'` evita que `"NikeAlt"` sea modificado al renombrar `"Nike"` |
+| `$queryRaw` type-safe | Cast documentado con comentario; `Prisma.sql` previene inyección |
+| Badge en grid | `media.folder` en thumbnail top-right (truncado 80px) |
+| Columna en list | `media.folder ?? '—'` en columna 3 de list view |
+| Checkbox de selección | Funciona igual en grid (overlay) y list (columna 0) |
+| `w8-max` eliminada | Sustituida por `style` inline — `global.scss` no se toca |
 
 ---
 
-## 10. Checklist de implementación
+## 10. Zoom — tabla de niveles
 
-### Feature A — Tab pendiente
-- [ ] Insertar tab `pendingFolderName` en el strip (entre folders persistidas y `+ New folder`)
-- [ ] Estilo dashed semi-transparente cuando inactivo
-- [ ] Botón `✕` para descartar (`setPendingFolderName(null)`)
-- [ ] Empty state contextual cuando `activeFolder === pendingFolderName && !data?.results?.length`
-- [ ] Eliminar banner amarillo actual (redundante)
+| Index | Cols | Tile aprox (1200px) | Caso de uso |
+|-------|------|---------------------|-------------|
+| 0 | 3 | 400px | Ver detalles grandes |
+| 1 | 4 | 300px | Thumbnails cómodos |
+| 2 | 5 | 240px | Balance |
+| 3 | 6 | 200px | **Default** |
+| 4 | 8 | 150px | Muchos archivos |
+| 5 | 10 | 120px | Densidad máxima |
 
-### Feature B — Toggle Grid/List
-- [ ] Añadir estado `viewMode: 'grid' | 'list'`
-- [ ] Añadir controles de toggle en barra superior
-- [ ] Implementar `ListView` template con las 5 columnas descritas
-- [ ] Skeleton de loading para list view
-- [ ] Verificar que `selectedForMove` se mantiene al cambiar de vista
-
-### Feature C — Zoom
-- [ ] Añadir estado `zoomLevel: ZoomLevel` (default: 6)
-- [ ] Añadir constante `ZOOM_LEVELS = [3, 4, 5, 6, 8, 10]`
-- [ ] Sustituir `w8-max` en tiles por `style` inline calculado
-- [ ] Sustituir `w8-max` en skeleton de loading
-- [ ] Añadir slider + botones `−`/`+` en barra superior
-- [ ] Ocultar controles de zoom en `viewMode === 'list'`
-
-### Integración final
-- [ ] Commit en `custom/postiz-dc`
-- [ ] Build + deploy en Beelink
-- [ ] Validación manual: crear carpeta → ver tab pendiente → mover item → zoom in/out → cambiar a list
-- [ ] Cherry-pick a `feature/media-folders` para expandir upstream PR
+Implementación: `style={{ width: \`calc(100% / ${zoomLevel})\` }}` en tile y skeleton. Los controles (slider + `−`/`+`) se ocultan en `viewMode === 'list'`.
 
 ---
 
-## 11. Referencias de código
+## 11. Skeleton / loading states
 
-| Referencia | Línea aprox | Descripción |
-|-----------|-------------|-------------|
-| `w8-max` CSS | `global.scss:800` | Clase de ancho de tile (a sustituir con `style` inline) |
-| Grid tile render | `media.component.tsx:787–874` | El `.map()` que genera los thumbnails |
-| Skeleton loading | `media.component.tsx:764–776` | 16 placeholders animados |
-| Tab strip | `media.component.tsx:539–560` | Render de las carpetas persistidas |
-| `pendingFolderName` banner | `media.component.tsx:~639` | Banner amarillo a eliminar |
-| `moveToFolder` | `media.component.tsx:~290` | PUT /media/move + mutateFolders |
-| `loadFolders` SWR | `media.component.tsx:~244` | GET /media/folders |
-| `loadMedia` SWR | `media.component.tsx:~230` | GET /media con folder param |
-| `MediaController` | `media.controller.ts` | Orden de registro de rutas — crítico |
-| `MediaRepository.getFolders` | `media.repository.ts` | `SELECT DISTINCT folder WHERE folder IS NOT NULL` |
+### Grid loading
+
+```tsx
+{isLoading && viewMode === 'grid' && [...new Array(16)].map((_, i) => (
+  <div style={{ width: `calc(100% / ${zoomLevel})` }}
+       className="px-[3px] py-[3px] float-left aspect-square" key={i}>
+    <div className="w-full h-full bg-newSep rounded-[6px] animate-pulse" />
+  </div>
+))}
+```
+
+### List loading
+
+```tsx
+{isLoading && viewMode === 'list' && [...new Array(8)].map((_, i) => (
+  <div key={i} className="flex items-center gap-[12px] h-[52px] px-[8px]">
+    <div className="w-[40px] h-[40px] bg-newSep rounded-[4px] animate-pulse flex-shrink-0" />
+    <div className="flex-1 h-[12px] bg-newSep rounded animate-pulse" />
+    <div className="w-[80px] h-[12px] bg-newSep rounded animate-pulse" />
+  </div>
+))}
+```
 
 ---
 
-*Documento creado: 2026-06-19. Autor: Antigravity (senior dev session).*
+## 12. Referencias de código (post-refactor)
+
+| Referencia | Descripción |
+|-----------|-------------|
+| `parseFolderTree()` | Líneas ~265–290 en `media.component.tsx` — string[] → FolderNode[] |
+| Sidebar JSX | Líneas ~538–790 en `media.component.tsx` — árbol colapsable |
+| `createFolder()` | Path-aware: detecta `activeFolder` para construir sub-path |
+| `renameFolderHandler()` | Actualiza solo el último segmento del path; refresca `activeFolder` |
+| Move-to dropdown | Árbol indentado con depth visual (misma `parseFolderTree`) |
+| `renameFolder()` backend | `media.repository.ts` L~120–175 — SQL REPLACE()+LIKE cascada |
+| `MediaController` | `media.controller.ts` — orden de rutas crítico (folders antes de /:id) |
+| `ZOOM_LEVELS` | Constante en `media.component.tsx` — `[3, 4, 5, 6, 8, 10]` |
+
+---
+
+*Documento actualizado: 2026-06-19. Arquitectura migrada de tabs planos a sidebar jerárquico path-based. Commit: `a9b58852`.*

@@ -1,28 +1,23 @@
-# PR-002 — `feat(media): virtual folder organization + list/grid view + zoom`
+# PR-002 — `feat(media): virtual folder organization + hierarchical sidebar + list/grid view + zoom`
 
 > **Rama upstream (PR limpio):** `feature/media-folders` → upstream `main`
-> **Estado:** 🔄 EN ESTABILIZACIÓN — `custom/postiz-dc` (producción) actualizado. PR upstream pendiente de expandir scope.
+> **Estado:** ✅ COMPLETO — desplegado en producción Beelink (`a9b58852`, container `healthy`)
 > **Fecha inicio:** 2026-06-19 | **Fork:** `dustin-calderon/postiz-app`
-> **Commit inicial upstream branch:** `eb458a50`
-> **Commits en `custom/postiz-dc`:**
-> - `cae1892c` — feat: implementación base de carpetas virtuales
-> - `99304d78` — fix: audit post-implementación (8 bugs)
-> - `5e93f531` — fix: 10 bugs de UX/estado (pendingFolderName, SWR, bulk-move)
 
-> 📘 **Spec técnico detallado:** `.fork/TECH-SPEC-PR-002-media-ux.md` — flujo de datos completo, mapa de archivos, invariantes, tabla de zoom levels.
+> 📘 **Spec técnico detallado:** `.fork/TECH-SPEC-PR-002-media-ux.md` — flujo de datos, árbol de estado, API contract, invariantes.
 
 ---
 
 ## 1. Contexto
 
-La biblioteca de medios de Postiz no ofrecía ningún mecanismo de organización ni modos de visualización.
-Todos los assets vivían en una lista plana paginada, sin filtro por carpeta, sin toggle de layout.
+La biblioteca de medios de Postiz no ofrecía organización ni modos de visualización. Con el crecimiento del catálogo (30+ carpetas proyectadas por marca/campaña), el modelo de **tabs planos** implementado en la base se volvió insostenible.
 
-Este PR implementa tres features cohesivas bajo el paraguas de "gestión de media library":
+Este PR cubre cuatro features cohesivas:
 
-1. **Carpetas virtuales** — campo `folder` (string nullable) en `Media`. Sin tabla nueva. Carpetas inferidas por `DISTINCT`. Footprint de schema mínimo.
-2. **Toggle grid / list view** — mismo dataset, dos templates de renderizado. Sin nuevo endpoint, sin nuevo estado de SWR.
-3. **Control de zoom (tamaño de tile)** — estado `zoomLevel` que controla el número de columnas del grid (3–10). Sustituye la clase CSS fija `.w8-max` por `style` inline calculado. Solo aplica en vista grid.
+1. **Carpetas virtuales base** — campo `folder` (string nullable) en `Media`. Sin tabla nueva. Carpetas inferidas por `DISTINCT`.
+2. **Sidebar jerárquico colapsable** — reemplaza el strip de tabs por un árbol de 2 niveles `Marca → Sub` parseado en cliente a partir de *path-strings* (`"Citem/Diseños"`).
+3. **Toggle grid / list view** — mismo dataset SWR, dos templates de renderizado. Sin nuevo endpoint.
+4. **Control de zoom** — estado `zoomLevel` (columnas 3–10) que controla la densidad del grid.
 
 ---
 
@@ -30,49 +25,64 @@ Este PR implementa tres features cohesivas bajo el paraguas de "gestión de medi
 
 | Decisión | Alternativa considerada | Razón elegida |
 |----------|-------------------------|---------------|
-| Label string en `Media.folder` | Tabla `Folder` con FK | Cero overhead, sin orphan management |
+| `folder` como path-string (`"Marca/Sub"`) | Tabla `Folder` con FK padre-hijo | Cero schema extra, cero orphan management, parseable en cliente con `split('/')` |
 | Carpetas inferidas via `DISTINCT` | Tabla de gestión separada | Sin estado extra a mantener en sync |
-| Sentinel `__root__` en query param | `null` en querystring | URL-safe, sin ambigüedad |
-| Rename = `updateMany` en todos los items | Entidad con FK | Consistente con el modelo de borrado (reset a NULL) |
-| `NULL` por defecto (root) | String vacío | Semánticamente correcto, compatible con `@@index([folder])` |
-| **Carpeta "pendiente" = `pendingFolderName` en estado local** | Crear entrada dummy en DB | Sin escrituras especulativas — la carpeta persiste solo cuando tiene ≥1 item |
-| **View mode = estado local `'grid' \| 'list'`** | Persistencia en DB/cookie | Sin round-trip — preferencia de sesión, no dato de negocio |
-| **Vista de lista usa el mismo `data` de SWR** | Nuevo endpoint con proyección diferente | Reutiliza datos ya cacheados, cero impacto backend |
-| **Zoom = `zoomLevel` int (cols count)** | Clases CSS estáticas tipo `.w4-max`, `.w6-max`... | `style` inline calculado — sin tocar `global.scss`, sin proliferación de clases |
-| **`.w8-max` sustituida por `style` inline** | Modificar `global.scss` | `global.scss` es global y compartido — no se debe tocar para features específicas |
-
-**Estructura plana (no jerárquica):** Sin anidamiento padre-hijo deliberadamente.
+| Sidebar colapsable 176px | Tab strip horizontal | Sostenible con 20-50 carpetas; no colapsa a 2 líneas |
+| 2 niveles de jerarquía (Marca/Sub) | N niveles recursivos | Cubre el 100% del caso de uso real; la UI de árbol infinito añade complejidad innecesaria |
+| `renameFolder` con SQL `REPLACE()+LIKE` | `updateMany` con exact-match | Cascada automática: renombrar `Citem` actualiza `Citem/Diseños → NewBrand/Diseños` en una sola query |
+| Sidebar oculto en modo standalone (modal) | Sidebar siempre visible | El modal tiene espacio limitado; la nav por carpetas no es el flujo principal de inserción |
+| `pendingFolderName` en estado React local | Crear row dummy en DB | Sin escrituras especulativas; la carpeta persiste solo cuando tiene ≥1 item |
+| `PrismaRepository.model as unknown as PrismaClient` para `$queryRaw` | Inyectar `PrismaRepository<'$queryRaw'>` | El cast es correcto en runtime (model IS PrismaService, que extiende PrismaClient); más limpio que ampliar el constructor |
 
 ---
 
-## 3. Arquitectura de carpetas (cómo funcionan realmente)
+## 3. Arquitectura de carpetas (path-based hierarchy)
 
 ```
-Media (tabla existente)
+Media (tabla existente — sin cambios de schema en esta fase)
 ├── id
 ├── name
 ├── path
 ├── organizationId
-├── folder          ← STRING NULLABLE — la única adición al schema
+├── folder          ← STRING NULLABLE — path-string jerárquico
 └── ...
+
+Ejemplos de valores de folder:
+  null              → Root (sin asignar)
+  "Citem"           → Carpeta raíz de marca
+  "Citem/Diseños"   → Subcarpeta bajo Citem
+  "Citem/Videos"    → Otra subcarpeta bajo Citem
 
 GET /media/folders  →  SELECT DISTINCT folder FROM Media
                         WHERE folder IS NOT NULL AND organizationId = X
-                        → devuelve [] si nadie ha asignado carpeta aún
+                        → devuelve ["Citem", "Citem/Diseños", "Citem/Videos", "Nike"]
 
-Ciclo de vida de una carpeta:
-  1. Usuario escribe nombre → setaPendingFolderName() [solo estado React]
-  2. Tab aparece en strip con estilo "pendiente" (dashed/semitransparente)
-  3. Usuario selecciona items → Move to → [nombre carpeta]
-  4. PUT /media/move → UPDATE Media SET folder='X' WHERE id IN (...)
-  5. mutateFolders() → SWR refetch → tab pasa a "persistida" (sólido)
-  6. setActiveFolder(nombre) → navegación automática
-  7. Refresh → carpeta sigue porque hay rows en DB con folder='X'
+parseFolderTree(["Citem", "Citem/Diseños", "Nike"])
+  → [
+      { name: "Citem", path: "Citem", children: [{ name: "Diseños", path: "Citem/Diseños" }] },
+      { name: "Nike",  path: "Nike",  children: [] }
+    ]
+```
 
-Borrado de carpeta:
-  → No existe endpoint de borrado explícito
-  → Mover todos sus items a root (folder=null) → DISTINCT deja de devolver el nombre
-  → La carpeta "desaparece" naturalmente
+### Ciclo de vida de una carpeta jerárquica
+
+```
+1. Usuario navega a "Citem" → hace click en "New Subfolder"
+   → createFolder() detecta que activeFolder = "Citem"
+   → setPendingFolderName("Citem/NuevaSub")
+
+2. El sidebar muestra "NuevaSub" bajo "Citem" (estilo dashed)
+
+3. Usuario selecciona items → "Move to…" → [Citem/NuevaSub]
+   → PUT /media/move  body: { ids: [...], folder: "Citem/NuevaSub" }
+   → mutateFolders() + mutate()
+   → sidebar refresca; "NuevaSub" pasa a nodo persistido
+
+4. Si el usuario renombra "Citem" → "NewBrand":
+   → PUT /media/rename-folder  body: { oldName: "Citem", newName: "NewBrand" }
+   → backend: UPDATE Media SET folder = REPLACE(folder, 'Citem', 'NewBrand')
+              WHERE folder = 'Citem' OR folder LIKE 'Citem/%'
+   → "Citem/Diseños" pasa a "NewBrand/Diseños" automáticamente (1 query)
 ```
 
 ---
@@ -84,126 +94,83 @@ Borrado de carpeta:
 | `schema.prisma` | Schema | `folder String?` + `@@index([folder])` en `Media` |
 | `move.media.dto.ts` | Nuevo | `{ ids: string[], folder: string \| null }` — `@ValidateIf` para nullable |
 | `rename.folder.dto.ts` | Nuevo | `{ oldName: string, newName: string }` — `@IsString @MinLength(1)` |
-| `media.repository.ts` | Extendido | `getFolders()`, `moveMedia()`, `renameFolder()`, `getMedia()` con folder filter + guard trim-aware en rename + page coercion fix |
-| `media.service.ts` | Extendido | Proxies delgados para los 3 nuevos métodos de repositorio |
+| `media.repository.ts` | Extendido | `getFolders()`, `moveMedia()`, `renameFolder()` con SQL cascada, `getMedia()` con folder filter |
+| `media.service.ts` | Extendido | Proxies delgados para los 3 nuevos métodos |
 | `media.controller.ts` | Extendido | `GET /media/folders`, `PUT /media/move`, `PUT /media/rename-folder` + `?folder=` en `GET /media` |
-| `media.component.tsx` | Extendido | Folder UI + view toggle (ver §5) |
+| `media.component.tsx` | Refactorizado | Sidebar jerárquico + view toggle + zoom (ver §5) |
 
 ---
 
-## 5. Frontend — `MediaBox` (estado actual + pendiente)
+## 5. Frontend — `MediaBox` (estado completo)
 
-### Estado implementado ✅
+### Estado React
 
-```
-Estado React añadido:
-  activeFolder      : string | undefined   — tab activo (undefined = All)
-  newFolderName     : string               — input de creación
-  creatingFolder    : boolean              — mostrar input vs. botón
-  selectedForMove   : string[]             — ids seleccionados para mover
-  showMoveMenu      : boolean              — dropdown destino visible
-  pendingFolderName : string | null        — carpeta creada, aún sin items en DB
+```typescript
+// Carpetas
+activeFolder      : string | undefined  // path activo (undefined = All)
+newFolderName     : string              // input de creación de carpeta
+creatingFolder    : boolean             // mostrar input vs. botón
+selectedForMove   : string[]            // ids seleccionados para mover
+showMoveMenu      : boolean             // dropdown destino visible
+pendingFolderName : string | null       // carpeta creada, aún sin items en DB
+sidebarOpen       : boolean             // sidebar colapsado/expandido
+expandedBrands    : Set<string>         // nodos raíz del árbol expandidos
 
-SWR keys:
-  ['get-media', page, search, folder]     — grid de media
-  'get-media-folders'                     — tab strip de carpetas
-
-loadFolders deps: [fetch]  ← correcto para no tener hook stale
-moveToFolder:    mutateFolders() + mutate() en paralelo tras cada move
-renameFolderHandler: mutateFolders() + mutate() en paralelo
+// Vista
+viewMode   : 'grid' | 'list'   // toggle de vista
+zoomLevel  : ZoomLevel          // columnas del grid (3|4|5|6|8|10)
 ```
 
-```
-UI implementada:
-  [All] [No folder] [📁 Camp...] [✎] [...] [+ New folder]
-         ↑ tab strip con rename en hover
-
-  Banner amarillo ← pendingFolderName activo (guía al usuario)
-  Checkboxes en group-hover (top-left de cada thumbnail)
-  Bulk-move bar (aparece cuando selectedForMove.length > 0)
-  Badge de carpeta en thumbnail (top-right, truncado 80px)
-  Dropdown Move-to: root + pendingFolder (✨) + folders persistidas
-```
-
-### Pendiente de implementar 🔲
-
-#### A. Tab pendiente visible en el strip
+### SWR keys
 
 ```
-[All] [No folder] [📁 Citam] [✨ NuevaCarpeta] [+ New folder]
-                              ↑ dashed border, opacity-60
-                              Al hacer click → empty state con instrucciones
-                              (no navega a grid vacío sin contexto)
+['get-media', page, search, activeFolder]  → GET /media?folder=...
+'get-media-folders'                        → GET /media/folders
 ```
 
-Implementación:
-- Insertar el tab `pendingFolderName` entre las carpetas persistidas y el `+ New folder`
-- Estilo: `border-dashed border-[#612BD3]/50 opacity-70` cuando no activo, `bg-[#612BD3] opacity-100` cuando activo
-- Al navegar a él: empty state contextual ("Selecciona items y muévelos aquí")
-- Botón "Descartar" en el tab (✕ pequeño) → `setPendingFolderName(null)`
-- Eliminar el banner amarillo actual (redundante con el tab visible)
-
-#### B. Toggle Grid / List view
+### Sidebar (nuevo)
 
 ```
-Controles nuevos en la barra superior (junto a "+ Subir"):
-  [⊞ Grid]  [≡ List]  — toggle con iconos SVG nativos (sin dependencia extra)
-
-Estado nuevo:
-  viewMode : 'grid' | 'list'   — useState local, valor inicial 'grid'
-
-Vista Grid (actual):
-  grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))]
-  thumbnails cuadrados con overlay de nombre
-
-Vista List:
-  tabla o flex-col con filas de 44px altura
-  columnas: thumbnail 40×40 | nombre | carpeta | tipo | tamaño | fecha
-  acción: checkbox + delete en la fila (misma lógica que en grid)
-  sin scroll horizontal — columnas se colapsan en mobile
-
-Implementación:
-  - El mismo `data.results` del SWR existente se reutiliza en ambas vistas
-  - El checkbox de selección para move aparece en la fila (column 0)
-  - Badge de carpeta → columna "Carpeta" en list view
-  - Sin cambios de backend — es renderizado alternativo del mismo payload
+╔═══════════════╗  ╔══════════════════════════════╗
+║  ☰ Folders    ║  ║  [Search] [⊞][≡] [−●+] [+]  ║
+║               ║  ║──────────────────────────────║
+║  ● All media  ║  ║  🖼 img.png      Citem  img   ║
+║  ○ No folder  ║  ║  🎬 video.mp4   —      vid   ║
+║               ║  ║  🖼 logo.svg    Citem   img   ║
+║  ▼ Citem      ║  ║                              ║
+║    ├ Diseños  ║  ║                              ║
+║    └ Videos   ║  ║                              ║
+║  ▶ Nike       ║  ║                              ║
+╚═══════════════╝  ╚══════════════════════════════╝
 ```
 
-#### C. Impacto en el flujo completo con ambas features
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ [All] [No folder] [📁 Campaigns] [✨ Citam] [+ New folder]                   │
-│ [Search..........................]  [⊞][≡]  [−]──●──[+]  [+ Subir]          │
-│─────────────────────────────────────────────────────────────────────────────│
-│ Vista Grid (zoom=4 cols):          │ Vista List:                              │
-│ ┌──────────┐ ┌──────────┐         │ ☐ 🖼 img.png      Campaigns  img         │
-│ │ ☐  img   │ │ ☐  img   │         │ ☐ 🎬 video.mp4    —          vid         │
-│ │          │ │          │         │ ☐ 🖼 logo.svg     Citam       img         │
-│ └──────────┘ └──────────┘         │                                          │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+**Comportamientos del sidebar:**
+- Nodo raíz (Marca): click → `setActiveFolder("Citem")`, chevron → toggle `expandedBrands`
+- Nodo hijo (Sub): click → `setActiveFolder("Citem/Diseños")`
+- "New Subfolder" en hover de nodo raíz → crea `"Citem/NombreNueva"` en `pendingFolderName`
+- Rename en hover de nodo raíz → actualiza solo el primer segmento, preservando hijos
+- `pendingFolderName` aparece como nodo dashed en el árbol
 
 ---
 
-## 6. API contract (sin cambios respecto al diseño inicial)
+## 6. API contract
 
 ### `GET /media?folder=<value>`
 
 | Valor | Comportamiento |
 |-------|----------------|
 | Omitido | Todo el catálogo (backwards compatible) |
-| `__root__` | Solo items sin carpeta asignada (`folder IS NULL`) |
-| `<nombre>` | Solo items en esa carpeta (`folder = nombre`) |
+| `__root__` | Solo items sin carpeta (`folder IS NULL`) |
+| `<path>` | Solo items con `folder = path` (exact match) |
 
-### `GET /media/folders` → `["Campaigns", "Clients", "Q2-2026"]`
+### `GET /media/folders` → `["Citem", "Citem/Diseños", "Nike"]`
 
 ### `PUT /media/move` → `{ ids: string[], folder: string | null }`
 
 ### `PUT /media/rename-folder` → `{ oldName: string, newName: string }`
 
-> `renameFolder` tiene guard trim-aware: si `oldName.trim() === newName.trim()` → no-op.
-> `moveMedia` usa `@ValidateIf` (no `@IsOptional`) para aceptar `folder: null` correctamente.
+> `renameFolder` usa SQL raw: `UPDATE Media SET folder = REPLACE(folder, old, new) WHERE folder = old OR folder LIKE 'old/%'`
+> Guard trim-aware: si `oldName.trim() === newName.trim()` → no-op.
 
 ---
 
@@ -213,45 +180,57 @@ Implementación:
 - `GET /media` sin `?folder=` devuelve todo el catálogo — **comportamiento anterior intacto**
 - `prisma-db-push` aplicado en producción Beelink — columna existe en DB ✅
 - `@@index([folder])` en schema — consultas `DISTINCT` eficientes ✅
+- El sidebar acepta gracefully arrays de strings planos (sin separador `/`) → nodo raíz sin hijos ✅
 
 ---
 
-## 8. Checklist
+## 8. Checklist completo
 
-### Backend ✅ completo
+### Backend ✅
 - [x] Schema: `folder String?` + `@@index([folder])`
 - [x] DTOs: `move.media.dto.ts` + `rename.folder.dto.ts` con validación correcta
-- [x] Repository: `getFolders`, `moveMedia`, `renameFolder` + filter en `getMedia`
-- [x] Repository: guard rename trim-aware + page coercion fix (`Number(page) > 0`)
+- [x] Repository: `getFolders`, `moveMedia`, `renameFolder` (SQL cascada), filter en `getMedia`
+- [x] Repository: guard rename trim-aware + page coercion fix
+- [x] Repository: `$queryRaw` con cast explícito a `PrismaClient` (documentado en comentario)
 - [x] Service: proxies delgados
-- [x] Controller: 3 endpoints + `?folder=` — sin conflicto de rutas (registradas antes que `/:id`)
-- [x] Prisma Client regenerado — tipos explícitos, cero errores TS en archivos modificados
+- [x] Controller: 3 endpoints + `?folder=` — rutas registradas antes de `/:id`
+- [x] Prisma Client regenerado — cero errores TS en archivos modificados
 
-### Frontend — carpetas ✅ completo
+### Frontend — carpetas base ✅
 - [x] Estado: `activeFolder`, `pendingFolderName`, `selectedForMove`, `showMoveMenu`
 - [x] SWR: `mutateFolders()` + `mutate()` en paralelo tras move y rename
 - [x] `loadFolders` con `fetch` en deps (sin hook stale)
 - [x] Checkbox en `group-hover`, `opacity-0 → opacity-100`
-- [x] Bulk-move bar: `flex-wrap w-full` (responsive), `boolean` toggle correcto
-- [x] Rename: error handling + toast + `mutate()` para badge actualización
-- [x] Move: error handling + `console.error` (no catch silencioso)
-- [x] Badge de carpeta en thumbnail
+- [x] Bulk-move bar: `flex-wrap w-full` (responsive)
+- [x] Rename: error handling + toast + `mutate()` para badge
+- [x] Move: error handling + `console.error`
+- [x] Badge de carpeta en thumbnail (grid) + columna en list view
 - [x] Dropdown Move-to: root + pendingFolder (✨) + persistidas
 
-### Frontend — features A/B/C ✅ completo
-- [x] Tab pendiente visible en strip (dashed, empty state contextual, botón `✕` discard)
-- [x] Eliminar banner amarillo (sustituido por el tab visible)
-- [x] Toggle grid/list view (`viewMode` state + ListView template)
-- [x] Empty state específico al navegar a tab pendiente
-- [x] Zoom: estado `zoomLevel`, constante `ZOOM_LEVELS`, slider + botones `−`/`+`
-- [x] Zoom: sustituir `w8-max` en tiles y skeletons por `style` inline
-- [x] Zoom: ocultar controles en `viewMode === 'list'`
+### Frontend — sidebar jerárquico ✅
+- [x] `parseFolderTree()`: `string[]` → árbol de 2 niveles (nativa, sin dependencias)
+- [x] Sidebar 176px colapsable (`sidebarOpen` state)
+- [x] Nodos raíz: chevron expand/collapse, hover: rename + subfolder
+- [x] Nodos hijos: click navega directamente
+- [x] `createFolder` path-aware: crea sub-carpeta si `activeFolder` es marca raíz
+- [x] `renameFolderHandler` path-aware: renombra último segmento, actualiza prefix de `activeFolder`
+- [x] Move-to dropdown: árbol indentado con depth visual
+- [x] `pendingFolderName` visible en el árbol (estilo dashed)
+- [x] Sidebar oculto por defecto en modo standalone (modal)
 
-### Deployment
-- [x] `prisma-db-push` ejecutado en Beelink — columna `folder` confirmada en `\d "Media"`
-- [x] Build `5e93f531` desplegado — container `postiz` healthy
-- [x] Build `2bf89ea6` desplegado — container `postiz` healthy ✅
-- [x] Validación manual completa en producción tras implementar A + B + C
+### Frontend — view / zoom ✅
+- [x] Toggle grid/list (`viewMode` state)
+- [x] `ListView` template (5 columnas: checkbox, thumb, nombre, carpeta, tipo)
+- [x] Skeleton de loading para list view
+- [x] Zoom: `ZOOM_LEVELS = [3,4,5,6,8,10]`, default 6
+- [x] Zoom: `style` inline reemplaza clase `w8-max`
+- [x] Controles `−`/slider/`+` ocultos en `viewMode === 'list'`
+
+### Deployment ✅
+- [x] `prisma-db-push` ejecutado — columna `folder` confirmada en DB
+- [x] Commit `a9b58852` — `feat(media): hierarchical path-based folder sidebar`
+- [x] Build `a9b58852` completado en Beelink (~4 min)
+- [x] Container `postiz` healthy (`Up 10 seconds (healthy)` en `127.0.0.1:4007`)
 
 ---
 
@@ -259,27 +238,29 @@ Implementación:
 
 ```
 custom/postiz-dc (producción):
-  2bf89ea6  feat(media): pending folder tab + grid/list toggle + zoom control
+  a9b58852  feat(media): hierarchical path-based folder sidebar    ← ACTUAL
+  2bf89ea6  feat(media): pending folder tab + grid/list toggle + zoom
   5e93f531  fix(media): remediate 10 bugs in virtual folder UX
   99304d78  fix(media-folders): audit — remediate 8 bugs post-implementation
   d0ea38fe  docs(.fork): add PR-002 doc + STRATEGY sync protocol
-  cae1892c  feat(media): add virtual folder organization  ← base
+  cae1892c  feat(media): add virtual folder organization            ← base
+```
+
 ```
 feature/media-folders (rama limpia upstream PR):
   eb458a50  feat(media): add virtual folder organization
-  ↑ pendiente de actualizar con fixes + nuevas features antes de expandir PR
+  ↑ pendiente de cherry-pick antes de expandir el upstream PR
 ```
 
 ---
 
-## 10. Próximos pasos (orden de ejecución)
+## 10. Próximos pasos (si se desea expandir)
 
-1. Implementar **tab pendiente** en el strip — eliminar banner amarillo
-2. Implementar **toggle grid/list** — nuevo `viewMode` state + template list
-3. Commit en `custom/postiz-dc` + build en Beelink
-4. Validación manual completa en producción
-5. Cherry-pick de los cambios a `feature/media-folders` (rama limpia) para expandir el upstream PR
+1. **Cherry-pick** de `a9b58852` a `feature/media-folders` para upstream PR limpio
+2. **Test E2E**: caso borde de mover asset de subcarpeta a root (`folder = null`)
+3. **Validar flujo de rename** con subcarpetas anidadas en producción
+4. **Upstream PR**: presentar el sidebar jerárquico como feature adicional al upstream de Postiz
 
 ---
 
-*Documento actualizado: 2026-06-19. Scope ampliado: tab pendiente visible + toggle grid/list.*
+*Documento actualizado: 2026-06-19. Scope: tabs planos → sidebar jerárquico path-based. Commit: `a9b58852`.*
