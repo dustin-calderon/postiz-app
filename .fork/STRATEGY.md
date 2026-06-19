@@ -14,16 +14,22 @@ Este fork usa un **patch stack**: una pila mínima de commits privados que vive
 partida histórico.
 
 ```
-upstream/main  ──●──●──●──●──●──▶  (evoluciona continuamente)
-                              │
-                    rebase semanal
-                              │
-custom/postiz-dc              ●── [infra: build.sh]
-                              ●── [infra: docker-compose + postiz.env]
+upstream/main  ──●──●──[PR merged]──●──●──▶
+                               │
+                     git rebase (cuando quieras)
+                               │
+custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
+                               ●── [infra: build.sh]         ← permanente
+                               ●── [infra: docker-compose]   ← permanente
+                               │
+                         ./build.sh
+                               │
+                          Docker producción
 ```
 
-**Regla de oro:** `custom/postiz-dc` contiene únicamente configuración de la
-instancia privada. Ningún bugfix de producto vive aquí — esos van a upstream.
+**Regla de oro:** Docker **siempre** se construye desde `custom/postiz-dc`.
+Nunca desde `upstream/main`. Los features viven aquí hasta que van a upstream
+(y desaparecen solos en el rebase) o se quedan como privados.
 
 ---
 
@@ -60,22 +66,68 @@ Ver `PR-001-carousel-dnd.md` para contexto completo y borrador de descripción.
 
 ---
 
-## Workflow de sincronización con upstream
+## Ciclo de vida — los tres escenarios
+
+### 1. Sincronizar upstream y redesplegar (sin perder features)
+
+Cuándo: hay una nueva versión de Postiz y quieres sus mejoras.
 
 ```bash
 ssh dchomeserver
 git -C /opt/repos/postiz-fork fetch upstream
-
-# Rebasar commits privados encima del nuevo upstream
 git -C /opt/repos/postiz-fork rebase upstream/main custom/postiz-dc
+# Si un PR tuyo ya fue mergeado: Git detecta el duplicate y lo salta solo.
+# Si hay conflicto: es en código que tú escribiste → resolución trivial.
+./build.sh  # rebuild Docker desde custom/postiz-dc
 ```
 
-**Frecuencia recomendada:** semanal, o antes de preparar cualquier PR.
+Resultado: tienes lo último de upstream + todos tus features. Sin regresión.
 
-**Si hay conflicto post-merge de un PR propio:**
-Git usa patch-id para detectar duplicados. Si el maintainer no modificó el
-código, Git omite el commit automáticamente. Si lo modificó, el conflicto es
-en las mismas líneas que tú escribiste — resolución trivial.
+---
+
+### 2. Añadir un nuevo feature y desplegarlo
+
+Cuándo: quieres una mejora nueva en tu instancia (con o sin intención de PR).
+
+```bash
+ssh dchomeserver
+git -C /opt/repos/postiz-fork checkout custom/postiz-dc
+# ... desarrollas el feature ...
+git -C /opt/repos/postiz-fork commit -m "feat(xxx): descripción"
+./build.sh  # desplegado con el feature nuevo
+```
+
+Si luego decides subirlo como PR upstream:
+```bash
+git checkout -b feature/xxx upstream/main
+git cherry-pick --no-commit <tus-shas>
+# filtrar archivos privados → commit limpio → PR
+```
+
+---
+
+### 3. Confirmar si un PR fue mergeado y sincronizar
+
+Cuándo: han pasado semanas, quieres saber si aceptaron tu contribución.
+
+```bash
+git -C /opt/repos/postiz-fork fetch upstream
+# ¿Aparece tu fix en el log de upstream?
+git log upstream/main --oneline | head -30
+
+# Si está: rebasea — el commit tuyo desaparece de la pila automáticamente
+git -C /opt/repos/postiz-fork rebase upstream/main custom/postiz-dc
+./build.sh
+```
+
+El commit ya no es tuyo — es de upstream. Tu rama queda con solo los commits
+realmente privados encima. Exactamente como debe ser.
+
+---
+
+**Frecuencia recomendada:** rebasar antes de empezar cualquier feature nuevo
+o al menos una vez al mes. A más tiempo sin rebasar, más probable que upstream
+haya tocado los mismos archivos que tú → conflictos más largos.
 
 ---
 
@@ -125,8 +177,13 @@ residuos de experimentos (e.g., `posts.service.ts` en PR-001). El paso de
 ## Estado actual del fork
 
 ```
-Rama activa:     custom/postiz-dc
-Delta vs upstream (excl. infra privada): 2 archivos (carousel fix)
-upstream/main fetch: ✅ configurado
-feature/carousel-dnd: ⬜ pendiente crear y abrir PR
+Rama producción:  custom/postiz-dc  (siempre)
+Docker build:     ./build.sh desde custom/postiz-dc
+upstream fetch:   ✅ configurado (git fetch upstream)
+
+Delta vs upstream (excl. infra privada):
+  → 2 archivos (carousel fix) — pendiente de limpiar en PR
+
+PRs:
+  PR-001 carousel-dnd:  🟡 en preparación — test manual pendiente
 ```
