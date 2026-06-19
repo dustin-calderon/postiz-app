@@ -116,8 +116,13 @@ export class MediaRepository {
 
   /**
    * Renames every media item that belongs to `oldName` folder to `newName`.
+   * Returns `{ count: 0 }` without hitting the DB if the names are identical
+   * after trimming (e.g. added whitespace from the prompt).
    */
   async renameFolder(org: string, dto: RenameFolderDto): Promise<{ count: number }> {
+    if (dto.oldName.trim() === dto.newName.trim()) {
+      return { count: 0 };
+    }
     return this._media.model.media.updateMany({
       where: {
         organizationId: org,
@@ -125,7 +130,7 @@ export class MediaRepository {
         folder: dto.oldName,
       },
       data: {
-        folder: dto.newName,
+        folder: dto.newName.trim(),
       },
     });
   }
@@ -138,7 +143,9 @@ export class MediaRepository {
    * - `folder === '<name>'` → return only items in that folder.
    */
   async getMedia(org: string, page: number, search?: string, folder?: string) {
-    const pageNum = (page || 1) - 1;
+    // Pages are 1-based from the client. Coerce safely: `page || 1` would
+    // also default 0 to 1, but an explicit Number() guards against string "0".
+    const pageNum = (Number(page) > 0 ? Number(page) : 1) - 1;
     const trimmedSearch = search?.trim();
 
     const searchFilter = trimmedSearch

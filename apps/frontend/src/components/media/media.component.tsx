@@ -214,7 +214,6 @@ export const MediaBox: FC<{
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [selectedForMove, setSelectedForMove] = useState<string[]>([]);
-  const [moveTargetFolder, setMoveTargetFolder] = useState<string | null>(null);
   const [showMoveMenu, setShowMoveMenu] = useState<string | null>(null);
   const fetch = useFetch();
   const modals = useModals();
@@ -252,25 +251,38 @@ export const MediaBox: FC<{
   const createFolder = useCallback(async () => {
     const trimmed = newFolderName.trim();
     if (!trimmed) return;
-    // If name already exists, just navigate to it (idempotent)
+    /**
+     * Folders are virtual (inferred via DISTINCT on Media.folder).
+     * They materialise the moment at least one media item is moved into them.
+     * Here we just switch the active tab so the user can immediately drag
+     * items into the new folder. The folder becomes persistent once moveToFolder
+     * is called with at least one media id.
+     */
     setActiveFolder(trimmed);
     setNewFolderName('');
     setCreatingFolder(false);
-    await mutateFolders();
-  }, [newFolderName, mutateFolders]);
+    toaster.show(
+      t('folder_created_tip', 'Folder ready — select items and move them here to save it.'),
+      'warning'
+    );
+  }, [newFolderName, toaster, t]);
 
   const moveToFolder = useCallback(
     async (mediaIds: string[], folder: string | null) => {
-      await fetch('/media/move', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: mediaIds, folder }),
-      });
-      await Promise.all([mutate(), mutateFolders()]);
-      setSelectedForMove([]);
-      setShowMoveMenu(null);
+      try {
+        await fetch('/media/move', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: mediaIds, folder }),
+        });
+        await Promise.all([mutate(), mutateFolders()]);
+        setSelectedForMove([]);
+        setShowMoveMenu(null);
+      } catch {
+        toaster.show(t('move_failed', 'Failed to move items. Please try again.'), 'warning');
+      }
     },
-    [fetch, mutate, mutateFolders]
+    [fetch, mutate, mutateFolders, toaster, t]
   );
 
   const renameFolderHandler = useCallback(
@@ -279,13 +291,15 @@ export const MediaBox: FC<{
         t('rename_folder_prompt', 'New folder name:'),
         oldName
       );
-      if (!newName || newName.trim() === oldName) return;
+      if (!newName) return;
+      const trimmedNew = newName.trim();
+      if (!trimmedNew || trimmedNew === oldName) return;
       await fetch('/media/rename-folder', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ oldName, newName: newName.trim() }),
+        body: JSON.stringify({ oldName, newName: trimmedNew }),
       });
-      if (activeFolder === oldName) setActiveFolder(newName.trim());
+      if (activeFolder === oldName) setActiveFolder(trimmedNew);
       await mutateFolders();
     },
     [fetch, activeFolder, mutateFolders, t]
@@ -586,13 +600,6 @@ export const MediaBox: FC<{
                         📁 {f}
                       </button>
                     ))}
-                    {activeFolder !== undefined && activeFolder !== '__root__' && (
-                      <button
-                        onClick={() => moveToFolder(selectedForMove, activeFolder)}
-                        className="hidden"
-                        aria-hidden
-                      />
-                    )}
                   </div>
                 )}
               </div>
@@ -604,6 +611,7 @@ export const MediaBox: FC<{
               </button>
             </div>
           )}
+
         </div>
         <div
           className={clsx(
@@ -761,7 +769,12 @@ export const MediaBox: FC<{
                         );
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute top-[2px] start-[2px] z-[101] opacity-0 group-hover:opacity-100 w-[16px] h-[16px] cursor-pointer accent-[#612BD3]"
+                      className={clsx(
+                        'absolute top-[2px] start-[2px] z-[101] w-[16px] h-[16px] cursor-pointer accent-[#612BD3]',
+                        selectedForMove.includes(media.id)
+                          ? 'opacity-100' // always visible when checked
+                          : 'opacity-0 group-hover:opacity-100'
+                      )}
                       title={t('select_for_move', 'Select to move to folder')}
                     />
                     {media.folder && (
