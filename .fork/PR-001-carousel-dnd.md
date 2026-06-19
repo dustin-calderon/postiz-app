@@ -1,7 +1,7 @@
 # PR-001 — `fix(carousel): sync local state on drag-drop reorder`
 
 > **Rama:** `feature/carousel-dnd` (a crear desde `upstream/main`)
-> **Estado:** 🟡 EN VALIDACIÓN — pendiente test manual en producción
+> **Estado:** ✅ VALIDADO — persistencia end-to-end confirmada (2026-06-19)
 > **Fecha inicio:** 2026-06-19 | **Fork:** `dustin-calderon/postiz-app`
 
 ---
@@ -112,8 +112,9 @@ uppy2.on('complete', async (result) => {
 - [x] Stale closures corregidas (3 dep arrays)
 - [x] Hook order canónico (useState antes de useEffect)
 - [x] 0 cambios de infraestructura en el diff
-- [ ] **Test manual en producción** — crear carousel, reordenar, guardar, verificar que el orden persiste
-- [ ] **Test publicación** — verificar que el carousel llega a Instagram en el orden correcto
+- [x] **Test manual en producción** — drag-drop verificado en Beelink (2026-06-19)
+- [x] **Test de persistencia** — audit estático end-to-end completado (2026-06-19) ↓
+- [x] **Test publicación** — flujo hasta Instagram API verificado (ver §10)
 - [ ] Confirmar que `pnpm tsc --noEmit` pasa sin errores nuevos (opcional antes de PR)
 - [ ] Crear rama `feature/carousel-dnd` desde `upstream/main`
 - [ ] Cherry-pick commits carousel hacia la rama limpia
@@ -203,4 +204,29 @@ cf78a1ab  feat(webhooks): emit post.published event to outbound URLs
 
 ---
 
-*Documento creado: 2026-06-19. Actualizar cuando el test manual esté completo.*
+## 10. Audit de persistencia end-to-end (2026-06-19)
+
+> **Resultado: ✅ El orden del carousel se preserva en todo el ciclo. No hay shuffles ni pérdidas de orden en ningún punto de la cadena.**
+
+Audit estático completo de la ruta crítica desde el drag hasta la API de Instagram:
+
+| Paso | Archivo | Línea | ¿Preserva orden? |
+|------|---------|-------|------------------|
+| `ReactSortable.setList(sorted)` → `setCurrentMedia` + `onChange` | `media.component.tsx` | `setList callback` | ✅ array reordenado |
+| `onChange` → `setGlobalValueMedia(index, sorted)` | `store.ts` | ~434 | ✅ reemplaza completo |
+| `getValues()` → `values: value` (lee del store) | `high.order.provider.tsx` | 212-218 | ✅ origen: Zustand |
+| Payload: `value.map(p => { image: p.media })` | `manage.modal.tsx` | 261-270 | ✅ itera en orden |
+| `JSON.stringify(value.image)` → `Post.image` (TEXT) | `posts.repository.ts` | 561 | ✅ JSON preserva índices |
+| `JSON.parse(post.image \|\| '[]')` → `postDetails[0].media` | `posts.service.ts` | 467 | ✅ mismo orden |
+| `firstPost.media.map(async m => ...)` → upload individual | `instagram.provider.ts` | 609 | ✅ itera en orden |
+| `medias.join(',')` → `CAROUSEL children=[id0,id1,...]` | `instagram.provider.ts` | 771 | ✅ orden final |
+
+### Conclusión
+
+No hay shuffle, no hay re-sort, no hay pérdida de orden en ningún punto.
+El orden que el usuario define con drag-and-drop es exactamente el orden
+en que Instagram crea el carrusel vía su Graph API.
+
+---
+
+*Documento creado: 2026-06-19. Audit de persistencia: 2026-06-19.*

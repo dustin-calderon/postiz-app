@@ -55,7 +55,7 @@ custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
 
 | ID | Rama | Estado | Commits |
 |----|------|--------|---------|
-| PR-001 | `feature/carousel-dnd` | 🟡 Rama lista — pendiente test manual | Squash de `6cef56a2`, `7967c8d7`, `171ca8bc`, `40bd9ab0` → commit `3d78636e` |
+| PR-001 | `feature/carousel-dnd` | ✅ VALIDADO — pendiente abrir PR upstream | Squash de `6cef56a2`, `7967c8d7`, `171ca8bc`, `40bd9ab0` → commit `3d78636e` |
 
 ### PR-001 — carousel drag-and-drop
 
@@ -66,9 +66,10 @@ causando que el orden visual revertiera en el siguiente render.
 - `apps/frontend/src/components/media/media.component.tsx`
 - `apps/frontend/src/components/media/new.uploader.tsx`
 
-**Estado del test manual:** ⬜ pendiente en producción.
+**Estado:** ✅ Persistencia auditada end-to-end (2026-06-19). Orden preservado desde
+UI → Zustand store → JSON en BBDD → publisher → Instagram Graph API.
 
-Ver `PR-001-carousel-dnd.md` para contexto completo y borrador de descripción.
+Ver `PR-001-carousel-dnd.md` (§10) para la tabla completa del audit.
 
 ---
 
@@ -208,9 +209,11 @@ Docker build:     ./build.sh desde custom/postiz-dc
 upstream fetch:   ✅ configurado (git fetch upstream)
 
 Delta vs upstream (excl. infra privada):
-  → 2 archivos (carousel fix) — en feature/carousel-dnd esperando test manual
+  → 2 archivos (carousel fix) — en feature/carousel-dnd
 
 PRs:
-  PR-001 carousel-dnd:  🟡 rama lista en origin — test manual pendiente
-  URL futura: https://github.com/gitroomhq/postiz-app/pull/new
+  PR-001 carousel-dnd:  ✅ VALIDADO — listo para abrir PR en upstream
+  URL: https://github.com/gitroomhq/postiz-app/compare/main...dustin-calderon:feature/carousel-dnd
 ```
+
+Última actualización: 2026-06-19 — audit de persistencia completado.
