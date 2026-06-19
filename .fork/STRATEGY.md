@@ -56,6 +56,50 @@ custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
 | ID | Rama | Estado | Doc | PR upstream |
 |----|------|--------|-----|-------------|
 | PR-001 | `feature/carousel-dnd` | ✅ Abierto | [`PR-001-carousel-dnd.md`](./PR-001-carousel-dnd.md) | [#1613](https://github.com/gitroomhq/postiz-app/pull/1613) |
+| PR-002 | `feature/media-folders` | ✅ Abierto | [`PR-002-media-folders.md`](./PR-002-media-folders.md) | [#1](https://github.com/dustin-calderon/postiz-app/pull/1) |
+
+---
+
+## Regla de sincronización de `.fork/` ← OBLIGATORIA
+
+> **Por qué desaparece `.fork/` al cambiar a una rama `feature/`:**
+> Las ramas `feature/xxx` nacen de `upstream/main`, que no tiene `.fork/`.
+> Al hacer `git checkout feature/xxx`, Git saca el árbol limpio de upstream.
+> Esto es **correcto** — no queremos ruido privado en el PR.
+
+### El protocolo de los dos mundos
+
+```
+  feature/xxx (limpio, va a upstream)      custom/postiz-dc (tu entorno real)
+  ─────────────────────────────────        ──────────────────────────────────
+  ✅ Solo commits del feature              ✅ .fork/  ← SIEMPRE vivo aquí
+  ✅ Sin .fork/                            ✅ infra (build.sh, docker-compose)
+  ✅ Sin infra privada                     ✅ TODOS los features en vuelo
+```
+
+### Flujo obligatorio al crear un PR
+
+```bash
+# 1. Creas la rama limpia y el commit del feature
+git checkout -b feature/xxx upstream/main
+git commit -m "feat(xxx): ..."
+git push origin feature/xxx
+
+# 2. ← PASO OBLIGATORIO — traer el commit a tu rama de desarrollo
+git checkout custom/postiz-dc
+git cherry-pick <sha-del-commit-del-feature>
+git push origin custom/postiz-dc
+```
+
+> **Si saltarte el paso 2:** tu `.fork/` y la infra privada NO tendrán el feature,
+> y el Beelink desplegará sin él. El cherry-pick es la forma de mantener los dos
+> mundos sincronizados sin contaminar ninguno.
+
+### Regla del archivo `.fork/PR-XXX.md`
+
+Cada PR **debe tener su `.md` antes de abrir el PR** en GitHub. El doc vive en
+`custom/postiz-dc` (junto con `.fork/STRATEGY.md`), nunca en la rama limpia.
+Plantilla: usa `PR-001-carousel-dnd.md` como referencia de estructura.
 
 ---
 
@@ -195,10 +239,12 @@ Docker build:     ./build.sh desde custom/postiz-dc
 upstream fetch:   ✅ configurado (git fetch upstream)
 
 Delta vs upstream (excl. infra privada):
-  → 2 archivos (carousel fix) — en feature/carousel-dnd
+  → feature/carousel-dnd  → PR-001 en upstream (gitroomhq/postiz-app#1613)
+  → feature/media-folders → PR-002 en fork (dustin-calderon/postiz-app#1)
 
 PRs:
-  PR-001 carousel-dnd:  ✅ ABIERTO — https://github.com/gitroomhq/postiz-app/pull/1613
+  PR-001 carousel-dnd:    ✅ ABIERTO — https://github.com/gitroomhq/postiz-app/pull/1613
+  PR-002 media-folders:   ✅ ABIERTO — https://github.com/dustin-calderon/postiz-app/pull/1
 ```
 
-Última actualización: 2026-06-19 — PR #1613 abierto en upstream.
+Última actualización: 2026-06-19 — PR-002 abierto, cherry-pick a custom/postiz-dc aplicado.
