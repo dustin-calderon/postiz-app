@@ -16,20 +16,25 @@ partida histórico.
 ```
 upstream/main  ──●──●──[PR merged]──●──●──▶
                                │
-                     git rebase (cuando quieras)
+                     git rebase (Windows)
                                │
 custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
                                ●── [infra: build.sh]         ← permanente
                                ●── [infra: docker-compose]   ← permanente
                                │
-                         ./build.sh
+                         git push origin
                                │
-                          Docker producción
+                        origin/custom/postiz-dc  (GitHub)
+                               │
+                    git pull (Beelink homeserver)
+                               │
+                         ./build.sh → Docker producción
 ```
 
-**Regla de oro:** Docker **siempre** se construye desde `custom/postiz-dc`.
-Nunca desde `upstream/main`. Los features viven aquí hasta que van a upstream
-(y desaparecen solos en el rebase) o se quedan como privados.
+**Reglas:**
+- Todo el trabajo Git ocurre en **Windows** (este repo).
+- El homeserver **solo** hace `git pull` + `./build.sh`. Nunca operaciones Git propias.
+- Docker siempre se construye desde `custom/postiz-dc`. Nunca desde `upstream/main`.
 
 ---
 
@@ -41,7 +46,8 @@ Nunca desde `upstream/main`. Los features viven aquí hasta que van a upstream
 | `chore: docker-compose + postiz.env` | Configuración de producción privada, secretos | ❌ Nunca |
 
 > Verificar con: `git diff upstream/main custom/postiz-dc --stat -- ':!postiz.env' ':!docker-compose.yml' ':!build.sh'`
-> Output esperado: **0 archivos**. Si hay más, hay ruido que limpiar.
+> Output esperado: **0 archivos** cuando la rama está limpia (sin features en vuelo).
+> Si aparecen archivos, son features temporales (legítimos) o ruido a limpiar.
 
 ---
 
@@ -68,17 +74,29 @@ Ver `PR-001-carousel-dnd.md` para contexto completo y borrador de descripción.
 
 ## Ciclo de vida — los tres escenarios
 
-### 1. Sincronizar upstream y redesplegar (sin perder features)
+La estructura es siempre la misma: todo el trabajo Git en **Windows**, luego
+un `git pull + ./build.sh` en el homeserver para desplegar.
+
+---
+
+### 1. Sincronizar upstream y redesplegar
 
 Cuándo: hay una nueva versión de Postiz y quieres sus mejoras.
 
+**Windows:**
+```bash
+git fetch upstream
+git rebase upstream/main custom/postiz-dc
+# Si tu PR ya fue mergeado: Git detecta el duplicate y lo salta solo.
+# Si hay conflicto: es código que tú escribiste → resolución trivial.
+git push origin custom/postiz-dc
+```
+
+**Homeserver:**
 ```bash
 ssh dchomeserver
-git -C /opt/repos/postiz-fork fetch upstream
-git -C /opt/repos/postiz-fork rebase upstream/main custom/postiz-dc
-# Si un PR tuyo ya fue mergeado: Git detecta el duplicate y lo salta solo.
-# Si hay conflicto: es en código que tú escribiste → resolución trivial.
-./build.sh  # rebuild Docker desde custom/postiz-dc
+git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
+./build.sh
 ```
 
 Resultado: tienes lo último de upstream + todos tus features. Sin regresión.
@@ -87,17 +105,24 @@ Resultado: tienes lo último de upstream + todos tus features. Sin regresión.
 
 ### 2. Añadir un nuevo feature y desplegarlo
 
-Cuándo: quieres una mejora nueva en tu instancia (con o sin intención de PR).
+Cuándo: quieres una mejora nueva (con o sin intención de PR).
 
+**Windows:**
 ```bash
-ssh dchomeserver
-git -C /opt/repos/postiz-fork checkout custom/postiz-dc
+git checkout custom/postiz-dc
 # ... desarrollas el feature ...
-git -C /opt/repos/postiz-fork commit -m "feat(xxx): descripción"
-./build.sh  # desplegado con el feature nuevo
+git commit -m "feat(xxx): descripción"
+git push origin custom/postiz-dc
 ```
 
-Si luego decides subirlo como PR upstream:
+**Homeserver:**
+```bash
+ssh dchomeserver
+git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
+./build.sh
+```
+
+Si luego decides subirlo como PR upstream (en Windows):
 ```bash
 git checkout -b feature/xxx upstream/main
 git cherry-pick --no-commit <tus-shas>
@@ -106,28 +131,30 @@ git cherry-pick --no-commit <tus-shas>
 
 ---
 
-### 3. Confirmar si un PR fue mergeado y sincronizar
+### 3. Verificar si un PR fue mergeado y sincronizar
 
 Cuándo: han pasado semanas, quieres saber si aceptaron tu contribución.
 
+**Windows:**
 ```bash
-git -C /opt/repos/postiz-fork fetch upstream
-# ¿Aparece tu fix en el log de upstream?
-git log upstream/main --oneline | head -30
+git fetch upstream
+git log upstream/main --oneline | head -30  # ¿aparece tu fix?
+git rebase upstream/main custom/postiz-dc   # tu commit desaparece solo
+git push origin custom/postiz-dc
+```
 
-# Si está: rebasea — el commit tuyo desaparece de la pila automáticamente
-git -C /opt/repos/postiz-fork rebase upstream/main custom/postiz-dc
+**Homeserver:**
+```bash
+ssh dchomeserver
+git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
 ./build.sh
 ```
 
-El commit ya no es tuyo — es de upstream. Tu rama queda con solo los commits
-realmente privados encima. Exactamente como debe ser.
-
 ---
 
-**Frecuencia recomendada:** rebasar antes de empezar cualquier feature nuevo
+**Frecuencia recomendada:** rebasar antes de empezar cualquier feature nuevo,
 o al menos una vez al mes. A más tiempo sin rebasar, más probable que upstream
-haya tocado los mismos archivos que tú → conflictos más largos.
+haya tocado los mismos archivos → conflictos más largos.
 
 ---
 
@@ -163,14 +190,13 @@ residuos de experimentos (e.g., `posts.service.ts` en PR-001). El paso de
 
 ---
 
-## Qué NO va al fork
+## Qué NO va a upstream (se queda en el fork)
 
 | Archivo | Razón |
 |---------|-------|
 | `postiz.env` | Secretos de producción |
 | `docker-compose.yml` | Configuración privada de la instancia |
-| `build.sh` | Script de homelab, sin valor upstream |
-| Webhooks custom (revertidos) | Postiz ya tiene `WebhooksService` nativo completo |
+| `build.sh` | Script de homelab, específico de esta instalación |
 
 ---
 
