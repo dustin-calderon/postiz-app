@@ -736,7 +736,7 @@ export const MultiMediaComponent: FC<{
         },
       });
     },
-    [currentMedia]
+    [currentMedia, onChange]
   );
 
   const designMedia = useCallback(() => {

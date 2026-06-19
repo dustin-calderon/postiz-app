@@ -35,7 +35,7 @@ import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { Readable } from 'stream';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 dayjs.extend(utc);
-import * as crypto from 'crypto';
+import { createHmac } from 'node:crypto';
 import * as Sentry from '@sentry/nestjs';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
@@ -93,7 +93,7 @@ export class PostsService {
    */
   private async _dispatchPublishedWebhook(post: Post): Promise<void> {
     const webhookUrl = process.env.OUTBOUND_WEBHOOK_URL;
-    if (!webhookUrl) return;
+    if (!webhookUrl || !webhookUrl.startsWith('http')) return;
 
     const payload = JSON.stringify({
       event: 'post.published',
@@ -101,7 +101,7 @@ export class PostsService {
       post: {
         id: post.id,
         releaseId: post.releaseId,
-        releaseURL: post.releaseURL,
+        releaseURL: post.releaseURL || null,
         publishDate: post.publishDate?.toISOString() ?? null,
         organizationId: post.organizationId,
       },
@@ -113,15 +113,16 @@ export class PostsService {
 
     const secret = process.env.OUTBOUND_WEBHOOK_SECRET;
     if (secret) {
-      const signature = crypto
-        .createHmac('sha256', secret)
+      const signature = createHmac('sha256', secret)
         .update(payload)
         .digest('hex');
       headers['X-Postiz-Signature'] = signature;
     }
 
     try {
-      await axios.post(webhookUrl, payload, { headers, timeout: 5000 });
+      // Send parsed object so axios manages Content-Length correctly;
+      // HMAC was computed over the canonical JSON string before this point.
+      await axios.post(webhookUrl, JSON.parse(payload), { headers, timeout: 5000 });
     } catch (err) {
       // Non-fatal: log and continue. Publishing is already done.
       console.error('[PostsService] outbound webhook dispatch failed:', err instanceof Error ? err.message : err);
