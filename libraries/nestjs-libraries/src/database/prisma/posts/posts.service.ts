@@ -35,6 +35,7 @@ import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
 import { Readable } from 'stream';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 dayjs.extend(utc);
+import * as crypto from 'crypto';
 import * as Sentry from '@sentry/nestjs';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
@@ -77,8 +78,54 @@ export class PostsService {
     return this._postRepository.searchForMissingThreeHoursPosts();
   }
 
-  updatePost(id: string, postId: string, releaseURL: string) {
-    return this._postRepository.updatePost(id, postId, releaseURL);
+  async updatePost(id: string, postId: string, releaseURL: string) {
+    const post = await this._postRepository.updatePost(id, postId, releaseURL);
+    void this._dispatchPublishedWebhook(post);
+    return post;
+  }
+
+  /**
+   * Fire-and-forget outbound webhook for post.published events.
+   * Configured via environment variables:
+   *   OUTBOUND_WEBHOOK_URL    — HTTP endpoint to notify (n8n, etc.)
+   *   OUTBOUND_WEBHOOK_SECRET — HMAC-SHA256 secret for X-Postiz-Signature header
+   * If OUTBOUND_WEBHOOK_URL is not set, this is a no-op.
+   */
+  private async _dispatchPublishedWebhook(post: Post): Promise<void> {
+    const webhookUrl = process.env.OUTBOUND_WEBHOOK_URL;
+    if (!webhookUrl) return;
+
+    const payload = JSON.stringify({
+      event: 'post.published',
+      timestamp: new Date().toISOString(),
+      post: {
+        id: post.id,
+        releaseId: post.releaseId,
+        releaseURL: post.releaseURL,
+        publishDate: post.publishDate?.toISOString() ?? null,
+        organizationId: post.organizationId,
+      },
+    });
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    const secret = process.env.OUTBOUND_WEBHOOK_SECRET;
+    if (secret) {
+      const signature = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex');
+      headers['X-Postiz-Signature'] = signature;
+    }
+
+    try {
+      await axios.post(webhookUrl, payload, { headers, timeout: 5000 });
+    } catch (err) {
+      // Non-fatal: log and continue. Publishing is already done.
+      console.error('[PostsService] outbound webhook dispatch failed:', err instanceof Error ? err.message : err);
+    }
   }
 
   async getMissingContent(
