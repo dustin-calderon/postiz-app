@@ -53,23 +53,9 @@ custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
 
 ## PRs activos / contribuciones upstream
 
-| ID | Rama | Estado | Commits |
-|----|------|--------|---------|
-| PR-001 | `feature/carousel-dnd` | ✅ PR #1613 ABIERTO | Squash de `6cef56a2`, `7967c8d7`, `171ca8bc`, `40bd9ab0` → commit `3d78636e` |
-
-### PR-001 — carousel drag-and-drop
-
-**Fix:** `ReactSortable.setList` no sincronizaba el estado local `currentMedia`,
-causando que el orden visual revertiera en el siguiente render.
-
-**Archivos afectados (solo estos dos):**
-- `apps/frontend/src/components/media/media.component.tsx`
-- `apps/frontend/src/components/media/new.uploader.tsx`
-
-**Estado:** ✅ Persistencia auditada end-to-end (2026-06-19). Orden preservado desde
-UI → Zustand store → JSON en BBDD → publisher → Instagram Graph API.
-
-Ver `PR-001-carousel-dnd.md` (§10) para la tabla completa del audit.
+| ID | Rama | Estado | Doc | PR upstream |
+|----|------|--------|-----|-------------|
+| PR-001 | `feature/carousel-dnd` | ✅ Abierto | [`PR-001-carousel-dnd.md`](./PR-001-carousel-dnd.md) | [#1613](https://github.com/gitroomhq/postiz-app/pull/1613) |
 
 ---
 
