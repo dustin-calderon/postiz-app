@@ -11,12 +11,14 @@ const { cleanupStaleMedia } = proxyActivities<MediaCleanupActivity>({
 });
 
 /**
- * Temporal infinite workflow that purges stale media files on a daily schedule.
+ * Temporal infinite workflow that purges media files used in published posts.
  *
- * Media is considered "stale" when:
- *   - Created more than `retentionDays` ago
- *   - Not referenced by any active Post (QUEUE/DRAFT/ERROR/recent/recurring)
- *   - Not used as a User avatar, Agency logo, or OAuth app icon
+ * Business rule: "Media that was ALREADY used in a published post
+ * should be deleted after `retentionDays` days since publication."
+ *
+ * Protection: media is kept if it is also referenced by any
+ * still-active post (QUEUE/DRAFT/ERROR/recurring/recently published)
+ * or used as a User avatar, Agency logo, or OAuth app icon.
  *
  * Follows the same `while(true) { doWork(); sleep(); }` pattern
  * used by `missingPostWorkflow`.
@@ -28,7 +30,6 @@ const { cleanupStaleMedia } = proxyActivities<MediaCleanupActivity>({
  *
  * The try/catch inside the loop ensures that a non-retryable error
  * (e.g. schema mismatch) doesn't kill the workflow permanently.
- * It logs the failure and waits the full cycle before retrying.
  */
 export async function mediaCleanupWorkflow(retentionDays = 30) {
   while (true) {

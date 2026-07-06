@@ -183,64 +183,80 @@ export class MediaService {
     errors: string[];
   }> {
     const errors: string[] = [];
+    let totalCandidates = 0;
+    let totalRemoved = 0;
+    let totalOrphans = 0;
 
-    // === Phase 1: Stale active media ===
-    const staleMedia = await this._mediaRepository.findStalePublishedMedia(retentionDays);
+    // Safety cap: max iterations per phase to prevent infinite loops from bugs.
+    const MAX_ITERATIONS = 10;
 
-    const removedIds: string[] = [];
-    for (const media of staleMedia) {
-      try {
-        await this.storage.removeFile(media.path);
+    // === Phase 1: Media used in old published posts ===
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const staleMedia = await this._mediaRepository.findStalePublishedMedia(retentionDays);
+      if (staleMedia.length === 0) break;
 
-        if (media.thumbnail && media.thumbnail !== media.path) {
-          try {
-            await this.storage.removeFile(media.thumbnail);
-          } catch {
-            // Thumbnail removal failure is non-critical
+      totalCandidates += staleMedia.length;
+
+      const removedIds: string[] = [];
+      for (const media of staleMedia) {
+        try {
+          await this.storage.removeFile(media.path);
+
+          if (media.thumbnail && media.thumbnail !== media.path) {
+            try {
+              await this.storage.removeFile(media.thumbnail);
+            } catch {
+              // Thumbnail removal failure is non-critical
+            }
           }
+
+          removedIds.push(media.id);
+        } catch (err: any) {
+          errors.push(`Phase1 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
         }
-
-        removedIds.push(media.id);
-      } catch (err: any) {
-        errors.push(`Phase1 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
       }
-    }
 
-    if (removedIds.length > 0) {
-      await this._mediaRepository.softDeleteMediaBatch(removedIds);
+      if (removedIds.length > 0) {
+        await this._mediaRepository.softDeleteMediaBatch(removedIds);
+        totalRemoved += removedIds.length;
+      }
     }
 
     // === Phase 2: Orphaned soft-deleted media (blobs never cleaned) ===
-    const orphanedMedia = await this._mediaRepository.findOrphanedSoftDeletedMedia();
+    for (let i = 0; i < MAX_ITERATIONS; i++) {
+      const orphanedMedia = await this._mediaRepository.findOrphanedSoftDeletedMedia();
+      if (orphanedMedia.length === 0) break;
 
-    const purgedIds: string[] = [];
-    for (const media of orphanedMedia) {
-      try {
-        await this.storage.removeFile(media.path);
+      const purgedIds: string[] = [];
+      for (const media of orphanedMedia) {
+        try {
+          await this.storage.removeFile(media.path);
 
-        if (media.thumbnail && media.thumbnail !== media.path) {
-          try {
-            await this.storage.removeFile(media.thumbnail);
-          } catch {
-            // Thumbnail removal failure is non-critical
+          if (media.thumbnail && media.thumbnail !== media.path) {
+            try {
+              await this.storage.removeFile(media.thumbnail);
+            } catch {
+              // Thumbnail removal failure is non-critical
+            }
           }
-        }
 
-        purgedIds.push(media.id);
-      } catch (err: any) {
-        errors.push(`Phase2 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
+          purgedIds.push(media.id);
+        } catch (err: any) {
+          errors.push(`Phase2 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
+        }
+      }
+
+      if (purgedIds.length > 0) {
+        await this._mediaRepository.hardDeleteMediaBatch(purgedIds);
+        totalOrphans += purgedIds.length;
       }
     }
 
-    if (purgedIds.length > 0) {
-      await this._mediaRepository.hardDeleteMediaBatch(purgedIds);
-    }
-
     return {
-      candidates: staleMedia.length,
-      removed: removedIds.length,
+      candidates: totalCandidates,
+      removed: totalRemoved,
       failed: errors.length,
-      orphansRemoved: purgedIds.length,
+      orphansRemoved: totalOrphans,
       errors,
     };
   }

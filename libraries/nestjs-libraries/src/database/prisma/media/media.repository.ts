@@ -303,12 +303,16 @@ export class MediaRepository {
 
     // Step 2: Find candidates that ARE referenced by old published posts.
     // This is the positive match: "media that was used in a publication."
+    //
+    // NOTE: We intentionally do NOT filter p."deletedAt" here.
+    // A soft-deleted post still proves the media was used in a publication.
+    // If the user deleted the post, there's even MORE reason to clean up
+    // its orphaned media — not less.
     const usedInOldPosts = await prisma.$queryRaw<{ image: string }[]>(
       Prisma.sql`
         SELECT p."image"
         FROM "Post" p
-        WHERE p."deletedAt" IS NULL
-          AND p."state" = 'PUBLISHED'
+        WHERE p."state" = 'PUBLISHED'
           AND p."publishDate" < ${retentionThreshold}
           AND (${combinedLike})
       `
