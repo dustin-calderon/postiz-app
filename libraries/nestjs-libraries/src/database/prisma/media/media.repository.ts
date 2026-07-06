@@ -15,7 +15,7 @@ const ROOT_FOLDER_SENTINEL = '__root__';
 export class MediaRepository {
   constructor(private _media: PrismaRepository<'media'>) {}
 
-  saveFile(org: string, fileName: string, filePath: string, originalName?: string) {
+  saveFile(org: string, fileName: string, filePath: string, originalName?: string, folder?: string) {
     return this._media.model.media.create({
       data: {
         organization: {
@@ -26,6 +26,7 @@ export class MediaRepository {
         name: fileName,
         path: filePath,
         originalName: originalName || null,
+        folder: folder || null,
       },
       select: {
         id: true,

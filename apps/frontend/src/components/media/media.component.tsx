@@ -354,6 +354,12 @@ export const MediaBox: FC<{
     [fetch, activeFolder, mutateFolders, mutate, toaster, t]
   );
 
+  /** Ref tracking activeFolder — read lazily by the Uppy file-added handler. */
+  const activeFolderRef = useRef<string | undefined>(activeFolder);
+  useEffect(() => {
+    activeFolderRef.current = activeFolder;
+  }, [activeFolder]);
+
   const uppy = useUppyUploader({
     allowedFileTypes:
       type == 'image'
@@ -361,6 +367,7 @@ export const MediaBox: FC<{
         : type == 'video'
         ? 'video/*'
         : 'image/*,video/*',
+    folderRef: activeFolderRef,
     onUploadSuccess: async (arr) => {
       await mutate();
       if (standalone) {

@@ -92,7 +92,8 @@ export class MediaController {
   @UsePipes(new CustomFileValidationPipe())
   async uploadServer(
     @GetOrgFromRequest() org: Organization,
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile() file: Express.Multer.File,
+    @Body('folder') folder?: string
   ) {
     const originalName = file?.originalname || '';
     const uploadedFile = await this.storage.uploadFile(file);
@@ -100,7 +101,8 @@ export class MediaController {
       org.id,
       uploadedFile.originalname,
       uploadedFile.path,
-      originalName
+      originalName,
+      folder || undefined
     );
   }
 
@@ -109,7 +111,8 @@ export class MediaController {
     @GetOrgFromRequest() org: Organization,
     @Req() req: Request,
     @Body('name') name: string,
-    @Body('originalName') originalName: string
+    @Body('originalName') originalName: string,
+    @Body('folder') folder?: string
   ) {
     if (!name) {
       return false;
@@ -118,7 +121,8 @@ export class MediaController {
       org.id,
       name,
       process.env.CLOUDFLARE_BUCKET_URL + '/' + name,
-      originalName || undefined
+      originalName || undefined,
+      folder || undefined
     );
   }
 
@@ -169,13 +173,15 @@ export class MediaController {
     // @ts-ignore
     const name = upload.Location.split('/').pop();
     const originalName = req.body?.file?.name;
+    const folder = req.body?.file?.meta?.folder;
 
     const saveFile = await this._mediaService.saveFile(
       org.id,
       name,
       // @ts-ignore
       upload.Location,
-      originalName || undefined
+      originalName || undefined,
+      folder || undefined
     );
 
     res.status(200).json({ ...upload, saved: saveFile });

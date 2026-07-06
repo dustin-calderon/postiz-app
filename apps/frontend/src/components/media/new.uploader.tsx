@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { type MutableRefObject, useCallback, useEffect, useMemo, useState } from 'react';
 // @ts-ignore
 import Uppy, { BasePlugin, UploadResult, UppyFile } from '@uppy/core';
 // @ts-ignore
@@ -44,6 +44,8 @@ export function useUppyUploader(props: {
   onStart: () => void;
   onEnd: () => void;
   allowedFileTypes: string;
+  /** Ref to the currently active folder name. Read lazily on file-added. */
+  folderRef?: MutableRefObject<string | undefined>;
 }) {
   const setLocked = useLaunchStore((state) => state.setLocked);
   const toast = useToaster();
@@ -186,10 +188,12 @@ export function useUppyUploader(props: {
     // Set additional metadata when a file is added
     uppy2.on('file-added', (file) => {
       setLocked(true);
+      const currentFolder = props.folderRef?.current;
       uppy2.setFileMeta(file.id, {
-        useCloudflare: storageProvider === 'cloudflare' ? 'true' : 'false', // Example of adding a custom field
-        addedOrder: fileOrderIndex++, // Track original order for sorting after upload
-        // Add more fields as needed
+        useCloudflare: storageProvider === 'cloudflare' ? 'true' : 'false',
+        addedOrder: fileOrderIndex++,
+        // Assign to the currently active folder (if any and not a virtual filter)
+        ...(currentFolder && currentFolder !== '__root__' ? { folder: currentFolder } : {}),
       });
     });
     uppy2.on('error', (result) => {
@@ -213,6 +217,9 @@ export function useUppyUploader(props: {
         const orderB = +((b.meta as any)?.addedOrder ?? 0);
         return orderA - orderB;
       });
+
+      // Read folder from the first file's metadata (set during file-added)
+      const uploadFolder = (sortedSuccessful[0]?.meta as any)?.folder || undefined;
 
       if (storageProvider === 'local') {
         setLocked(false);
@@ -245,6 +252,7 @@ export function useUppyUploader(props: {
                   body: JSON.stringify({
                     name,
                     originalName,
+                    ...(uploadFolder ? { folder: uploadFolder } : {}),
                   }),
                 })
               ).json(),
