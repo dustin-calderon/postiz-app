@@ -92,6 +92,8 @@ export function useUppyUploader(props: {
           return [type];
         });
 
+        let removedCount = 0;
+
         for (const file of files) {
           if (fileIDs.includes(file.id)) {
             const fileType = file.type;
@@ -106,19 +108,20 @@ export function useUppyUploader(props: {
             });
 
             if (!isAllowed) {
-              const error = new Error(
-                `File type "${fileType}" is not allowed for file "${file.name}". Allowed types: ${allowedFileTypes}`
-              );
-              uppy2.log(error.message, 'error');
-              uppy2.info(error.message, 'error', 5000);
+              uppy2.log(`File type "${fileType}" not allowed for "${file.name}"`, 'error');
               toast.show(
                 `File type "${fileType}" is not allowed. Allowed types: ${allowedFileTypes}`,
                 'warning'
               );
               uppy2.removeFile(file.id);
-              return reject(error);
+              removedCount++;
             }
           }
+        }
+
+        // Only reject if every file in the batch was removed
+        if (removedCount > 0 && removedCount === fileIDs.length) {
+          return reject(new Error('All files in this batch had unsupported types.'));
         }
 
         resolve();
@@ -128,41 +131,36 @@ export function useUppyUploader(props: {
     uppy2.addPreProcessor((fileIDs) => {
       return new Promise<void>((resolve, reject) => {
         const files = uppy2.getFiles();
+        let removedCount = 0;
 
         for (const file of files) {
           if (fileIDs.includes(file.id)) {
             const isImage = file.type?.startsWith('image/');
             const isVideo = file.type?.startsWith('video/');
 
-            const maxImageSize = 30 * 1024 * 1024; // 30MB
+            const maxImageSize = 10 * 1024 * 1024; // 10MB — aligned with backend
             const maxVideoSize = 1000 * 1024 * 1024; // 1GB
 
             if (isImage && file.size > maxImageSize) {
-              const error = new Error(
-                `Image file "${file.name}" is too large. Maximum size allowed is 30MB.`
-              );
-              uppy2.log(error.message, 'error');
-              uppy2.info(error.message, 'error', 5000);
               toast.show(
-                `Image file is too large. Maximum size allowed is 30MB.`
+                `Image "${file.name}" is too large. Maximum size: 10MB.`,
+                'warning'
               );
-              uppy2.removeFile(file.id); // Remove file from queue
-              return reject(error);
-            }
-
-            if (isVideo && file.size > maxVideoSize) {
-              const error = new Error(
-                `Video file "${file.name}" is too large. Maximum size allowed is 1GB.`
-              );
-              uppy2.log(error.message, 'error');
-              uppy2.info(error.message, 'error', 5000);
+              uppy2.removeFile(file.id);
+              removedCount++;
+            } else if (isVideo && file.size > maxVideoSize) {
               toast.show(
-                `Video file is too large. Maximum size allowed is 1GB.`
+                `Video "${file.name}" is too large. Maximum size: 1GB.`,
+                'warning'
               );
-              uppy2.removeFile(file.id); // Remove file from queue
-              return reject(error);
+              uppy2.removeFile(file.id);
+              removedCount++;
             }
           }
+        }
+
+        if (removedCount > 0 && removedCount === fileIDs.length) {
+          return reject(new Error('All files exceeded size limits.'));
         }
 
         resolve();

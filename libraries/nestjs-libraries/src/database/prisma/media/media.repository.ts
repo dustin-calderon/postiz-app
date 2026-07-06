@@ -16,6 +16,8 @@ export class MediaRepository {
   constructor(private _media: PrismaRepository<'media'>) {}
 
   saveFile(org: string, fileName: string, filePath: string, originalName?: string, folder?: string) {
+    // Sanitize folder: trim whitespace, reject empty strings
+    const sanitizedFolder = folder?.trim() || null;
     return this._media.model.media.create({
       data: {
         organization: {
@@ -26,7 +28,7 @@ export class MediaRepository {
         name: fileName,
         path: filePath,
         originalName: originalName || null,
-        folder: folder || null,
+        folder: sanitizedFolder,
       },
       select: {
         id: true,
@@ -146,10 +148,18 @@ export class MediaRepository {
     // Pick<PrismaService, 'media'> for DI ergonomics, but at runtime it IS the
     // full PrismaService which extends PrismaClient (and therefore has $queryRaw).
     const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
+    // Use CASE WHEN instead of REPLACE to avoid corrupting nested paths.
+    // REPLACE('Design/Design', 'Design', 'Art') → 'Art/Art' (wrong!)
+    // CASE exact match: folder = newName
+    // CASE prefix match: newName || substring(folder, length(oldName)+1)
+    const oldLen = oldTrimmed.length;
     const result = await prisma.$queryRaw<{ count: bigint }[]>(
       Prisma.sql`
         UPDATE "Media"
-        SET folder = REPLACE(folder, ${oldTrimmed}, ${newTrimmed})
+        SET folder = CASE
+          WHEN folder = ${oldTrimmed} THEN ${newTrimmed}
+          ELSE ${newTrimmed} || substring(folder FROM ${oldLen + 1})
+        END
         WHERE "organizationId" = ${org}
           AND "deletedAt" IS NULL
           AND (folder = ${oldTrimmed} OR folder LIKE ${prefix + '%'})

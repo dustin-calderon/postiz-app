@@ -84,7 +84,7 @@ export class MediaController {
 
     const file = await this.storage.uploadSimple(image.output);
 
-    return this._mediaService.saveFile(org.id, file.split('/').pop(), file);
+    return this._mediaService.saveFile(org.id, file.split('/').pop(), file, 'AI Generated Image');
   }
 
   @Post('/upload-server')
