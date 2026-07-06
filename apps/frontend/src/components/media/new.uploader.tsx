@@ -18,16 +18,19 @@ export class CompressionWrapper<M = any, B = any> extends Compressor<any, any> {
   override async prepareUpload(fileIDs: string[]) {
     const { files } = this.uppy.getState();
 
-    // 1) Skip GIFs (and anything missing)
+    // Only compress actual image files — skip videos, audio, GIFs (which
+    // lose animation when re-encoded), and anything the image compressor
+    // cannot handle.  Passing a video to compressorjs triggers Image.onerror
+    // which rejects the pre-processor promise and silently aborts the upload.
     const filteredIDs = fileIDs.filter((id) => {
       const f = files[id];
       if (!f) return false;
 
       const type = f.type ?? '';
-      const name = (f.name ?? '').toLowerCase();
-      const isGif = type === 'image/gif' || name.endsWith('.gif');
+      if (!type.startsWith('image/')) return false;
+      if (type === 'image/gif') return false;
 
-      return !isGif;
+      return true;
     });
 
     // 2) Let @uppy/compressor do its work (convert/resize/etc)
