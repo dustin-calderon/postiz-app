@@ -116,11 +116,47 @@ export class LocalStorage implements IUploadProvider {
     }
   }
 
+  /**
+   * Removes a file from local filesystem storage.
+   *
+   * Accepts either:
+   *   - A full URL (http://localhost:4200/uploads/2026/07/06/abc.png)
+   *   - A bare filesystem path (/var/uploads/2026/07/06/abc.png)
+   *
+   * When receiving a URL (which is how Media.path stores local paths),
+   * extracts the relative path after '/uploads' and resolves it against
+   * the configured uploadDirectory.
+   */
   async removeFile(filePath: string): Promise<void> {
-    // Logic to remove the file from the filesystem goes here
+    let diskPath: string;
+
+    try {
+      const url = new URL(filePath);
+      // URL like http://host/uploads/2026/07/06/abc.png
+      // Extract everything after '/uploads' → /2026/07/06/abc.png
+      const uploadsIdx = url.pathname.indexOf('/uploads');
+      if (uploadsIdx !== -1) {
+        const relativePath = url.pathname.slice(uploadsIdx + '/uploads'.length);
+        diskPath = this.uploadDirectory + relativePath;
+      } else {
+        // URL without /uploads segment — use full pathname
+        diskPath = this.uploadDirectory + url.pathname;
+      }
+    } catch {
+      // Not a valid URL — treat as a bare filesystem path
+      diskPath = filePath;
+    }
+
+    if (!diskPath) {
+      return;
+    }
+
     return new Promise((resolve, reject) => {
-      unlink(filePath, (err) => {
-        if (err) {
+      unlink(diskPath, (err) => {
+        if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+          // File already gone — not an error for cleanup
+          resolve();
+        } else if (err) {
           reject(err);
         } else {
           resolve();

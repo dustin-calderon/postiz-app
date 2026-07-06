@@ -236,4 +236,162 @@ export class MediaRepository {
       results,
     };
   }
+
+  /**
+   * Finds media records that are candidates for automatic cleanup.
+   *
+   * A media record is "stale" when ALL of these are true:
+   *   1. Not soft-deleted (`deletedAt IS NULL`)
+   *   2. Created more than `retentionDays` ago
+   *   3. Not referenced by any FK (User.pictureId, SocialMediaAgency.logoId, OAuthApp.pictureId)
+   *   4. Its `path` does NOT appear in any active Post.image JSON:
+   *      - Posts in QUEUE, DRAFT, or ERROR state (pending/retryable)
+   *      - Posts PUBLISHED within the last `retentionDays`
+   *      - Recurring posts (intervalInDays IS NOT NULL)
+   *
+   * Uses a 2-step approach:
+   *   Step 1 (Prisma): Get old, non-FK-referenced candidates.
+   *   Step 2 (Raw SQL): Single batch query filters out candidates still referenced by active posts.
+   *
+   * @param retentionDays Number of days after which unused media becomes stale.
+   * @param batchSize     Maximum candidates to return per invocation (prevents memory spikes).
+   * @returns Array of stale media records with id, path, and thumbnail.
+   */
+  async findStalePublishedMedia(
+    retentionDays: number,
+    batchSize = 100
+  ): Promise<{ id: string; path: string; thumbnail: string | null }[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    // Step 1: Prisma query — old media with no FK references.
+    const candidates = await this._media.model.media.findMany({
+      where: {
+        deletedAt: null,
+        createdAt: { lt: cutoffDate },
+        userPicture: { none: {} },
+        agencies: { none: {} },
+        oauthApps: { none: {} },
+      },
+      select: {
+        id: true,
+        path: true,
+        thumbnail: true,
+      },
+      take: batchSize,
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    // Step 2: Single batch raw SQL — find which candidate paths are STILL
+    // referenced by any active post (not deleted, queued/draft/recent/recurring).
+    // We pass all candidate paths in one query to avoid N+1.
+    const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
+    const retentionThreshold = new Date();
+    retentionThreshold.setDate(retentionThreshold.getDate() - retentionDays);
+
+    const candidatePaths = candidates.map((c) => c.path);
+
+    // Build individual LIKE conditions for each candidate path.
+    // We query Post.image for ANY reference to these paths in a single query.
+    // Returns the set of paths that ARE still referenced by active posts.
+    //
+    // Why not UNNEST? Prisma's $queryRaw parametrization of arrays into
+    // PostgreSQL array types (::text[]) is undocumented and version-fragile.
+    // This approach is explicit, safe, and still O(1) queries.
+    const likeClauses = candidatePaths.map(
+      (p) => Prisma.sql`p."image" LIKE '%' || ${p} || '%'`
+    );
+    const combinedLike = Prisma.join(likeClauses, ' OR ');
+
+    const referencedRows = await prisma.$queryRaw<{ image: string }[]>(
+      Prisma.sql`
+        SELECT p."image"
+        FROM "Post" p
+        WHERE p."deletedAt" IS NULL
+          AND (${combinedLike})
+          AND (
+            p."state" IN ('QUEUE', 'DRAFT', 'ERROR')
+            OR (p."state" = 'PUBLISHED' AND p."publishDate" > ${retentionThreshold})
+            OR p."intervalInDays" IS NOT NULL
+          )
+      `
+    );
+
+    // Extract which candidate paths appear in the matched posts' image JSON
+    const referencedSet = new Set<string>();
+    for (const row of referencedRows) {
+      for (const candidatePath of candidatePaths) {
+        if (row.image && row.image.includes(candidatePath)) {
+          referencedSet.add(candidatePath);
+        }
+      }
+    }
+
+    return candidates.filter((c) => !referencedSet.has(c.path));
+  }
+
+  /**
+   * Batch soft-deletes media records by their IDs.
+   * Used by the cleanup workflow after physical storage files have been removed.
+   */
+  async softDeleteMediaBatch(ids: string[]): Promise<{ count: number }> {
+    return this._media.model.media.updateMany({
+      where: {
+        id: { in: ids },
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Finds media records that were manually soft-deleted by users but whose
+   * physical storage blobs were never cleaned up.
+   *
+   * Returns records where:
+   *   - deletedAt IS NOT NULL (user already "deleted" them)
+   *   - deletedAt is older than `graceDays` (give time for accidental undo)
+   *
+   * @param graceDays Minimum days since soft-delete before blob cleanup. Default: 7.
+   * @param batchSize Maximum records per pass.
+   */
+  async findOrphanedSoftDeletedMedia(
+    graceDays = 7,
+    batchSize = 100
+  ): Promise<{ id: string; path: string; thumbnail: string | null }[]> {
+    const graceDate = new Date();
+    graceDate.setDate(graceDate.getDate() - graceDays);
+
+    return this._media.model.media.findMany({
+      where: {
+        deletedAt: { lt: graceDate },
+      },
+      select: {
+        id: true,
+        path: true,
+        thumbnail: true,
+      },
+      take: batchSize,
+      orderBy: { deletedAt: 'asc' },
+    });
+  }
+
+  /**
+   * Permanently deletes media records from the database.
+   * Only called after physical storage blobs are confirmed removed.
+   */
+  async hardDeleteMediaBatch(ids: string[]): Promise<{ count: number }> {
+    return this._media.model.media.deleteMany({
+      where: {
+        id: { in: ids },
+        deletedAt: { not: null },
+      },
+    });
+  }
 }

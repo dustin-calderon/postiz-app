@@ -15,6 +15,19 @@ export class InfiniteWorkflowRegister implements OnModuleInit {
             taskQueue: 'main',
           });
       } catch (err) {}
+
+      try {
+        const retentionDays = Number(process.env.MEDIA_RETENTION_DAYS) || 30;
+        await this._temporalService.client
+          ?.getRawClient()
+          ?.workflow?.start('mediaCleanupWorkflow', {
+            workflowId: 'media-cleanup-workflow',
+            taskQueue: 'main',
+            args: [retentionDays],
+          });
+      } catch (err) {
+        // Workflow already running — expected on restart
+      }
     }
   }
 }

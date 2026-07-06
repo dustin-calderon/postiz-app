@@ -156,4 +156,92 @@ export class MediaService {
 
     return functionToCall(body);
   }
+
+  /**
+   * Finds and removes media files that are no longer needed.
+   *
+   * Phase 1 — Stale active media:
+   *   1. Query stale media candidates (old, no FK refs, no active Post.image reference)
+   *   2. Remove physical files from storage (R2/local)
+   *   3. Soft-delete DB records
+   *
+   * Phase 2 — Orphaned soft-deleted media:
+   *   1. Find media that was manually deleted by users (deletedAt set) but whose
+   *      physical blobs were never cleaned up (the existing DELETE endpoint only
+   *      sets deletedAt without removing the file)
+   *   2. Remove physical files from storage
+   *   3. Hard-delete DB records (already soft-deleted, no longer auditable)
+   *
+   * @param retentionDays Minimum age (in days) before media becomes eligible. Default: 30.
+   * @returns Summary with counts of processed, removed, and failed items.
+   */
+  async cleanupStaleMedia(retentionDays = 30): Promise<{
+    candidates: number;
+    removed: number;
+    failed: number;
+    orphansRemoved: number;
+    errors: string[];
+  }> {
+    const errors: string[] = [];
+
+    // === Phase 1: Stale active media ===
+    const staleMedia = await this._mediaRepository.findStalePublishedMedia(retentionDays);
+
+    const removedIds: string[] = [];
+    for (const media of staleMedia) {
+      try {
+        await this.storage.removeFile(media.path);
+
+        if (media.thumbnail && media.thumbnail !== media.path) {
+          try {
+            await this.storage.removeFile(media.thumbnail);
+          } catch {
+            // Thumbnail removal failure is non-critical
+          }
+        }
+
+        removedIds.push(media.id);
+      } catch (err: any) {
+        errors.push(`Phase1 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
+      }
+    }
+
+    if (removedIds.length > 0) {
+      await this._mediaRepository.softDeleteMediaBatch(removedIds);
+    }
+
+    // === Phase 2: Orphaned soft-deleted media (blobs never cleaned) ===
+    const orphanedMedia = await this._mediaRepository.findOrphanedSoftDeletedMedia();
+
+    const purgedIds: string[] = [];
+    for (const media of orphanedMedia) {
+      try {
+        await this.storage.removeFile(media.path);
+
+        if (media.thumbnail && media.thumbnail !== media.path) {
+          try {
+            await this.storage.removeFile(media.thumbnail);
+          } catch {
+            // Thumbnail removal failure is non-critical
+          }
+        }
+
+        purgedIds.push(media.id);
+      } catch (err: any) {
+        errors.push(`Phase2 ${media.id} (${media.path}): ${err?.message || 'unknown'}`);
+      }
+    }
+
+    if (purgedIds.length > 0) {
+      await this._mediaRepository.hardDeleteMediaBatch(purgedIds);
+    }
+
+    return {
+      candidates: staleMedia.length,
+      removed: removedIds.length,
+      failed: errors.length,
+      orphansRemoved: purgedIds.length,
+      errors,
+    };
+  }
 }

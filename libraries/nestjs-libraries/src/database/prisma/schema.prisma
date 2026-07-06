@@ -230,6 +230,7 @@ model Media {
   @@index([organizationId])
   @@index([type])
   @@index([folder])
+  @@index([deletedAt, createdAt])
 }
 
 model SocialMediaAgency {
