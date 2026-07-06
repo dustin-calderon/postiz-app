@@ -238,37 +238,44 @@ export class MediaRepository {
   }
 
   /**
-   * Finds media records that are candidates for automatic cleanup.
+   * Finds media eligible for cleanup based on the rule:
+   * "Media that has ALREADY been used in a published post should be
+   *  deleted after `retentionDays` days since publication."
    *
-   * A media record is "stale" when ALL of these are true:
+   * A media record is eligible when ALL of these are true:
    *   1. Not soft-deleted (`deletedAt IS NULL`)
-   *   2. Created more than `retentionDays` ago
-   *   3. Not referenced by any FK (User.pictureId, SocialMediaAgency.logoId, OAuthApp.pictureId)
-   *   4. Its `path` does NOT appear in any active Post.image JSON:
-   *      - Posts in QUEUE, DRAFT, or ERROR state (pending/retryable)
-   *      - Posts PUBLISHED within the last `retentionDays`
-   *      - Recurring posts (intervalInDays IS NOT NULL)
+   *   2. Not referenced by any FK (User.pictureId, Agency.logoId, OAuthApp.pictureId)
+   *   3. Its `path` APPEARS in at least one Post.image where:
+   *      - Post.state = 'PUBLISHED'
+   *      - Post.publishDate < (now - retentionDays)  (published >30 days ago)
+   *   4. Its `path` does NOT appear in any still-active post:
+   *      - QUEUE, DRAFT, or ERROR state
+   *      - PUBLISHED within the last `retentionDays`
+   *      - Recurring (intervalInDays IS NOT NULL)
    *
-   * Uses a 2-step approach:
-   *   Step 1 (Prisma): Get old, non-FK-referenced candidates.
-   *   Step 2 (Raw SQL): Single batch query filters out candidates still referenced by active posts.
+   * Uses a 3-step approach:
+   *   Step 1 (Prisma): Get non-FK-referenced, non-deleted media as base candidates.
+   *   Step 2 (Raw SQL): Find which candidates ARE referenced by old published posts.
+   *   Step 3 (Raw SQL): Exclude those also referenced by still-active posts.
    *
-   * @param retentionDays Number of days after which unused media becomes stale.
-   * @param batchSize     Maximum candidates to return per invocation (prevents memory spikes).
-   * @returns Array of stale media records with id, path, and thumbnail.
+   * @param retentionDays Days after publication before media becomes eligible. Default: 30.
+   * @param batchSize     Maximum candidates per invocation.
+   * @returns Array of eligible media records with id, path, and thumbnail.
    */
   async findStalePublishedMedia(
     retentionDays: number,
     batchSize = 100
   ): Promise<{ id: string; path: string; thumbnail: string | null }[]> {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const retentionThreshold = new Date();
+    retentionThreshold.setDate(retentionThreshold.getDate() - retentionDays);
 
-    // Step 1: Prisma query — old media with no FK references.
+    // Step 1: Prisma — base candidates (no FK refs, not deleted).
+    // createdAt filter is a performance guard: if media was created <retentionDays ago,
+    // no published post using it can be older than retentionDays.
     const candidates = await this._media.model.media.findMany({
       where: {
         deletedAt: null,
-        createdAt: { lt: cutoffDate },
+        createdAt: { lt: retentionThreshold },
         userPicture: { none: {} },
         agencies: { none: {} },
         oauthApps: { none: {} },
@@ -286,28 +293,45 @@ export class MediaRepository {
       return [];
     }
 
-    // Step 2: Single batch raw SQL — find which candidate paths are STILL
-    // referenced by any active post (not deleted, queued/draft/recent/recurring).
-    // We pass all candidate paths in one query to avoid N+1.
     const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
-    const retentionThreshold = new Date();
-    retentionThreshold.setDate(retentionThreshold.getDate() - retentionDays);
-
     const candidatePaths = candidates.map((c) => c.path);
 
-    // Build individual LIKE conditions for each candidate path.
-    // We query Post.image for ANY reference to these paths in a single query.
-    // Returns the set of paths that ARE still referenced by active posts.
-    //
-    // Why not UNNEST? Prisma's $queryRaw parametrization of arrays into
-    // PostgreSQL array types (::text[]) is undocumented and version-fragile.
-    // This approach is explicit, safe, and still O(1) queries.
     const likeClauses = candidatePaths.map(
       (p) => Prisma.sql`p."image" LIKE '%' || ${p} || '%'`
     );
     const combinedLike = Prisma.join(likeClauses, ' OR ');
 
-    const referencedRows = await prisma.$queryRaw<{ image: string }[]>(
+    // Step 2: Find candidates that ARE referenced by old published posts.
+    // This is the positive match: "media that was used in a publication."
+    const usedInOldPosts = await prisma.$queryRaw<{ image: string }[]>(
+      Prisma.sql`
+        SELECT p."image"
+        FROM "Post" p
+        WHERE p."deletedAt" IS NULL
+          AND p."state" = 'PUBLISHED'
+          AND p."publishDate" < ${retentionThreshold}
+          AND (${combinedLike})
+      `
+    );
+
+    // Build set of candidate paths that were used in old publications
+    const usedPaths = new Set<string>();
+    for (const row of usedInOldPosts) {
+      for (const cp of candidatePaths) {
+        if (row.image && row.image.includes(cp)) {
+          usedPaths.add(cp);
+        }
+      }
+    }
+
+    // If no candidate was used in any old published post, nothing to clean
+    if (usedPaths.size === 0) {
+      return [];
+    }
+
+    // Step 3: Exclude candidates that are ALSO referenced by still-active posts
+    // (QUEUE/DRAFT/ERROR/recurring/recently published) — those still need the media.
+    const stillActivePosts = await prisma.$queryRaw<{ image: string }[]>(
       Prisma.sql`
         SELECT p."image"
         FROM "Post" p
@@ -315,23 +339,25 @@ export class MediaRepository {
           AND (${combinedLike})
           AND (
             p."state" IN ('QUEUE', 'DRAFT', 'ERROR')
-            OR (p."state" = 'PUBLISHED' AND p."publishDate" > ${retentionThreshold})
+            OR (p."state" = 'PUBLISHED' AND p."publishDate" >= ${retentionThreshold})
             OR p."intervalInDays" IS NOT NULL
           )
       `
     );
 
-    // Extract which candidate paths appear in the matched posts' image JSON
-    const referencedSet = new Set<string>();
-    for (const row of referencedRows) {
-      for (const candidatePath of candidatePaths) {
-        if (row.image && row.image.includes(candidatePath)) {
-          referencedSet.add(candidatePath);
+    const protectedPaths = new Set<string>();
+    for (const row of stillActivePosts) {
+      for (const cp of candidatePaths) {
+        if (row.image && row.image.includes(cp)) {
+          protectedPaths.add(cp);
         }
       }
     }
 
-    return candidates.filter((c) => !referencedSet.has(c.path));
+    // Eligible = used in old publication AND not needed by any active post
+    return candidates.filter(
+      (c) => usedPaths.has(c.path) && !protectedPaths.has(c.path)
+    );
   }
 
   /**
