@@ -27,6 +27,7 @@ import { promisify } from 'util';
 import { OnlyURL } from '@gitroom/nestjs-libraries/dtos/webhooks/webhooks.dto';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { isVideo } from '@gitroom/helpers/utils/has.extension';
 
 const pump = promisify(pipeline);
 
@@ -162,7 +163,7 @@ export class PublicController {
     @Req() req: Request
   ) {
     const { url } = query;
-    if (!url.endsWith('mp4')) {
+    if (!isVideo(url)) {
       return res.status(400).send('Invalid video URL');
     }
 

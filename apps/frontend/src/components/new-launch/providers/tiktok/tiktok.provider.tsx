@@ -17,6 +17,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegration } from '@gitroom/frontend/components/launches/helpers/use.integration';
 import { Input } from '@gitroom/react/form/input';
 import { TiktokPreview } from '@gitroom/frontend/components/new-launch/providers/tiktok/tiktok.preview';
+import { isVideo as isVideoFile } from '@gitroom/helpers/utils/has.extension';
 
 const TikTokSettings: FC<{
   values?: any;
@@ -26,7 +27,7 @@ const TikTokSettings: FC<{
   const t = useT();
 
   const isTitle = useMemo(() => {
-    return value?.[0]?.image?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) === -1);
+    return value?.[0]?.image?.some((p) => !isVideoFile(p?.path));
   }, [value]);
 
   const hasMedia = (value?.[0]?.image?.length ?? 0) > 0;

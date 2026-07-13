@@ -13,7 +13,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import { TikTokDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/tiktok.dto';
 import { timer } from '@gitroom/helpers/utils/timer';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -49,12 +49,12 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     }
     if (
       (firstItems?.length ?? 0) > 1 &&
-      firstItems?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1)
+      firstItems?.some((p) => isVideo(p?.path))
     ) {
       return 'Only pictures are supported when selecting multiple items';
     } else if (
       firstItems?.length !== 1 &&
-      (firstItems?.[0]?.path?.indexOf?.('mp4') ?? -1) > -1
+      isVideo(firstItems?.[0]?.path)
     ) {
       return 'You need one media';
     }
@@ -480,7 +480,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   private buildTikokPostInfoBody(firstPost: PostDetails<TikTokDto>) {
-    const isPhoto = !hasExtension(firstPost?.media?.[0]?.path, 'mp4');
+    const isPhoto = !isVideo(firstPost?.media?.[0]?.path);
     const method = firstPost?.settings?.content_posting_method;
 
     if (method === 'DIRECT_POST') {
@@ -530,7 +530,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   private buildTikokSourceInfoBody(firstPost: PostDetails<TikTokDto>) {
-    const isPhoto = !hasExtension(firstPost?.media?.[0]?.path, 'mp4');
+    const isPhoto = !isVideo(firstPost?.media?.[0]?.path);
 
     if (isPhoto) {
       return {
@@ -568,7 +568,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
     integration: Integration
   ): Promise<PostResponse[]> {
     const [firstPost] = postDetails;
-    const isPhoto = !hasExtension(firstPost?.media?.[0]?.path, 'mp4');
+    const isPhoto = !isVideo(firstPost?.media?.[0]?.path);
 
     console.log({
       ...this.buildTikokPostInfoBody(firstPost),
@@ -580,7 +580,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
       await this.fetch(
         `https://open.tiktokapis.com/v2/post/publish${this.postingMethod(
           firstPost.settings.content_posting_method,
-          !hasExtension(firstPost?.media?.[0]?.path, 'mp4')
+          !isVideo(firstPost?.media?.[0]?.path)
         )}`,
         {
           method: 'POST',

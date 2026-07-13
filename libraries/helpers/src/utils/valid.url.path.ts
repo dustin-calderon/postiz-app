@@ -3,24 +3,40 @@ import {
   ValidatorConstraintInterface,
   ValidatorConstraint,
 } from 'class-validator';
+import { VIDEO_EXTENSIONS } from '@gitroom/helpers/utils/has.extension';
+
+// Mirrors the image MIME types accepted by the upload pipeline
+// (local.storage.ts / custom.upload.validation.ts): jpeg, png, gif, webp,
+// avif, bmp, tiff. `.tif` and `.tiff` both map to image/tiff.
+const IMAGE_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'bmp',
+  'tif',
+  'tiff',
+] as const;
+const VALID_UPLOAD_EXTENSIONS = [
+  ...IMAGE_EXTENSIONS,
+  ...VIDEO_EXTENSIONS,
+] as const;
 
 @ValidatorConstraint({ name: 'checkValidExtension', async: false })
 export class ValidUrlExtension implements ValidatorConstraintInterface {
   validate(text: string, args: ValidationArguments) {
-    return (
-      !!text?.split?.('?')?.[0].endsWith('.png') ||
-      !!text?.split?.('?')?.[0].endsWith('.jpg') ||
-      !!text?.split?.('?')?.[0].endsWith('.jpeg') ||
-      !!text?.split?.('?')?.[0].endsWith('.gif') ||
-      !!text?.split?.('?')?.[0].endsWith('.webp') ||
-      !!text?.split?.('?')?.[0].endsWith('.mp4')
-    );
+    // Strip any query string (R2/S3 signed URLs) before checking the extension.
+    const path = text?.split?.('?')?.[0]?.toLowerCase() ?? '';
+    return VALID_UPLOAD_EXTENSIONS.some((ext) => path.endsWith(`.${ext}`));
   }
 
   defaultMessage(args: ValidationArguments) {
     // here you can provide default error message if validation failed
     return (
-      'File must have a valid extension: .png, .jpg, .jpeg, .gif, .webp, or .mp4'
+      'File must have a valid extension: ' +
+      VALID_UPLOAD_EXTENSIONS.map((e) => `.${e}`).join(', ')
     );
   }
 }

@@ -8,7 +8,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import sharp from 'sharp';
 import { lookup } from 'mime-types';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { hasExtension, isVideo } from '@gitroom/helpers/utils/has.extension';
 import { timer } from '@gitroom/helpers/utils/timer';
 import {
   BadBody,
@@ -56,14 +56,14 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     if (
       vals?.post_as_images_carousel &&
       ((firstPost?.length ?? 0) < 2 ||
-        firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1))
+        firstPost?.some((p) => isVideo(p?.path)))
     ) {
       return 'Carousel can only be created with 2 or more images and no videos.';
     }
 
     if (
       (firstPost?.length ?? 0) > 1 &&
-      firstPost?.some((p) => (p?.path?.indexOf?.('mp4') ?? -1) > -1)
+      firstPost?.some((p) => isVideo(p?.path))
     ) {
       return 'Can have maximum 1 media when selecting a video.';
     }
@@ -266,11 +266,11 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     type = 'personal' as 'company' | 'personal'
   ) {
     // Determine the appropriate endpoint based on file type
-    const isVideo = hasExtension(fileName, 'mp4');
+    const isVideoFile = isVideo(fileName);
     const isPdf = hasExtension(fileName, 'pdf');
 
     let endpoint: string;
-    if (isVideo) {
+    if (isVideoFile) {
       endpoint = 'videos';
     } else if (isPdf) {
       endpoint = 'documents';
@@ -297,7 +297,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
                 type === 'personal'
                   ? `urn:li:person:${personId}`
                   : `urn:li:organization:${personId}`,
-              ...(isVideo
+              ...(isVideoFile
                 ? {
                     fileSizeBytes: picture.length,
                     uploadCaptions: false,
@@ -314,7 +314,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
     const finalOutput = video || image || document;
 
     const etags = [];
-    if (isVideo) {
+    if (isVideoFile) {
       // Only the Videos API uses multipart chunked uploads. Each 2MB part is
       // PUT separately and the returned etags are passed to finalizeUpload.
       for (let i = 0; i < picture.length; i += 1024 * 1024 * 2) {
@@ -360,7 +360,7 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
       );
     }
 
-    if (isVideo) {
+    if (isVideoFile) {
       await this.fetch(
         'https://api.linkedin.com/rest/videos?action=finalizeUpload',
         {
@@ -620,10 +620,10 @@ export class LinkedinProvider extends SocialAbstract implements SocialProvider {
   }
 
   private async prepareMediaBuffer(mediaUrl: string): Promise<Buffer> {
-    const isVideo = hasExtension(mediaUrl, 'mp4');
+    const isVideoFile = isVideo(mediaUrl);
     const isGif = lookup(mediaUrl) === 'image/gif';
 
-    if (isVideo || isGif) {
+    if (isVideoFile || isGif) {
       return Buffer.from(await readOrFetch(mediaUrl));
     }
 

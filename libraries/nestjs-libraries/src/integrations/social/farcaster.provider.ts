@@ -13,6 +13,7 @@ import {
 import { NeynarAPIClient } from '@neynar/nodejs-sdk';
 import { Integration } from '@prisma/client';
 import { FarcasterDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/farcaster.dto';
+import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -44,7 +45,7 @@ export class FarcasterProvider
   ): Promise<string | true> {
     if (
       list?.some((item) =>
-        item?.some((field) => (field?.path?.indexOf?.('mp4') ?? -1) > -1)
+        item?.some((field) => isVideo(field?.path))
       )
     ) {
       return 'Can only accept images';

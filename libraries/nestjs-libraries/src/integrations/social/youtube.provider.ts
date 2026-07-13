@@ -18,6 +18,7 @@ import {
 import * as process from 'node:process';
 import dayjs from 'dayjs';
 import { GaxiosResponse } from 'gaxios/build/src/common';
+import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import Schema$Video = youtube_v3.Schema$Video;
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
@@ -79,7 +80,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     if (items?.[0]?.length !== 1) {
       return 'You need one media';
     }
-    if ((firstItems?.[0]?.path?.indexOf?.('mp4') ?? -1) === -1) {
+    if (!isVideo(firstItems?.[0]?.path)) {
       return 'Item must be a video';
     }
     return true;

@@ -14,7 +14,7 @@ import React, {
 import { Button } from '@gitroom/react/form/button';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
-import { hasExtension } from '@gitroom/helpers/utils/has.extension';
+import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { Media } from '@prisma/client';
 import { useMediaDirectory } from '@gitroom/react/helpers/use.media.directory';
 import { useSettings } from '@gitroom/frontend/components/launches/helpers/use.values';
@@ -481,7 +481,7 @@ export const MediaBox: FC<{
         top: 10,
         children: (
           <div className="w-full h-full p-[50px]">
-            {hasExtension(media.path, 'mp4') ? (
+            {isVideo(media.path) ? (
               <VideoFrame
                 autoplay={true}
                 url={mediaDirectory.set(media.path)}
@@ -1033,8 +1033,8 @@ export const MediaBox: FC<{
             {/* ── Grid view ── */}
             {viewMode === 'grid' && data?.results
               ?.filter((f: any) => {
-                if (type === 'video') return hasExtension(f.path, 'mp4');
-                if (type === 'image') return !hasExtension(f.path, 'mp4');
+                if (type === 'video') return isVideo(f.path);
+                if (type === 'image') return !isVideo(f.path);
                 return true;
               })
               .map((media: any) => (
@@ -1109,7 +1109,7 @@ export const MediaBox: FC<{
                           </svg>
                         </div>
                       </div>
-                      {hasExtension(media.path, 'mp4') ? (
+                      {isVideo(media.path) ? (
                         <VideoFrame url={mediaDirectory.set(media.path)} />
                       ) : (
                         <img
@@ -1129,8 +1129,8 @@ export const MediaBox: FC<{
               <div className="flex flex-col w-full divide-y divide-newColColor/30">
                 {data?.results
                   ?.filter((f: any) => {
-                    if (type === 'video') return hasExtension(f.path, 'mp4');
-                    if (type === 'image') return !hasExtension(f.path, 'mp4');
+                    if (type === 'video') return isVideo(f.path);
+                    if (type === 'image') return !isVideo(f.path);
                     return true;
                   })
                   .map((media: any) => (
@@ -1154,14 +1154,14 @@ export const MediaBox: FC<{
                         className="w-[14px] h-[14px] cursor-pointer accent-[#612BD3] flex-shrink-0"
                       />
                       <div className="w-[40px] h-[40px] rounded-[4px] overflow-hidden flex-shrink-0">
-                        {hasExtension(media.path, 'mp4')
+                        {isVideo(media.path)
                           ? <VideoFrame url={mediaDirectory.set(media.path)} />
                           : <img src={mediaDirectory.set(media.path)} className="w-full h-full object-cover" alt="media" />}
                       </div>
                       <span className="flex-1 text-[13px] truncate">{media.originalName}</span>
                       <span className="w-[100px] text-[12px] text-textColor/60 truncate">{media.folder ?? '—'}</span>
                       <span className="w-[36px] text-[11px] text-textColor/50 uppercase">
-                        {hasExtension(media.path, 'mp4') ? 'vid' : 'img'}
+                        {isVideo(media.path) ? 'vid' : 'img'}
                       </span>
                       <button
                         onClick={deleteImage(media)}
@@ -1385,7 +1385,7 @@ export const MultiMediaComponent: FC<{
                       >
                         <MediaSettingsIcon className="cursor-pointer relative z-[200]" />
                       </div>
-                      {hasExtension(media?.path, 'mp4') ? (
+                      {isVideo(media?.path) ? (
                         <VideoFrame url={mediaDirectory.set(media?.path)} />
                       ) : (
                         <img
