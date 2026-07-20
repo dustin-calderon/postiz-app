@@ -105,9 +105,11 @@ export const DeveloperComponent: FC = () => {
       size: 'calc(100% - 80px)',
       height: 'calc(100% - 80px)',
       children: (close: () => void) => (
+        // `changeMedia` only consumes the first item, so enforce one.
         <MediaBox
           setMedia={changeMedia}
           closeModal={close}
+          singleSelect={true}
         />
       ),
     });

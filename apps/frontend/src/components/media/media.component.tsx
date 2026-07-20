@@ -171,8 +171,9 @@ export const Pagination: FC<{
 };
 export const ShowMediaBoxModal: FC = () => {
   const [showModal, setShowModal] = useState(false);
-  const [callBack, setCallBack] =
-    useState<(params: { id: string; path: string }[]) => void | undefined>();
+  const [callBack, setCallBack] = useState<
+    ((param: { id: string; path: string }) => void) | undefined
+  >();
   const closeModal = useCallback(() => {
     setShowModal(false);
     setCallBack(undefined);
@@ -189,7 +190,23 @@ export const ShowMediaBoxModal: FC = () => {
   if (!showModal) return null;
   return (
     <div className="text-textColor">
-      <MediaBox setMedia={callBack!} closeModal={closeModal} />
+      {/*
+        `showMediaBox` promises its callers a SINGLE media object (they read
+        `values.path`, and POST /user/personal connects by `picture.id`), while
+        MediaBox always hands back an array. Adapt at the boundary and pin the
+        picker to one item, instead of leaking an array through a callback typed
+        for an object.
+      */}
+      <MediaBox
+        setMedia={(items) => {
+          const [first] = items || [];
+          if (first) {
+            callBack?.(first);
+          }
+        }}
+        singleSelect={true}
+        closeModal={closeModal}
+      />
     </div>
   );
 };
@@ -204,8 +221,20 @@ export const MediaBox: FC<{
   setMedia: (params: { id: string; path: string }[]) => void;
   standalone?: boolean;
   type?: 'image' | 'video';
+  /**
+   * Consumers that can only use one item (they read `m[0]`) must pass this, so
+   * picking a second item REPLACES the first instead of silently discarding it
+   * on confirm.
+   */
+  singleSelect?: boolean;
+  /**
+   * Called after the selection is handed to `setMedia`. Keep the owning modal
+   * on `askClose: false` — `addMedia` attaches first and closes second, so a
+   * discard-changes prompt here would let the user decline and end up with the
+   * media already attached and the modal still open.
+   */
   closeModal: () => void;
-}> = ({ type, standalone, setMedia }) => {
+}> = ({ type, standalone, setMedia, singleSelect, closeModal }) => {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebounce(search, 300);
@@ -213,7 +242,6 @@ export const MediaBox: FC<{
   const [activeFolder, setActiveFolder] = useState<string | undefined>(undefined);
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
-  const [selectedForMove, setSelectedForMove] = useState<string[]>([]);
   const [showMoveMenu, setShowMoveMenu] = useState<boolean>(false);
   /**
    * Holds the name of a newly created folder that has not yet been populated.
@@ -226,8 +254,12 @@ export const MediaBox: FC<{
   const ZOOM_LEVELS = [3, 4, 5, 6, 8, 10] as const;
   type ZoomLevel = typeof ZOOM_LEVELS[number];
   const [zoomLevel, setZoomLevel] = useState<ZoomLevel>(6);
-  /** Sidebar visibility — collapsed by default in standalone (modal) mode. */
-  const [sidebarOpen, setSidebarOpen] = useState(!standalone);
+  /**
+   * Folder sidebar visibility. Open by default in both modes: on the Media page
+   * it is the management surface, and in the picker it is how you browse a
+   * brand's media. (`standalone` = the Media page, NOT the modal.)
+   */
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   /** Set of brand-level paths (first path segment) that are expanded in the tree. */
   const [expandedBrands, setExpandedBrands] = useState<Set<string>>(new Set());
   const fetch = useFetch();
@@ -235,7 +267,16 @@ export const MediaBox: FC<{
   const toaster = useToaster();
   useEffect(() => {
     setPage(0);
-  }, [debouncedSearch, activeFolder]);
+    /**
+     * In standalone the selection drives a bulk MOVE, so it must never outlive
+     * the visible set — otherwise "Move to…" would relocate files the user can
+     * no longer see. In the picker the selection is a cart: it deliberately
+     * survives browsing across folders so you can attach media from several.
+     */
+    if (standalone) {
+      setSelected([]);
+    }
+  }, [debouncedSearch, activeFolder, standalone]);
   const loadMedia = useCallback(async () => {
     const params = new URLSearchParams({ page: String(page + 1) });
     if (debouncedSearch.trim()) {
@@ -303,7 +344,7 @@ export const MediaBox: FC<{
         // mutateFolders() is critical: it makes newly populated folders
         // appear in the tab bar on the next render.
         await Promise.all([mutate(), mutateFolders()]);
-        setSelectedForMove([]);
+        setSelected([]);
         setShowMoveMenu(false);
         // If items were moved into the pending (new) folder, it now exists in
         // the DB — clear the pending state and navigate to the folder tab.
@@ -370,30 +411,95 @@ export const MediaBox: FC<{
     folderRef: activeFolderRef,
     onUploadSuccess: async (arr) => {
       await mutate();
+      /**
+       * Auto-select only in the picker, where it means "attach what I just
+       * uploaded". On the Media page the uploader already stamps the active
+       * folder (see `folderRef` above), so there is nothing to move — and
+       * auto-selecting there would arm the bulk-move bar with items the user
+       * never picked.
+       */
       if (standalone) {
         return;
       }
       setSelected((prevSelected) => {
-        return [...prevSelected, ...arr];
+        if (!singleSelect) {
+          return [...prevSelected, ...arr];
+        }
+        // Uppy's `complete` fires even when every file failed, so `arr` can be
+        // empty — never let that clear what the user already picked.
+        return arr.length ? arr.slice(0, 1) : prevSelected;
       });
     },
     onStart: () => setLoading(true),
     onEnd: () => setLoading(false),
   });
 
-  const addRemoveSelected = useCallback(
-    (media: any) => () => {
-      if (standalone) {
-        return;
-      }
-      const exists = selected.find((p: any) => p.id === media.id);
-      if (exists) {
-        setSelected(selected.filter((f: any) => f.id !== media.id));
-        return;
-      }
-      setSelected([...selected, media]);
-    },
+  /**
+   * Selection is a SINGLE source of truth: both affordances — clicking the
+   * tile and ticking the hover checkbox — toggle this same list. "Add selected
+   * media" and "Move to…" then both operate on exactly what the user picked.
+   *
+   * Previously there were two parallel states (`selected` for attaching,
+   * `selectedForMove` for the folder move), so ticking the checkbox — the
+   * universal "select" control — left the "Add selected media" button disabled.
+   */
+  const isSelected = useCallback(
+    (id: string) => selected.some((p: any) => p.id === id),
     [selected]
+  );
+
+  /** Ids of the current selection — what `moveToFolder` expects. */
+  const selectedIds = useMemo(
+    () => selected.map((m: any) => m.id as string),
+    [selected]
+  );
+
+  /**
+   * The move menu lives inside the bulk bar, which unmounts once the selection
+   * empties. Without this reset the flag would stay `true` and the dropdown
+   * would spring open again the next time the user selects something.
+   */
+  useEffect(() => {
+    if (selected.length === 0) {
+      setShowMoveMenu(false);
+    }
+  }, [selected.length]);
+
+  /**
+   * Paging swaps the visible set, so in standalone the bulk-move selection must
+   * be dropped for the same reason it is on folder/search change — otherwise
+   * "Move to…" would relocate files that have scrolled off the page. Done here
+   * rather than in the effect above, which itself calls `setPage(0)` and would
+   * therefore re-enter.
+   */
+  const goToPage = useCallback(
+    (num: number) => {
+      if (standalone) {
+        setSelected([]);
+      }
+      setPage(num);
+    },
+    [standalone]
+  );
+
+  const toggleSelected = useCallback(
+    (media: any) => {
+      setSelected((prev: any[]) => {
+        const already = prev.some((p) => p.id === media.id);
+        if (already) {
+          return prev.filter((p) => p.id !== media.id);
+        }
+        // Single-select consumers keep exactly one item: picking another
+        // replaces it rather than queueing a second that would be dropped.
+        return singleSelect ? [media] : [...prev, media];
+      });
+    },
+    [singleSelect]
+  );
+
+  const addRemoveSelected = useCallback(
+    (media: any) => () => toggleSelected(media),
+    [toggleSelected]
   );
 
   const addMedia = useCallback(async () => {
@@ -402,8 +508,14 @@ export const MediaBox: FC<{
     }
     // @ts-ignore
     setMedia(selected);
-    modals.closeCurrent();
-  }, [selected]);
+    /**
+     * Close via the prop, not `modals.closeCurrent()`: `ShowMediaBoxModal`
+     * renders MediaBox outside the `useModals` stack, so `closeCurrent()` would
+     * dismiss whatever unrelated modal is on top and leave the media box open
+     * forever. Every call site already threads a correct `closeModal`.
+     */
+    closeModal();
+  }, [selected, setMedia, closeModal]);
 
   const addToUpload = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -662,8 +774,14 @@ export const MediaBox: FC<{
                   >
                     {node.name}
                   </button>
-                  {/* Context actions: rename + add sub-folder (shown on hover, not for pending) */}
-                  {!isPending && (
+                  {/*
+                    Context actions: rename + add sub-folder (on hover, not for
+                    pending). Standalone only — in the picker the sidebar is for
+                    NAVIGATING to a brand's media, and folder management lives on
+                    the Media page (that is also where "Move to…" is offered, so
+                    creating a folder here would be a dead end).
+                  */}
+                  {standalone && !isPending && (
                     <div className="hidden group-hover/item:flex items-center gap-[2px] flex-shrink-0">
                       {isBrand && (
                         <button
@@ -743,7 +861,8 @@ export const MediaBox: FC<{
                   {/* Folder tree */}
                   {tree.map((node) => renderNode(node, 0))}
 
-                  {/* New folder inline input or button */}
+                  {/* New folder inline input or button — standalone only (see above) */}
+                  {standalone && (
                   <div className="border-t border-newColColor/30 mt-[4px] pt-[4px]">
                     {!creatingFolder ? (
                       <button
@@ -787,6 +906,7 @@ export const MediaBox: FC<{
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               )}
             </>
@@ -864,11 +984,17 @@ export const MediaBox: FC<{
             </div>
           </div>
 
-          {/* ── Bulk move bar ── */}
-          {selectedForMove.length > 0 && (
+          {/*
+            ── Bulk move bar ──
+            Standalone (the Media page) only: organising the library is a
+            library task. In the composer picker the selection means "attach
+            these", so showing a move bar there would push the grid down on
+            every pick and its ✕ would silently wipe the attach selection.
+          */}
+          {standalone && selected.length > 0 && (
             <div className="flex items-center gap-[6px] flex-wrap mb-[8px]">
               <span className="text-[12px] text-textColor">
-                {selectedForMove.length} {t('selected', 'selected')}
+                {selected.length} {t('selected', 'selected')}
               </span>
               <div className="relative ml-auto flex items-center gap-[6px]">
                 <button
@@ -907,7 +1033,7 @@ export const MediaBox: FC<{
                   const renderMoveNode = (node: MoveNode, depth = 0): React.ReactNode => (
                     <Fragment key={node.path}>
                       <button
-                        onClick={() => moveToFolder(selectedForMove, node.path)}
+                        onClick={() => moveToFolder(selectedIds, node.path)}
                         className="w-full text-left px-[12px] py-[5px] text-[12px] text-textColor hover:bg-newColColor flex items-center gap-[4px]"
                         style={{ paddingLeft: `${12 + depth * 14}px` }}
                       >
@@ -921,7 +1047,7 @@ export const MediaBox: FC<{
                   return (
                     <div className="absolute top-[34px] right-0 z-[200] bg-newBgColorInner border border-newColColor rounded-[8px] shadow-xl min-w-[180px] py-[4px] max-h-[300px] overflow-y-auto">
                       <button
-                        onClick={() => moveToFolder(selectedForMove, null)}
+                        onClick={() => moveToFolder(selectedIds, null)}
                         className="w-full text-left px-[12px] py-[5px] text-[12px] text-textColor hover:bg-newColColor flex items-center gap-[4px]"
                       >
                         <span className="text-[10px]">📎</span>
@@ -933,7 +1059,7 @@ export const MediaBox: FC<{
                   );
                 })()}
                 <button
-                  onClick={() => setSelectedForMove([])}
+                  onClick={() => setSelected([])}
                   className="px-[8px] h-[30px] rounded-[6px] bg-newColColor text-textColor text-[12px] hover:text-white"
                 >✕</button>
               </div>
@@ -978,9 +1104,14 @@ export const MediaBox: FC<{
                 {activeFolder === pendingFolderName && pendingFolderName ? (
                   <>
                     <div className="text-[40px] opacity-30">📂</div>
-                    <div className="text-[20px] font-[600]">Esta carpeta está vacía</div>
+                    <div className="text-[20px] font-[600]">
+                      {t('folder_is_empty', 'This folder is empty')}
+                    </div>
                     <div className="text-[13px] text-textColor/60 text-center">
-                      Selecciona archivos con los checkboxes y usa &ldquo;Move to…&rdquo; para añadirlos aquí.
+                      {t(
+                        'folder_empty_hint',
+                        'Select files and use “Move to…” to add them here.'
+                      )}
                     </div>
                   </>
                 ) : (
@@ -1040,51 +1171,52 @@ export const MediaBox: FC<{
               .map((media: any) => (
                 <div
                   style={{ width: `calc(100% / ${zoomLevel})`, maxWidth: `calc(100% / ${zoomLevel})` }}
-                  className={clsx('group px-[3px] py-[3px] float-left rounded-[6px] aspect-square', !standalone && 'cursor-pointer')}
+                  className="group px-[3px] py-[3px] float-left rounded-[6px] aspect-square cursor-pointer"
                   key={media.id}
                 >
                   <div
                     className={clsx(
                       'w-full h-full rounded-[6px] border-[4px] relative',
-                      !!selected.find((p) => p.id === media.id)
+                      isSelected(media.id)
                         ? 'border-[#612BD3]'
                         : 'border-transparent'
                     )}
                     onClick={addRemoveSelected(media)}
                   >
-                    {!!selected.find((p: any) => p.id === media.id) ? (
+                    {/*
+                      Badge (bottom-end) and delete (top-end) live in different
+                      corners, so they must render independently: gating delete
+                      on "not selected" would hide it as soon as the user picks
+                      the item. In standalone there is nothing to attach, so the
+                      ordinal would be meaningless — show a plain tick instead.
+                    */}
+                    {isSelected(media.id) && (
                       <div className="text-white flex z-[101] justify-center items-center text-[14px] font-[500] w-[24px] h-[24px] rounded-full bg-[#612BD3] absolute -bottom-[10px] -end-[10px]">
-                        {selected.findIndex((z: any) => z.id === media.id) + 1}
+                        {standalone || singleSelect
+                          ? '✓'
+                          : selected.findIndex((z: any) => z.id === media.id) + 1}
                       </div>
-                    ) : (
-                      <DeleteCircleIcon
-                        className="cursor-pointer hidden z-[100] group-hover:block absolute -top-[5px] -end-[5px]"
-                        onClick={deleteImage(media)}
-                      />
                     )}
-                    {/* Move-to-folder checkbox — top-left, appears on hover */}
+                    <DeleteCircleIcon
+                      className="cursor-pointer hidden z-[100] group-hover:block absolute -top-[5px] -end-[5px]"
+                      onClick={deleteImage(media)}
+                    />
+                    {/* Selection checkbox — same selection as clicking the tile */}
                     <input
                       type="checkbox"
-                      checked={selectedForMove.includes(media.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        setSelectedForMove((prev) =>
-                          prev.includes(media.id)
-                            ? prev.filter((id) => id !== media.id)
-                            : [...prev, media.id]
-                        );
-                      }}
+                      checked={isSelected(media.id)}
+                      onChange={() => toggleSelected(media)}
                       onClick={(e) => e.stopPropagation()}
                       className={clsx(
                         'absolute top-[2px] start-[2px] z-[101] w-[16px] h-[16px] cursor-pointer accent-[#612BD3]',
-                        selectedForMove.includes(media.id)
+                        isSelected(media.id)
                           ? 'opacity-100' // always visible when checked
                           : 'opacity-0 group-hover:opacity-100'
                       )}
-                      title={t('select_for_move', 'Select to move to folder')}
+                      title={t('select_media', 'Select')}
                     />
                     {media.folder && (
-                      <div className="absolute top-[2px] end-[2px] z-[100] text-[9px] bg-black/50 text-white px-[4px] py-[1px] rounded-[3px] max-w-[80px] truncate">
+                      <div className="pointer-events-none absolute top-[2px] end-[2px] z-[100] text-[9px] bg-black/50 text-white px-[4px] py-[1px] rounded-[3px] max-w-[80px] truncate">
                         {media.folder}
                       </div>
                     )}
@@ -1136,20 +1268,16 @@ export const MediaBox: FC<{
                   .map((media: any) => (
                     <div
                       key={media.id}
-                      className="flex items-center gap-[12px] h-[52px] px-[8px] hover:bg-newColColor/10 group/row cursor-pointer"
+                      className={clsx(
+                        'flex items-center gap-[12px] h-[52px] px-[8px] hover:bg-newColColor/10 group/row cursor-pointer',
+                        isSelected(media.id) && 'bg-[#612BD3]/10'
+                      )}
                       onClick={addRemoveSelected(media)}
                     >
                       <input
                         type="checkbox"
-                        checked={selectedForMove.includes(media.id)}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          setSelectedForMove((prev) =>
-                            prev.includes(media.id)
-                              ? prev.filter((id) => id !== media.id)
-                              : [...prev, media.id]
-                          );
-                        }}
+                        checked={isSelected(media.id)}
+                        onChange={() => toggleSelected(media)}
                         onClick={(e) => e.stopPropagation()}
                         className="w-[14px] h-[14px] cursor-pointer accent-[#612BD3] flex-shrink-0"
                       />
@@ -1179,13 +1307,13 @@ export const MediaBox: FC<{
           <Pagination
             current={page}
             totalPages={data?.pages}
-            setPage={setPage}
+            setPage={goToPage}
           />
         )}
         {!standalone && (
           <div className="flex justify-end mt-[32px] gap-[8px]">
             <button
-              onClick={() => modals.closeCurrent()}
+              onClick={closeModal}
               className="cursor-pointer h-[52px] px-[20px] items-center justify-center border border-newTextColor/10 flex rounded-[10px]"
             >
               {t('cancel', 'Cancel')}
@@ -1538,7 +1666,13 @@ export const MediaComponent: FC<{
       size: 'calc(100% - 80px)',
       height: 'calc(100% - 80px)',
       children: (close) => (
-        <MediaBox setMedia={changeMedia} closeModal={close} type={type} />
+        // `changeMedia` only consumes `m[0]`, so the picker must enforce one.
+        <MediaBox
+          setMedia={changeMedia}
+          closeModal={close}
+          type={type}
+          singleSelect={true}
+        />
       ),
     });
   }, [t]);
