@@ -52,7 +52,7 @@ export class AuthService {
           throw new Error('Email already exists');
         }
 
-        if (!(await this.canRegister(provider))) {
+        if (!addToOrg && !(await this.canRegister(provider))) {
           throw new Error('Registration is disabled');
         }
 
@@ -97,7 +97,8 @@ export class AuthService {
       provider,
       body as CreateOrgUserDto,
       ip,
-      userAgent
+      userAgent,
+      !!addToOrg
     );
 
     const addedOrg =
@@ -138,7 +139,8 @@ export class AuthService {
     provider: Provider,
     body: CreateOrgUserDto,
     ip: string,
-    userAgent: string
+    userAgent: string,
+    hasValidInvite: boolean
   ) {
     const providerInstance = this._providerManager.getProvider(provider);
     const providerUser = await providerInstance.getUser(body.providerToken);
@@ -155,7 +157,7 @@ export class AuthService {
       return user;
     }
 
-    if (!(await this.canRegister(provider))) {
+    if (!hasValidInvite && !(await this.canRegister(provider))) {
       throw new Error('Registration is disabled');
     }
 
