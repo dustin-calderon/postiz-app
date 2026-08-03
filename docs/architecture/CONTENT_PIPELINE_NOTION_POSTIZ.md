@@ -1,6 +1,6 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2 y 3a cerradas. `v1.0.6` desplegada. **Fase 3b desbloqueada** — accesos verificados y sin bloqueantes (§10).
+> **Estado:** Fases 0, 2 y 3a **cerradas**. `v1.0.6` desplegada. **Fase 3b lista para montar** — accesos verificados, cero bloqueantes (§10).
 > **Fecha:** agosto 2026
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 > **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
@@ -773,20 +773,20 @@ Si a las dos semanas la cola está llena y al día, el sync merece la pena. Si e
 
 **4. ✅ Hecho.** Las 10 propiedades de §7.2 están creadas en `collection://186a2405-a123-81dc-832f-000b82a65c0c`, con descripción en cada una y las opciones de `cuenta`, `modo` y `publicación` ya pobladas. No se creó ninguna tabla.
 
-**5. ℹ️ La hora en `Fecha` — aclarado, y NO bloquea a n8n.**
+**5. ✅ Resuelto — la hora en `Fecha` está activada.**
 
-La propiedad ya está bien configurada (*Formato de hora: 24 horas*). Y la API **ni siquiera expone `time_format`**: devuelve `"date":{}`. Es un ajuste de visualización.
+El `time_format: " "` que devolvía el esquema era la opción **«Oculto»** del desplegable *Formato de hora* de la propiedad. Cambiado a **24 horas** el 2026-08-03.
 
-Verificado escribiendo una fila de prueba (luego archivada): `2026-08-14T08:30:00.000+02:00` se guarda y se devuelve idéntica. **n8n puede leer y escribir la hora hoy mismo.**
+Es un **ajuste de propiedad**, no un interruptor por valor: al quitarlo de «Oculto», toda la columna admite y muestra hora.
 
-Lo que falta es que *las personas* la pongan. En Notion «incluir la hora» es un **interruptor por valor**, dentro del selector de fecha de cada fila — no un ajuste global.
+Verificado sobre la base real: la fila «Tres cosas básicas…» guarda `2026-08-01T09:00:00.000+02:00`, con offset de Madrid correcto.
 
-> ### ⚠️ 99 de 100 filas existentes no tienen hora
-> Medido sobre la base real: sólo 1 de 100 filas con fecha incluye hora. **El comportamiento por defecto del equipo es rellenar sólo el día.**
+> ### ⚠️ Las 99 filas anteriores siguen sin hora
+> Medido antes del cambio: sólo 1 de 100 filas con fecha incluía hora. Las históricas se quedan a día seco, y ninguna fila nueva nace con hora por defecto — hay que escribirla.
 >
 > **Regla obligatoria del worker:** si `Fecha` no trae hora, la fila va a `Error` con el motivo, **nunca se adivina**. Asumir medianoche publicaría a las 00:00 sin que nadie lo pidiera.
 >
-> Se mitiga poniendo la hora en la **plantilla de página** de la base, para que las filas nuevas nazcan con ella.
+> Se mitiga poniendo una hora por defecto en la **plantilla de página** de la base.
 
 El esquema devuelve `"Fecha": { "time_format": " " }` — el campo **no muestra hora**. Notion sí puede guardar `datetime` (existe `date:Fecha:is_datetime`), pero mientras el formato no incluya hora, quien rellene la fila **verá sólo el día** y no podrá elegir la hora.
 
