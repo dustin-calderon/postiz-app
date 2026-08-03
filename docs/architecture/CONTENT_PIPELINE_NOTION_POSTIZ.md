@@ -1,6 +1,7 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2 y 3a cerradas. Fase 3b **a medias**: planificador montado y probado contra datos reales; falta la mitad que escribe (§10).
+> **Estado:** Fases 0, 2 y 3a cerradas. Fase 3b **a medias** — planificador probado, falta la mitad que escribe.
+> **Inventario completo de lo implementado y lo no verificado: §14.**
 > **Fecha:** agosto 2026
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 > **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
@@ -1042,7 +1043,58 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **Mover los medios a R2** | Se probó y se revirtió: el 403 que lo motivaba era el bloqueo de crawlers de IA de Cloudflare, no una limitación real. Meta obtiene 200 desde `local` (§10, Fase 0). |
 | Derivar el margen de seguridad del horario del cron | Falso sentido de seguridad: el botón dispara a cualquier hora (§9.3). |
 
-## 14. Fuentes
+## 14. Inventario de lo implementado
+
+> Estado a 2026-08-04. **Tres cuartas partes de esto no viven en git** — conviene saber dónde mirar antes de auditar.
+
+### 14.1 En el repositorio · `custom/postiz-dc` @ `6bebb508`
+
+| Qué | Dónde |
+|---|---|
+| `post.workflow.v1.0.6.ts` | `apps/orchestrator/src/workflows/post-workflows/` |
+| Export de la versión | `apps/orchestrator/src/workflows/index.ts` |
+| Arranque de `postWorkflowV106` | `posts.service.ts:729` |
+| Este documento | `docs/architecture/` |
+
+**Desplegado:** imagen `postiz-custom:local` (tag `local-2facd00f`). El repo del servidor va por `2facd00f` **y es correcto**: desde ahí sólo hay commits de documentación. El código que corre es el último que existe.
+
+### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
+
+**11 propiedades nuevas** (§7.2), todas con descripción: `cuenta`, `colaboradores`, `content`, `assets`, `first_comment`, `modo`, `publicación`, `postiz_post_id`, `postiz_media`, `error_log`, `release_url`.
+
+**2 vistas:** `IG · Publicación` (filtrada por Instagram) y `⚠️ Averías` (filtrada por `publicación = Error`).
+
+**1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas**.
+
+### 14.3 En n8n · `auto.dustincalderon.com`
+
+| Objeto | ID | Estado |
+|---|---|---|
+| Workflow «Sync Instagram (PLANIFICADOR)» | `k3QqOu4nQJGJMXuO` | **Desactivado** |
+| Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
+| Credencial Notion | `5rCv9a6s5FyI0swq` | — |
+| Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token` |
+
+### 14.4 En producción, fuera de todo lo anterior
+
+- `API_LIMIT` de 30 → **300** en `/opt/homeserver/postiz.env` (copia en `postiz.env.bak-20260803`).
+- `CLOUDFLARE_BUCKET_URL` sin la barra final.
+
+> ### ⚠️ Lo frágil
+> El token del webhook está en **`/tmp/wf/token.txt` del servidor**, y `/tmp` se limpia al reiniciar. **Moverlo a `/opt/homeserver/.env`.**
+
+### 14.5 Para la auditoría
+
+Lo que sigue **sin verificarse funcionando**, por orden de importancia:
+
+1. **El webhook de la `v1.0.6`.** Desplegado y con typecheck, pero nadie lo ha visto llegar con contenido. Requiere publicar de verdad.
+2. **El paso de un reel de 150-250 MB por n8n.** Riesgo operativo nº1 y no medido.
+3. **La mitad que escribe del sync**: upload, create, write-back, retirada y receptor. No existe.
+4. **Colaboradores en `graph.instagram.com`** — deuda técnica por decisión, no se probará.
+
+Y una decisión abierta: qué hacer si el sync entero falla (Notion caído a las 06:00).
+
+## 15. Fuentes
 
 **Código de este repositorio** (autoridad para todo lo relativo a Postiz):
 `upload.factory.ts` · `cloudflare.storage.ts` · `app.module.ts` · `throttler.provider.ts` · `instagram.provider.ts` · `instagram.dto.ts` · `create.post.dto.ts` · `get.posts.dto.ts` · `posts.service.ts` · `post.activity.ts` · `post.workflow.v1.0.5.ts` · `public.integrations.controller.ts` · `schema.prisma` · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
