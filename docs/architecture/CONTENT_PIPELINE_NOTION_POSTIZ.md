@@ -1,6 +1,6 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fase 0 verde. Esquema decidido (una tabla). Implementando la Fase 2.
+> **Estado:** Fases 0, 2 y 3a cerradas. `v1.0.6` desplegada. **Fase 3b bloqueada** en el token de integración de Notion.
 > **Fecha:** agosto 2026
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 > **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
@@ -242,7 +242,7 @@ De aquí sale la regla más importante de toda la implementación:
 - ✗ **Postiz nunca escribe en Notion.** Quien cierra el bucle es n8n. Dos escritores = ninguna verdad.
 - ✗ **Nunca se aprueba dentro de Postiz.** Dos sitios de aprobación = ninguno fiable en tres semanas.
 - ✗ **Nunca hay un LLM dentro del camino de publicación.** La creatividad ocurre antes, en Notion.
-- ✗ **Nunca se editan a mano** `postiz_post_id`, `postiz_media_url`, `release_url` ni `publicación = Programado`.
+- ✗ **Nunca se editan a mano** `postiz_post_id`, `postiz_media`, `release_url` ni `publicación = Programado`.
 - ✓ **El `postiz_post_id` dice la verdad, no el `status`.** El status es para las personas; el ID es para la máquina.
 - ✓ **Una fila = un post = una integración.** Aunque hoy sólo haya Instagram.
 
@@ -487,9 +487,9 @@ A partir de `Listo` nadie vuelve a tocar `publicación` — pero **sí se puede 
 
 `Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `publicación` a `Listo` vaciando `error_log`.
 
-Al reintentar, el worker **reutiliza `postiz_media_url` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
+Al reintentar, el worker **reutiliza `postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
-> Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `postiz_media_url` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
+> Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `postiz_media` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
 
 ## 9. El worker de n8n — reconciliación, no cola
 
@@ -521,7 +521,7 @@ El botón usa la acción **"Send webhook"** de Notion, que en botones de base de
 | Dentro del margen de seguridad (§9.3) | **Saltar** + anotar en `error_log` |
 | `postiz_post_id` vacío | Crear |
 | Tiene `postiz_post_id`, aún no publicado | **Borrar y recrear** |
-| `postiz_media_url` con valor | No re-subir los assets |
+| `postiz_media` con valor | No re-subir los assets |
 | `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
 
 > ⚠️ La segunda fila **no es "ignorar y seguir"**. Si sólo se implementa esta tabla y no §9.7, vaciar `publicación` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
@@ -533,15 +533,15 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
            colaboradores ⇒ ni carrusel ni story          (§7.2.4)
 2. resuelve `cuenta` ──► integration.id                  (§7.2.1)
 3. si tiene postiz_post_id y no está publicado ──► DELETE primero
-4. si `postiz_media_url` está vacío:
+4. si `postiz_media` está vacío:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
       descarga los bytes
       sube multipart a POST /public/v1/upload
-      └──► ESCRIBE postiz_media_url                      [write 1]
+      └──► ESCRIBE postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
       value[0].content            = content
-      value[0].image[]            = postiz_media_url
+      value[0].image[]            = postiz_media
       value[1].content            = first_comment        (si lo hay, §7.3)
       settings.collaborators[]    = colaboradores        (si los hay)
       └──► ESCRIBE postiz_post_id                        [write 2]
@@ -553,7 +553,7 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 >
 > La excepción son los **carruseles y stories compartidos**, que Instagram no permite compartir: ahí son filas independientes, y cada una sigue siendo un post. El modelo no cambia.
 
-Las dos escrituras siguen separadas: guardar `postiz_media_url` en cuanto sube hace el proceso **reanudable a mitad**, y evita volver a mover un reel de 100 MB en cada resincronización.
+Las dos escrituras siguen separadas: guardar `postiz_media` en cuanto sube hace el proceso **reanudable a mitad**, y evita volver a mover un reel de 100 MB en cada resincronización.
 
 ### 9.3 El margen de seguridad — obligatorio
 
@@ -787,7 +787,11 @@ Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. **Es bloq
 | **IG · Publicación** | `Plataforma` contiene Instagram, orden por `Fecha` | Donde trabaja el equipo |
 | **⚠️ Averías** | `publicación = Error` | Panel de fallos: cuenta, motivo e id |
 
-**7. ⏳ Pendiente y tuyo:** crear la integración de Notion (Settings → Connections) y darle acceso al calendario. Requiere tu sesión; no se puede por API.
+**7. ✅ Hecho — opciones de `colaboradores`.** Sembradas con los usernames reales de Instagram, sacados del campo `profile` de `GET /public/v1/integrations`: `thedustincalderon`, `citem.teatromusical`, `amorismoelmusical`.
+
+> Nota menor: el `ALTER` que puso las opciones **borró la descripción** de esa propiedad. Reponerla a mano si molesta.
+
+**8. 🔴 Pendiente y tuyo — bloqueante:** crear la integración en `notion.so/my-integrations`, darle acceso al calendario, y guardar el token. Requiere tu sesión. Sin él no hay Fase 3b.
 > **El botón no se crea aquí**, sino en la Fase 3b: necesita la URL del webhook de n8n, que todavía no existe.
 
 ### Fase 3a — Los dos cambios en el fork · 2-3 h
@@ -807,16 +811,43 @@ Cambios asociados: `workflows/index.ts` exporta la nueva versión, `posts.servic
 Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow.v1.0.5.ts` sin cambios.
 
 > ⚠️ **No se edita `v1.0.5` a propósito.** Los workflows de Temporal deben ser deterministas en el replay: cambiar una definición con ejecuciones en vuelo las rompe. Por eso el repo tiene un fichero por versión. Las ejecuciones antiguas siguen resolviendo contra la suya.
->
-> **Pendiente de desplegar.** Requiere `build.sh` + recrear el contenedor; se hace contigo delante.
 
-**10. `externalId` para idempotencia.** Columna nullable en `Post` + índice único `[organizationId, externalId]` + comprobación en `createPost` que devuelva el post existente en lugar de crear otro. n8n manda el ID de la página de Notion.
+**✅ DESPLEGADO el 2026-08-03** (commit `2facd00f`). Evidencia de que entró de verdad:
 
-- Migración segura en producción (columna nullable + índice).
-- Es genérico, no "así trabajamos nosotros" — cabe en Postiz sin ensuciar la arquitectura.
-- Bonus: permite un `GET` por `externalId` para que n8n recupere el estado tras cualquier caída.
+| Comprobación | Resultado |
+|---|---|
+| Bundle de workflows de Temporal | **14 → 15 módulos** (60.9 → 72 KiB) |
+| Fichero compilado | `dist/…/post.workflow.v1.0.6.js` presente |
+| Contenedor | `healthy`, 3 procesos, **0 reinicios** |
+| `backend-error.log` | vacío |
+
+Ventana elegida: sólo había **1 post en cola, para el 14 de agosto**. Su workflow arrancó como `V105`, que sigue exportada.
+
+> ### ⏳ Sin verificar en funcionamiento
+> El arreglo está desplegado y typechecked, pero **nadie ha visto el webhook llegar con contenido**. Requiere publicar de verdad con un destino configurado. Es la primera prueba de la Fase 3b.
+
+**10. `externalId` — ⏸️ NO se hizo, a propósito.** Columna nullable en `Post` + índice único `[organizationId, externalId]` + comprobación en `createPost` que devuelva el post existente en vez de crear otro.
+
+Da idempotencia al worker, pero **sin worker no tiene consumidor**: sería una migración sobre la base de producción para un llamante que aún no existe. Se hace cuando el sync esté montado y se sepa qué necesita de verdad.
 
 ### Fase 3b — El sync en n8n · 3-4 h
+
+**Lo que ya está resuelto para montarlo:**
+
+| Dato | Valor |
+|---|---|
+| n8n | `auto.dustincalderon.com` · API pública operativa · clave en `/opt/homeserver/.env` (`N8N_API_KEY`) |
+| API de Postiz | `https://postiz.dustincalderon.com/api/public/v1` |
+| Auth de Postiz | Cabecera `Authorization: <apiKey>` de la organización **`30c506a6-0a2c-4661-95bb-abec2e14b3f2`** — la única con integraciones |
+| Cuentas | Los 3 `integration.id` de §7.2.1 |
+| Cuerpo del POST | §9.8, con los cinco campos que dan 400 |
+
+> **Ningún workflow actual de n8n usa el nodo de Notion** — todos van por `httpRequest`. Conviene seguir ese patrón: llamar a la API de Notion directamente en vez de introducir un nodo nuevo.
+
+> ### 🔴 Bloqueante: falta el token de integración de Notion
+> No existe ninguna credencial de Notion en n8n. El token se genera en `notion.so/my-integrations` **con sesión de usuario** y luego hay que dar acceso al calendario desde la propia base. No hay forma de obtenerlo por API.
+>
+> Bloquea las dos cosas a la vez: el acceso del worker a la base y la credencial de n8n.
 
 11. **Fijar y probar la zona horaria** (§7.5) con un post real. Antes que nada más.
 12. Subflow de sync (§9.2) con el margen de seguridad (§9.3).
@@ -835,7 +866,7 @@ Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow
 
 ### Fase 4 — La capa creativa · el motivo de todo esto
 
-18. Redacción de borradores con Claude vía **Notion MCP**, escribiendo filas en `Draft` con el voice pack.
+18. Redacción de borradores con Claude vía **Notion MCP**, creando filas con el copy ya escrito y `publicación` vacío, listas para revisar.
 19. Sistema de captura de materia prima: ideas, objeciones reales de clientes, ángulos.
 
 > **Esta fase no necesita que se construya nada antes.** Está disponible desde el primer día, y es la única razón por la que las fases 2 y 3 merecen la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
