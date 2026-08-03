@@ -443,7 +443,7 @@ publishDate: dayjs(date).toDate()
 
 **Mandar siempre offset explícito.** Si n8n envía una fecha sin zona, el resultado depende del `TZ` del contenedor de Postiz — y cambia solo si algún día se recrea con otra configuración.
 
-Es el fallo que no da error: publicas con dos horas de desfase y sólo lo notas cuando ves el post. **Ítem bloqueante de la Fase 3b**, y hay que verificarlo con un post real.
+**✅ Verificado con un post real** (§9.8): enviado `10:00:00+01:00`, almacenado `09:00:00`. El contenedor corre en UTC y el offset se respeta. Sin offset publicaría dos horas tarde en verano.
 
 ### 7.6 Carruseles: el ratio manda el primero
 
@@ -644,7 +644,9 @@ El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cu
 
 ### 9.8 El cuerpo exacto de `POST /public/v1/posts`
 
-Derivado de `create.post.dto.ts`, `media.dto.ts`, `instagram.dto.ts` y `all.providers.settings.ts:80-82`. Ejemplo real para una de las tres cuentas:
+**✅ Ejecutado de punta a punta el 2026-08-03**, no sólo derivado de los DTOs. Se subió un fichero, se creó un post programado para 2027 y se borró. Resultados abajo.
+
+Ejemplo real para una de las tres cuentas:
 
 ```json
 {
@@ -687,6 +689,31 @@ Derivado de `create.post.dto.ts`, `media.dto.ts`, `instagram.dto.ts` y `all.prov
 > **`__type` decide qué provider resuelve.** `posts.service.ts:883-885` hace `getSocialIntegration(settings.__type)`. Poner `instagram` en una cuenta `instagram-standalone` resolvería el provider equivocado, con otras validaciones y otro host de Meta (§4.9).
 
 > **`value[0].image[]` necesita `id` y `path`.** Sólo la URL da 400 (§7.2). El `id` sale de la respuesta de `POST /public/v1/upload`.
+
+#### Respuestas reales medidas
+
+| Llamada | Status | Cuerpo |
+|---|---|---|
+| `POST /upload` (multipart, campo `file`) | **201** | `{id, name, originalName, path, thumbnail, alt}` |
+| `POST /posts` | **201** | `[{postId, integration}]` |
+| `DELETE /posts/:id` | **200** | `{"error":true}` ⚠️ |
+
+> ### ⚠️ `DELETE` devuelve `{"error":true}` aunque funcione
+> Confirmado ejecutándolo: el post y su comentario quedaron correctamente soft-deleted, y aun así la respuesta fue `{"error":true}` con 200. `posts.service.ts:681` devuelve eso siempre.
+>
+> **n8n no puede usar el cuerpo como señal de éxito.** Si necesita certeza, tiene que releer el estado; en la práctica basta con no tratar esa respuesta como fallo.
+
+#### Zona horaria — resuelta con una medición
+
+Enviado `"date": "2027-01-15T10:00:00+01:00"` → almacenado `2027-01-15 09:00:00`.
+
+El contenedor de Postiz corre en **UTC** (`TZ` vacío) y `dayjs(date).toDate()` **respeta el offset explícito**. La columna guarda UTC.
+
+> **Consecuencia:** mandar la fecha **sin offset** la interpretaría como UTC. En horario de verano de Madrid (+02:00) eso publicaría **dos horas tarde**. n8n debe enviar siempre el offset.
+
+#### El comentario funciona
+
+`value[1]` creó un `Post` hijo con `parentPostId` no nulo y **la misma `publishDate`**. Los hashtags en primer comentario (§7.3) están confirmados en la práctica, no sólo en el código.
 
 ### 9.9 La ventana de 15 días
 
@@ -904,7 +931,7 @@ Verificado contra la API real:
 
 | # | Decisión | Bloquea | Notas |
 |---|---|---|---|
-| 1 | Formato y zona horaria de `publish_at` | Fase 3b | Se resuelve publicando de verdad en Fase 1 |
+| 1 | ~~Formato y zona horaria~~ | — | **Resuelta:** offset explícito, contenedor en UTC (§9.8) |
 | 2 | Tope de tamaño de fichero | Fase 3b | Ver §12 |
 | 3 | ¿La propiedad `URL` está libre para `release_url`? | Fase 3b | Si ya tiene uso, se añade una propia |
 | 4 | Dirección de reserva para las alertas | Fase 3b | Cuando `created_by` no resuelva a email |
