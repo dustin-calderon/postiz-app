@@ -972,7 +972,8 @@ Verificado contra la API real:
 | ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `release_url` aparte |
 | ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
 | 5 | Qué pasa si el sync entero falla | Fase 3b | Notion caído a las 06:00: reintentos + alerta distinta |
-| 6 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento (decisión del 2026-08-04) |
+| 6 | **Huérfanos de `/upload` si falla el `POST /posts`** | Fase 3b | La limpieza no los recoge (§14.5). ¿Borrar en el worker o barrer? |
+| 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
 
 **Resueltas:**
 
@@ -1077,13 +1078,43 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 ### 14.4 En producción, fuera de todo lo anterior
 
-- `API_LIMIT` de 30 → **300** en `/opt/homeserver/postiz.env` (copia en `postiz.env.bak-20260803`).
-- `CLOUDFLARE_BUCKET_URL` sin la barra final.
+| Fichero | Cambio |
+|---|---|
+| `/opt/homeserver/postiz.env` | `API_LIMIT` 30 → **300**; `CLOUDFLARE_BUCKET_URL` sin barra final. Copia: `postiz.env.bak-20260803` |
+| `/opt/homeserver/.env` | **`N8N_SYNC_IG_TOKEN`** añadido — el token del webhook (§9.1) |
+| `/opt/homeserver/.env` | **`NOTION_API_KEY`** añadido — copia durable del token de Notion |
 
-> ### ⚠️ Lo frágil
-> El token del webhook está en **`/tmp/wf/token.txt` del servidor**, y `/tmp` se limpia al reiniciar. **Moverlo a `/opt/homeserver/.env`.**
+> ### 🔑 Dónde vive cada secreto, y por qué no en este repo
+> El token de Notion estaba **sólo** en `#ARCHIVE/Motion_to_Notion/.env`, un repo muerto. Ahora vive en dos sitios durables:
+>
+> 1. **Credencial de n8n** `5rCv9a6s5FyI0swq` — cifrada, es la que usa el worker.
+> 2. **`/opt/homeserver/.env`** — junto al resto de secretos del servidor, que es la convención del HomeLab.
+>
+> **Ya se puede borrar `#ARCHIVE/Motion_to_Notion` sin perder nada.**
+>
+> **Nunca en este repositorio.** Es un fork de un proyecto público: basta un push al remoto equivocado para filtrar el token. Los secretos van al `.env` del servidor o al gestor de credenciales de la herramienta que los usa — jamás a git, ni siquiera en un repo privado.
 
-### 14.5 Para la auditoría
+### 14.5 Residuos de las pruebas — qué se dejó y qué se limpió
+
+Durante la verificación se crearon objetos en producción. Registro honesto de todos:
+
+| Artefacto | Estado |
+|---|---|
+| Fila de Notion «__TEST hora (borrar)» | ✅ Archivada |
+| Post de Postiz `cmsduippv0000ns71oty7cibs` + su comentario | ✅ Soft-deleted vía API |
+| Media `6ef7cac0-b740-498c-8999-878c8c9325cc` | ✅ Soft-deleted **a mano** — ver aviso |
+| `/tmp/test-pipeline.jpg` y los JSON de `/tmp/wf/` | ✅ Borrados |
+| `/tmp/wf/planner.js` y `token.txt` | ⏸️ Se conservan como referencia |
+| Ejecución `203001` de n8n | ⏸️ Queda en el historial |
+
+> ### ⚠️ El media de prueba habría quedado huérfano para siempre
+> Se subió con `POST /upload` pero **nunca se publicó**. El Step 2 de la limpieza (§4.7) sólo hace candidatos a los medias que aparecen en un post `PUBLISHED`: **un fichero subido y no publicado no lo recoge nadie**.
+>
+> Se soft-borró a mano para que la Phase 2 elimine el blob a los 7 días.
+>
+> **Esto no es un caso de prueba, es un agujero del pipeline:** cada vez que el sync suba un asset y el `POST /posts` falle después, ese fichero queda huérfano y permanente. El worker debe borrar el media si la creación del post falla, o habrá que barrerlos periódicamente. **Pendiente de decidir.**
+
+### 14.6 Para la auditoría
 
 Lo que sigue **sin verificarse funcionando**, por orden de importancia:
 
