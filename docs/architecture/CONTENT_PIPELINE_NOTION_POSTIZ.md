@@ -641,7 +641,53 @@ El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cu
 
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de las próximas 2 horas se retira automáticamente.
 
-### 9.8 La ventana de 15 días
+### 9.8 El cuerpo exacto de `POST /public/v1/posts`
+
+Derivado de `create.post.dto.ts`, `media.dto.ts`, `instagram.dto.ts` y `all.providers.settings.ts:80-82`. Ejemplo real para una de las tres cuentas:
+
+```json
+{
+  "type": "schedule",
+  "shortLink": false,
+  "date": "2026-08-14T08:00:00+02:00",
+  "tags": [],
+  "posts": [
+    {
+      "integration": { "id": "cmqjq77hg0001mw7y2xf6bg86" },
+      "settings": {
+        "__type": "instagram-standalone",
+        "post_type": "post",
+        "collaborators": [{ "label": "citem_oficial" }]
+      },
+      "value": [
+        {
+          "content": "El copy de la pieza…",
+          "image": [
+            { "id": "<id de /upload>", "path": "https://postiz.dustincalderon.com/uploads/2026/08/04/abc.jpg" }
+          ]
+        },
+        { "content": "#hashtag1 #hashtag2", "image": [] }
+      ]
+    }
+  ]
+}
+```
+
+#### Los cinco campos que dan 400 si se olvidan
+
+| Campo | Regla | Nota |
+|---|---|---|
+| `shortLink` | `@IsDefined() @IsBoolean()` | **No es opcional.** Omitirlo es 400 aunque no uses acortador |
+| `tags` | `@IsDefined() @IsArray()` | Debe existir aunque sea `[]` |
+| `date` | `@IsDefined() @IsDateString()` | **Con offset explícito** (§7.5) |
+| `settings.__type` | `@IsIn(...)` | **`instagram-standalone`**, no `instagram` |
+| `settings.post_type` | `@IsDefined()` | `post` o `story` |
+
+> **`__type` decide qué provider resuelve.** `posts.service.ts:883-885` hace `getSocialIntegration(settings.__type)`. Poner `instagram` en una cuenta `instagram-standalone` resolvería el provider equivocado, con otras validaciones y otro host de Meta (§4.9).
+
+> **`value[0].image[]` necesita `id` y `path`.** Sólo la URL da 400 (§7.2). El `id` sale de la respuesta de `POST /public/v1/upload`.
+
+### 9.9 La ventana de 15 días
 
 Un post programado para dentro de 20 días **no existe en Postiz todavía**, y eso es correcto: nada se crea antes de tiempo. Entra en la ventana cuando le toca.
 
@@ -734,9 +780,14 @@ Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. **Es bloq
 
 > En Notion: abrir la propiedad `Fecha` → *Formato de fecha* → activar **Incluir hora**. El DDL de la API no permite cambiar el formato de visualización.
 
-**6. Pendiente:** crear la integración de Notion y darle acceso al calendario.
+**6. ✅ Hecho — las dos vistas.**
 
-**7. Pendiente:** vistas — una filtrada por `Plataforma = Instagram` para trabajar, y otra por `publicación = Error` como **panel de averías**.
+| Vista | Filtro | Para qué |
+|---|---|---|
+| **IG · Publicación** | `Plataforma` contiene Instagram, orden por `Fecha` | Donde trabaja el equipo |
+| **⚠️ Averías** | `publicación = Error` | Panel de fallos: cuenta, motivo e id |
+
+**7. ⏳ Pendiente y tuyo:** crear la integración de Notion (Settings → Connections) y darle acceso al calendario. Requiere tu sesión; no se puede por API.
 > **El botón no se crea aquí**, sino en la Fase 3b: necesita la URL del webhook de n8n, que todavía no existe.
 
 ### Fase 3a — Los dos cambios en el fork · 2-3 h
@@ -819,7 +870,7 @@ Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow
 | Archivo en Drive | **Después**, cuando el pipeline funcione. Trabajo aparte, fuera del camino de publicación |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Margen de seguridad | **2 h** (§9.3) |
-| Ventana | **15 días** (§9.8) |
+| Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 
 > **Ninguna bloquea el arranque.** Las propiedades se pueden crear ya; la #3 sólo decide si `release_url` reutiliza `URL` o es propia.
