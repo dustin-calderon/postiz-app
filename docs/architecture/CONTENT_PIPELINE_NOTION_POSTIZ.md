@@ -1,6 +1,6 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2 y 3a **cerradas**. `v1.0.6` desplegada. **Fase 3b lista para montar** — accesos verificados, cero bloqueantes (§10).
+> **Estado:** Fases 0, 2 y 3a cerradas. Fase 3b **a medias**: planificador montado y probado contra datos reales; falta la mitad que escribe (§10).
 > **Fecha:** agosto 2026
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 > **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
@@ -871,7 +871,39 @@ Ventana elegida: sólo había **1 post en cola, para el 14 de agosto**. Su workf
 
 Da idempotencia al worker, pero **sin worker no tiene consumidor**: sería una migración sobre la base de producción para un llamante que aún no existe. Se hace cuando el sync esté montado y se sepa qué necesita de verdad.
 
-### Fase 3b — El sync en n8n · 3-4 h
+### Fase 3b — El sync en n8n · **PARCIAL: planificador montado y probado**
+
+**Credenciales creadas en n8n** (esto además retira el token de Notion del repo archivado):
+
+| Credencial | Tipo | ID |
+|---|---|---|
+| `Postiz API (CITEM org)` | `httpHeaderAuth` → `Authorization` | `h6bGMcfTHiZUD0dy` |
+| `Notion — Calendario Social Media` | `httpHeaderAuth` → `Authorization: Bearer` | `5rCv9a6s5FyI0swq` |
+
+**Workflow `k3QqOu4nQJGJMXuO` — «Postiz · Sync Instagram desde Notion (PLANIFICADOR)»**
+
+Cron 06:00 + webhook → lee el calendario → **decide qué haría, sin escribir nada**. Implementa todas las puertas de §9.2 y las validaciones de §7.4: ventana de 15 días, margen de 2 h, `Fecha` sin hora, cuenta sin `integration.id`, >10 assets, colaboradores en carrusel o story.
+
+**Ejecutado contra los datos reales (2026-08-03):**
+
+```
+filas de Instagram evaluadas: 99
+  99  ignorar   (publicación vacía en todas)
+acciones que se ejecutarían: 0
+```
+
+Correcto: **el pipeline está inerte hasta que alguien marque `Listo`.** Nada que arreglar en los datos existentes.
+
+> ### 🔒 Queda DESACTIVADO — el webhook no tiene autenticación
+> Al activarlo, n8n publica `POST /webhook/postiz-sync-ig` **sin auth** en `auto.dustincalderon.com`. El planificador devuelve en la respuesta el contenido de filas de Notion: cualquiera que acierte la ruta puede leerlo.
+>
+> **Antes de activar:** añadir Header Auth al nodo Webhook (o mover el disparador a algo autenticado). Verificado que al desactivar, la ruta devuelve 404.
+
+**Lo que falta del sync** (la mitad que escribe): descarga del asset desde Notion → `POST /upload` → `POST /posts` → write-back a Notion, más la pasada de retirada (§9.7) y el receptor del webhook de Postiz.
+
+---
+
+#### Referencia para completarlo
 
 **Lo que ya está resuelto para montarlo:**
 
