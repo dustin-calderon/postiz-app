@@ -1,6 +1,6 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2 y 3a cerradas. `v1.0.6` desplegada. **Fase 3b bloqueada** en el token de integración de Notion.
+> **Estado:** Fases 0, 2 y 3a cerradas. `v1.0.6` desplegada. **Fase 3b desbloqueada** — todos los accesos verificados (§10).
 > **Fecha:** agosto 2026
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 > **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
@@ -791,7 +791,7 @@ Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. **Es bloq
 
 > Nota menor: el `ALTER` que puso las opciones **borró la descripción** de esa propiedad. Reponerla a mano si molesta.
 
-**8. 🔴 Pendiente y tuyo — bloqueante:** crear la integración en `notion.so/my-integrations`, darle acceso al calendario, y guardar el token. Requiere tu sesión. Sin él no hay Fase 3b.
+**8. ✅ Resuelto — la integración de Notion ya existe.** El token de `#ARCHIVE/Motion_to_Notion/.env` ya tiene acceso al calendario por herencia. Ver Fase 3b.
 > **El botón no se crea aquí**, sino en la Fase 3b: necesita la URL del webhook de n8n, que todavía no existe.
 
 ### Fase 3a — Los dos cambios en el fork · 2-3 h
@@ -844,10 +844,21 @@ Da idempotencia al worker, pero **sin worker no tiene consumidor**: sería una m
 
 > **Ningún workflow actual de n8n usa el nodo de Notion** — todos van por `httpRequest`. Conviene seguir ese patrón: llamar a la API de Notion directamente en vez de introducir un nodo nuevo.
 
-> ### 🔴 Bloqueante: falta el token de integración de Notion
-> No existe ninguna credencial de Notion en n8n. El token se genera en `notion.so/my-integrations` **con sesión de usuario** y luego hay que dar acceso al calendario desde la propia base. No hay forma de obtenerlo por API.
+**Token de Notion: ✅ ya existe y ya tiene acceso.**
+
+Vive en `D:\Code Projects\#ARCHIVE\Motion_to_Notion\.env` como `NOTION_API_KEY` (prefijo `ntn_`). Se creó para el sync Motion→Notion, pero **hereda acceso al calendario** porque su `NOTION_AREAS_DB_ID` (`852bcd83…`) es un ancestro suyo en el árbol, y los permisos de Notion bajan por la jerarquía.
+
+Verificado contra la API real:
+
+| Llamada | Resultado |
+|---|---|
+| `GET /v1/databases/186a2405…` | **200** — devuelve "Calendario Social Media" |
+| `POST /v1/databases/186a2405…/query` | **200** — devuelve filas |
+
+> ### ⚠️ Deuda: el token vive en un repo archivado
+> `#ARCHIVE/Motion_to_Notion` es un repo muerto. Si se borra, se pierde la referencia al token — aunque la integración siga viva en Notion.
 >
-> Bloquea las dos cosas a la vez: el acceso del worker a la base y la credencial de n8n.
+> **Al montar la Fase 3b, guardarlo como credencial de n8n** (que es su sitio) y añadirlo a `/opt/homeserver/.env` junto al resto. No dejarlo dependiendo de una carpeta archivada.
 
 11. **Fijar y probar la zona horaria** (§7.5) con un post real. Antes que nada más.
 12. Subflow de sync (§9.2) con el margen de seguridad (§9.3).
