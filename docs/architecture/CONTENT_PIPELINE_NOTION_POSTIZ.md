@@ -894,6 +894,10 @@ Crece de forma lineal con ventana × frecuencia, y **por plataforma nueva**: You
 
 > Es el precio de "reescribir siempre en vez de detectar cambios" (§9). A esta escala compensa de largo: la alternativa —hashes o `last_edited_time`— es estado que mantener y sincronizar. Si algún día no compensara, el arreglo es comparar antes de recrear, y sólo entonces.
 
+**Deuda técnica: tres organizaciones en Postiz, dos vacías.** `Organization` tiene tres filas —`CITEM` (`30c506a6…`, con las 4 integraciones), otra `CITEM` (`8019c9c4…`, vacía) y `Test` (`4d1bbcd5…`, vacía)—, cada una con su `apiKey`.
+
+El pipeline usa la de `30c506a6…`, que es la única que ve las cuentas. Las otras dos no molestan hoy, pero son API keys vivas apuntando a organizaciones sin contenido, y el throttle de `API_LIMIT` se cuenta por organización. **Auditar y limpiar en otro momento** — no bloquea nada.
+
 **Marca de agua de CapCut.** Algunas plantillas y efectos la añaden al exportar. Publicando a mano se ve; publicando en automático, no. Revisar el máster la primera vez que se use una plantilla nueva.
 
 ## 13. Lo que se decidió NO hacer
