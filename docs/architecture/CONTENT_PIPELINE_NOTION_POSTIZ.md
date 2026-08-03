@@ -894,10 +894,13 @@ acciones que se ejecutarían: 0
 
 Correcto: **el pipeline está inerte hasta que alguien marque `Listo`.** Nada que arreglar en los datos existentes.
 
-> ### 🔒 Queda DESACTIVADO — el webhook no tiene autenticación
-> Al activarlo, n8n publica `POST /webhook/postiz-sync-ig` **sin auth** en `auto.dustincalderon.com`. El planificador devuelve en la respuesta el contenido de filas de Notion: cualquiera que acierte la ruta puede leerlo.
->
-> **Antes de activar:** añadir Header Auth al nodo Webhook (o mover el disparador a algo autenticado). Verificado que al desactivar, la ruta devuelve 404.
+**🔒 Webhook protegido.** Se detectó que al activar el workflow, n8n exponía `POST /webhook/postiz-sync-ig` **sin autenticación**, y la respuesta del planificador incluye contenido de filas de Notion.
+
+Corregido: el nodo Webhook exige ahora la cabecera **`X-Sync-Token`** (credencial `4jg5NXem2BvjFtFO`). El valor está en `/tmp/wf/token.txt` del servidor — **moverlo a `/opt/homeserver/.env` antes de que se limpie `/tmp`**.
+
+Ese mismo token es el que tendrá que enviar el botón de Notion (§9.1).
+
+**Sigue DESACTIVADO** hasta que exista la mitad que escribe: activar sólo el planificador no aporta nada y deja un endpoint más expuesto.
 
 **Lo que falta del sync** (la mitad que escribe): descarga del asset desde Notion → `POST /upload` → `POST /posts` → write-back a Notion, más la pasada de retirada (§9.7) y el receptor del webhook de Postiz.
 
@@ -964,11 +967,11 @@ Verificado contra la API real:
 | # | Decisión | Bloquea | Notas |
 |---|---|---|---|
 | 1 | ~~Formato y zona horaria~~ | — | **Resuelta:** offset explícito, contenedor en UTC (§9.8) |
-| 2 | Tope de tamaño de fichero | Fase 3b | Ver §12 |
-| 3 | ¿La propiedad `URL` está libre para `release_url`? | Fase 3b | Si ya tiene uso, se añade una propia |
-| 4 | Dirección de reserva para las alertas | Fase 3b | Cuando `created_by` no resuelva a email |
+| ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta: 300 MB.** Reels reales de 150-250 MB |
+| ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `release_url` aparte |
+| ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
 | 5 | Qué pasa si el sync entero falla | Fase 3b | Notion caído a las 06:00: reintentos + alerta distinta |
-| 6 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | Fase 1 | Se comprueba publicando uno de verdad (§4.9) |
+| 6 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento (decisión del 2026-08-04) |
 
 **Resueltas:**
 
@@ -992,7 +995,9 @@ Verificado contra la API real:
 
 ## 12. Riesgos
 
-**Los bytes pasan por la memoria de n8n.** Un reel de 100 MB se descarga de Notion y se sube a Postiz a través del Beelink. Hay que **poner un tope explícito y fallar con un error legible** si se supera, en lugar de descubrirlo con un contenedor muerto. Es el riesgo operativo número uno de esta arquitectura.
+**Los bytes pasan por la memoria de n8n.** Los reels reales pesan **150-250 MB** y se descargan de Notion y se suben a Postiz a través del Beelink. **Tope fijado en 300 MB**, fallando con un error legible en vez de descubrirlo con un contenedor muerto.
+
+Sigue siendo el riesgo operativo número uno, y a esa escala no es teórico: hay que medir el consumo real de n8n con el primer reel de verdad antes de confiar en el cron.
 
 **Notion es ahora un punto único de fallo.** Es la contrapartida de que sea SSoT de verdad. Mitigación razonable: exportación periódica del workspace. No es urgente, pero conviene no ignorarlo.
 
