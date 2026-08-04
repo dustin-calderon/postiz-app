@@ -612,7 +612,19 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
       └──► ESCRIBE postiz_post_id                        [write 2]
            publicación = Programado           si modo = programar
            publicación = En Postiz (borrador) si modo = borrador
+
+   si el paso 5 falla:
+      publicación = Error · error_log = motivo
+      y si el media se subió EN ESTA pasada:
+        DELETE /public/v1/media/:id  +  vaciar postiz_media
 ```
+
+> ### Por qué el worker borra su propio media al fallar
+> La limpieza automática sólo hace candidato lo que aparece en un post **publicado**. Un fichero subido y nunca publicado **no lo recoge nadie**, ni a los 30 días ni nunca. Sin este paso, cada fila abandonada tras un fallo dejaría un reel de 150 MB en el Seagate para siempre.
+>
+> **Sólo se borra lo subido en esa misma pasada.** Si el media venía reutilizado de un intento anterior (§8.1), borrarlo dejaría `postiz_media` apuntando a la nada. Y cuando se borra, se vacía también `postiz_media`, para que el reintento vuelva a subir.
+>
+> Requirió **añadir `DELETE /public/v1/media/:id` a la API pública del fork** — sólo existía en la API con sesión.
 
 > **No hay fan-out.** Una pieza compartida entre cuentas es un post con colaboradores (§7.2.4), no N posts. Eso mantiene el 1:1 con Postiz —un ID, un estado, un `release_url`— y elimina cualquier necesidad de estados parciales o de una tabla intermedia.
 >
@@ -1094,7 +1106,7 @@ Verificado contra la API real:
 | ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `release_url` aparte |
 | ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
 | 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
-| 6 | **Huérfanos de `/upload` si falla el `POST /posts`** | — | **Sigue abierta.** Hoy la fila queda en `Error` con el media ya subido; al reintentar se **reutiliza** (`postiz_media`), así que no se acumulan por reintento. Sólo quedan huérfanos si la fila se abandona. No hay endpoint público para borrar media: habría que barrer o añadirlo |
+| ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
 
 **Resueltas:**
@@ -1179,6 +1191,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | Arranque de `postWorkflowV106` | `posts.service.ts:729` |
 | `releaseId` + `error` en el payload del webhook | `posts.repository.ts` → `getPostByForWebhookId` |
 | Webhook en los 5 caminos previos al bucle | `post.workflow.v1.0.6.ts` |
+| **`DELETE /public/v1/media/:id`** | `public.integrations.controller.ts` |
 | Este documento | `docs/architecture/` |
 
 **Desplegado:** imagen `postiz-custom:local` (tag `local-69921960`). Verificado tras recrear: contenedor `healthy`, tres procesos con **0 reinicios**, `backend-error.log` vacío, y el workflow del post del 14 de agosto **sigue `Running`** (Temporal conserva el estado; arrancó como `V105` y ahí sigue).
@@ -1292,6 +1305,7 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 | Camino de fallo previo al bucle | `getPost → changeState → sendWebhooks`, workflow `COMPLETED` |
 | **Entrega real Postiz → n8n** | Webhook recibido **con contenido**, incluidos `error` y `releaseId` (§14.7) |
 | Post sin fila en Notion | El receptor lo ignora y **no** intenta escribir (§14.7, aviso del spread) |
+| **Fallo tras subir el asset** | Copy de 2593 caracteres → `400`. La fila queda en `Error` con el motivo real, `postiz_media` vacío, y **el media borrado**: 30 vivos antes y después |
 | Límite de Cloudflare | 90 MB pasa · 100 MB y 150 MB dan `413` del edge |
 | Diagnóstico de §4.4.1 | `Post.id` y `releaseId` disjuntos en producción (0 coincidencias) |
 

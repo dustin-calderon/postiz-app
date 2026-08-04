@@ -102,13 +102,18 @@ El pipeline Notion → Postiz sube cada asset con `POST /public/v1/upload-from-u
 
 Lo mitiga que el worker guarda `postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar, así que un mismo asset no se duplica por reintento. Queda basura sólo cuando la fila se abandona sin corregirse.
 
-**Opciones si algún día molesta** (ninguna implementada, es una decisión abierta):
+**✅ Resuelto para el caso que lo generaba** (2026-08-04): se añadió **`DELETE /public/v1/media/:id`** a la API pública del fork y el worker borra lo que acaba de subir si el `POST /posts` falla, vaciando además `postiz_media` para que el reintento vuelva a subir.
 
-| Opción | Coste |
+El endpoint espeja el borrado de la UI —soft-delete— en vez de inventar semántica nueva, así que el blob lo sigue quitando la Phase 2 pasado el periodo de gracia. Comprueba la pertenencia a la organización de forma explícita y devuelve `404` legible para un id ajeno, inexistente o ya borrado.
+
+Verificado con un fallo real: 30 medios vivos antes y después.
+
+**Lo que sigue sin cubrir** (y hoy no compensa):
+
+| Caso | Por qué se deja |
 |---|---|
-| Que el worker borre el media si el `POST /posts` falla | No hay endpoint público de borrado de media — habría que añadirlo |
-| Barrido periódico de media sin referencia en ningún `Post` y con `createdAt` antiguo | Una Phase 3; hay que ser muy cuidadoso con los FK guards |
-| No hacer nada y soft-borrar a mano de vez en cuando | Gratis, y hoy suficiente al volumen que hay |
+| Subida parcial de un carrusel (asset 1 sube, asset 2 falla) | El primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
+| Media subida por un cliente de API que simplemente la abandona | Ya no es nuestro caso; y un barrido genérico por «sin referencia en ningún Post» es peligroso con los FK guards |
 
 ---
 
