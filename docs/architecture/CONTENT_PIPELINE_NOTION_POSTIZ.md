@@ -341,7 +341,7 @@ Y tres cosas que **no** son propiedades nuevas:
 
 - **`post_type`** sale de `Tipo` (§7.1). Es obligatorio en la API (`@IsDefined()` en `InstagramDto`), pero no hace falta pedirlo dos veces.
 - **`publish_at`** es `Fecha`, con hora (§7.5).
-- **`release_url`** reutiliza la propiedad `URL` que ya existe. *(Si `URL` ya tiene otro uso, se añade una propia — pendiente de confirmar.)*
+- **`release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
 
 > **El aviso de error va al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n lo resuelve a email, con una dirección general de reserva (§10, Fase 3b).
 
@@ -919,7 +919,7 @@ Verificado sobre la base real: la fila «Tres cosas básicas…» guarda `2026-0
 
 El esquema devuelve `"Fecha": { "time_format": " " }` — el campo **no muestra hora**. Notion sí puede guardar `datetime` (existe `date:Fecha:is_datetime`), pero mientras el formato no incluya hora, quien rellene la fila **verá sólo el día** y no podrá elegir la hora.
 
-Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. **Es bloqueante para la Fase 3b.**
+Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. Era **bloqueante para la Fase 3b**; resuelto arriba. Lo que sigue vigente es la regla del worker: una fila sin hora va a `Error`, nunca se adivina.
 
 > En Notion: abrir la propiedad `Fecha` → *Formato de fecha* → activar **Incluir hora**. El DDL de la API no permite cambiar el formato de visualización.
 
@@ -935,7 +935,7 @@ Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. **Es bloq
 > Nota menor: el `ALTER` que puso las opciones **borró la descripción** de esa propiedad. Reponerla a mano si molesta.
 
 **8. ✅ Resuelto — la integración de Notion ya existe.** El token de `#ARCHIVE/Motion_to_Notion/.env` ya tiene acceso al calendario por herencia. Ver Fase 3b.
-> **El botón no se crea aquí**, sino en la Fase 3b: necesita la URL del webhook de n8n, que todavía no existe.
+> **El botón no se crea aquí**, sino en la Fase 3b: necesitaba la URL del webhook de n8n. Ya existe — `https://auto.dustincalderon.com/webhook/postiz-sync-ig`, con la cabecera `X-Sync-Token` (§10, Fase 3b, punto 14).
 
 ### Fase 3a — Los dos cambios en el fork · 2-3 h
 
@@ -971,11 +971,15 @@ Ventana elegida: sólo había **1 post en cola, para el 14 de agosto**. Su workf
 > - La **consulta corregida** devuelve la fila con `content` y `state`.
 > - El **camino de fallo** se ejecutó de verdad (`getPost → changeState → sendWebhooks`, `COMPLETED`).
 >
-> Lo único que falta es el **destino**: la tabla `Webhooks` está vacía y darlo de alta exige la UI (§14.7).
+> Y el **destino** ya está dado de alta, con la entrega comprobada contra producción (§14.7).
 
 **10. `externalId` — ⏸️ NO se hizo, a propósito.** Columna nullable en `Post` + índice único `[organizationId, externalId]` + comprobación en `createPost` que devuelva el post existente en vez de crear otro.
 
-Da idempotencia al worker, pero **sin worker no tiene consumidor**: sería una migración sobre la base de producción para un llamante que aún no existe. Se hace cuando el sync esté montado y se sepa qué necesita de verdad.
+Da idempotencia al worker, pero **sin worker no tenía consumidor**: sería una migración sobre la base de producción para un llamante que aún no existía.
+
+> **Ahora el worker existe, así que toca revisitarlo — y la respuesta sigue siendo "todavía no".** El candado de §9.6 (crear sólo si `postiz_post_id` está vacío) cubre el caso normal; la ventana de duplicado es el segundo exacto entre el `POST /posts` y el write-back a Notion. Con una pasada al día y una pulsación ocasional, es un riesgo diminuto frente a una migración sobre producción.
+>
+> **El disparador para hacerlo** es que aparezca un duplicado real, o que el sync pase a correr con frecuencia. Entonces `externalId` lo vuelve imposible por construcción y n8n deja de tener que acordarse de nada.
 
 ### Fase 3b — El sync en n8n · **CERRADA**
 
@@ -1059,7 +1063,7 @@ Verificado contra la API real:
 12. ✅ **Subflow de sync** (§9.2) con el margen de seguridad (§9.3) — `A0XMq6dLdAWvwMPv`.
 13. ✅ **Cron 06:00 Europe/Madrid** sobre la ventana de 15 días (`eKxZPM4zjwhNb3vf`) **+ retirada y recuperación a las 06:20** (`rxVcGlxSZjzzI5ez`, §14.3). Confirmado que la zona del cron es Madrid de verdad: el contenedor de n8n corre con `TZ` y `GENERIC_TIMEZONE` = `Europe/Madrid`.
 14. ⏸️ **A mano en la UI de Notion** (la API no permite crearlos, §9.1): propiedad Botón `Sincronizar ahora` → acción *Enviar webhook* → `https://auto.dustincalderon.com/webhook/postiz-sync-ig`, con la cabecera `X-Sync-Token`. Opcionalmente, automatización `publicación → Listo` → mismo webhook.
-15. ✅ **Receptor del webhook de Postiz** — `VMezjZaMTIU5dIUz`, probado con los cuatro payloads. Falta darlo de alta en Postiz (§14.7).
+15. ✅ **Receptor del webhook de Postiz** — `VMezjZaMTIU5dIUz`, probado con los cuatro payloads, **dado de alta en Postiz y con la entrega verificada** (§14.7).
 16. ✅ **Dry-run hecho — programando de verdad, no con `modo = borrador`.** Se creó un post con fecha dentro de ventana, se comprobó en Postiz y se retiró con la propia pasada de retirada. Cero publicaciones en Instagram.
 
 > ### ⚠️ Los drafts se saltan la validación entera
@@ -1257,19 +1261,19 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 | Posts de prueba en Postiz (2027 y 18-ago) + comentarios | ✅ Soft-deleted (por la propia retirada) |
 | Workflows de Temporal `zzaudit-webhookpath-1`, `zzaudit-entrega-1/2` | ⏸️ Completados, quedan en el historial |
 | Borrador de prueba de la entrega (`cmsegdkbi…`) | ✅ Borrado vía API |
-| 4 media de prueba (~470 MB) | ⏸️ **Pendiente: borrarlos en la UI** — ver §14.7 |
+| 4 media de prueba (~470 MB) | ✅ Soft-deleted — el blob lo borra la limpieza a los 7 días |
 
 > ### 🔑 El token del webhook estaba en `/tmp` y era legible por cualquiera
 > `/tmp/wf/token.txt` no era "una referencia": su contenido **coincidía exactamente** con el `N8N_SYNC_IG_TOKEN` vivo, con permisos `664` (lectura para todo el mundo) en un directorio que cualquier usuario del host puede listar.
 >
 > Borrado. El valor sigue donde debe: en `/opt/homeserver/.env` y en la credencial cifrada de n8n.
 
-> ### ⚠️ El media de prueba habría quedado huérfano para siempre
-> Se subió con `POST /upload` pero **nunca se publicó**. El Step 2 de la limpieza (§4.7) sólo hace candidatos a los medias que aparecen en un post `PUBLISHED`: **un fichero subido y no publicado no lo recoge nadie**.
+> ### ⚠️ Un fichero subido y no publicado no lo recoge nadie
+> El Step 2 de la limpieza (§4.7) sólo hace candidatos a los medias que aparecen en un post `PUBLISHED`: **si nunca se publicó, la fase 1 no lo ve jamás**.
 >
-> Se soft-borró a mano para que la Phase 2 elimine el blob a los 7 días.
+> La salida es soft-borrarlo a mano. **Verificado que eso basta:** la fase 2 (`findOrphanedSoftDeletedMedia`) selecciona cualquier media con `deletedAt` de más de 7 días, sin mirar si se publicó. Es decir, el agujero está en *quién marca el `deletedAt`*, no en la limpieza.
 >
-> **Esto no es un caso de prueba, es un agujero del pipeline:** cada vez que el sync suba un asset y el `POST /posts` falle después, ese fichero queda huérfano y permanente. El worker debe borrar el media si la creación del post falla, o habrá que barrerlos periódicamente. **Pendiente de decidir.**
+> **Sigue siendo un agujero del pipeline, y ahora con un emisor real:** cada vez que el sync suba un asset y el `POST /posts` falle después, ese fichero queda huérfano y permanente. Lo mitiga que el reintento **reutiliza `postiz_media`** en vez de resubir (§8.1), así que no se acumulan por reintento — sólo queda basura si la fila se abandona. **Decisión #6 de §11, aún abierta.**
 
 ### 14.6 Qué se verificó ejecutándolo, y qué no
 
@@ -1345,12 +1349,16 @@ Es exactamente lo que §4.4.1 decía que **no** llegaba, más los dos campos que
 >
 > El resto de esa pantalla —CLI, skill del agente, MCP de Postiz, nodo comunitario de n8n— **no se usa a propósito**: todo eso publica *directamente en Postiz*, saltándose Notion, que es justo lo que prohíbe §6. La Fase 4 usa el **MCP de Notion**, no el de Postiz.
 
-**Queda pendiente en la misma UI:** borrar en la biblioteca de medios los ficheros de prueba (~470 MB, dos reels de 150 MB y dos imágenes, del 3-4 de agosto). No hay endpoint público para borrar media, y si se quedan son huérfanos permanentes — el mismo agujero de §14.5.
+**Los medios de prueba ya están soft-deleted** (~470 MB: dos reels de 150 MB y dos imágenes). No hay endpoint público para borrar media, así que se marcaron igual que hace el botón de la UI (`deletedAt = now()`, `media.repository.ts:52-62`), tras comprobar que ningún post vivo los referenciaba.
+
+El blob físico lo borra la **fase 2** de la limpieza, que recoge **cualquier** media con `deletedAt` de más de 7 días —publicado o no (`findOrphanedSoftDeletedMedia`, `media.repository.ts:394-413`)—. Verificado que el limpiador está vivo: `RUN_CRON=true` y el workflow `media-cleanup-workflow` lleva **29 ciclos completados**.
 
 ## 15. Fuentes
 
 **Código de este repositorio** (autoridad para todo lo relativo a Postiz):
-`upload.factory.ts` · `cloudflare.storage.ts` · `app.module.ts` · `throttler.provider.ts` · `instagram.provider.ts` · `instagram.dto.ts` · `create.post.dto.ts` · `get.posts.dto.ts` · `posts.service.ts` · `post.activity.ts` · `post.workflow.v1.0.5.ts` · `public.integrations.controller.ts` · `schema.prisma` · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
+`upload.factory.ts` · `cloudflare.storage.ts` · `local.storage.ts` · `app.module.ts` · `throttler.provider.ts` · `instagram.provider.ts` · **`instagram.standalone.provider.ts`** · `instagram.dto.ts` · `create.post.dto.ts` · `media.dto.ts` · **`valid.url.path.ts`** · `has.extension.ts` · `custom.upload.validation.ts` · `get.posts.dto.ts` · `posts.service.ts` · `posts.repository.ts` · `media.repository.ts` · `webhooks.repository.ts` · `webhooks.controller.ts` · `post.activity.ts` · `post.workflow.v1.0.5.ts` · **`post.workflow.v1.0.6.ts`** · `public.integrations.controller.ts` · `schema.prisma` · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md)
+
+**Fuera del repositorio** (§14.3): los cuatro workflows de n8n, exportados en `/opt/homeserver/n8n-workflows/`.
 
 **Notion (workspace real):** calendario `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 

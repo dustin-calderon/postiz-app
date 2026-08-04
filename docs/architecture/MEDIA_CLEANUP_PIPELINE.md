@@ -1,8 +1,9 @@
 # 🗑️ Media Auto-Cleanup Pipeline
 
 > **Estado**: ✅ Producción  
-> **Última revisión**: 2026-07-06  
-> **Responsable de diseño**: Custom fork (`custom/postiz-dc`)
+> **Última revisión**: 2026-08-04  
+> **Responsable de diseño**: Custom fork (`custom/postiz-dc`)  
+> **Relacionado**: [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) — desde agosto de 2026 hay un worker que sube medios por API, y eso cambia el perfil de basura que genera el sistema (ver «Limitación conocida»).
 
 ---
 
@@ -84,6 +85,30 @@ Ambas fases procesan en **batches de 100** y **loopean hasta vaciar** los candid
 | **Soft-delete primero** | Phase 1 no borra registros de DB, solo marca `deletedAt`. Reversible. |
 | **Orphan grace period** | Phase 2 espera 7 días tras `deletedAt` antes de hard-delete |
 | **Thumbnail safe** | Elimina thumbnail solo si es distinto del path principal. Fallo non-critical. |
+
+---
+
+## ⚠️ Limitación conocida: la media que nunca se publicó no la recoge nadie
+
+El filtro del **Step 2 es positivo**: sólo es candidato lo que aparece en un `Post` con `state='PUBLISHED'`. Eso protege bien contra falsos positivos, pero deja un hueco simétrico:
+
+> **Un fichero subido y nunca publicado no entra jamás en la Phase 1.** No es que tarde: es que no es candidato, ni a los 30 días ni a los tres años.
+
+**La Phase 2 sí lo limpiaría**, porque `findOrphanedSoftDeletedMedia()` selecciona por `deletedAt` sin mirar si se publicó. El problema no está en la limpieza, está en **quién marca ese `deletedAt`**: hoy sólo una persona, desde la UI.
+
+### Por qué esto importa más desde agosto de 2026
+
+El pipeline Notion → Postiz sube cada asset con `POST /public/v1/upload-from-url` **antes** de crear el post. Si la creación falla después (validación de Instagram, red, throttle), el fichero queda subido y sin dueño.
+
+Lo mitiga que el worker guarda `postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar, así que un mismo asset no se duplica por reintento. Queda basura sólo cuando la fila se abandona sin corregirse.
+
+**Opciones si algún día molesta** (ninguna implementada, es una decisión abierta):
+
+| Opción | Coste |
+|---|---|
+| Que el worker borre el media si el `POST /posts` falla | No hay endpoint público de borrado de media — habría que añadirlo |
+| Barrido periódico de media sin referencia en ningún `Post` y con `createdAt` antiguo | Una Phase 3; hay que ser muy cuidadoso con los FK guards |
+| No hacer nada y soft-borrar a mano de vez en cuando | Gratis, y hoy suficiente al volumen que hay |
 
 ---
 
@@ -176,6 +201,19 @@ docker logs postiz 2>&1 | grep -i 'MediaCleanup'
 | `UNNEST` sin precedente en codebase | Reescrito con `Prisma.join()` + LIKE clauses |
 | Sin heartbeat log con 0 candidatos | Log siempre |
 | `while(true)` sin try/catch en workflow | Añadido try/catch resiliente |
+
+### Auditoría v3 (2026-08-04) — sin bugs; una limitación documentada
+
+Revisión provocada por el pipeline Notion → Postiz, que empezó a subir medios por API. **No se encontró ningún bug**: las dos fases hacen lo que este documento dice, verificado leyendo `media.repository.ts` y contra la base de producción.
+
+| Comprobación | Resultado |
+|---|---|
+| Phase 2 recoge media soft-deleted **aunque nunca se publicara** | ✅ `findOrphanedSoftDeletedMedia()` filtra sólo por `deletedAt`, `:394-413` |
+| Step 3 protege con `p."deletedAt" IS NULL` | ✅ `:338-350` |
+| Step 2 cuenta posts soft-deleted como prueba de uso | ✅ `:304-319` |
+| El workflow está vivo | ✅ `RUN_CRON=true`, `media-cleanup-workflow` con 29 ciclos completados |
+
+Lo añadido es la sección **«Limitación conocida»**: el hueco no está en la limpieza sino en que nadie marca `deletedAt` de un fichero subido y nunca publicado.
 
 ### Auditoría v2 (2026-07-06) — 3 bugs corregidos
 
