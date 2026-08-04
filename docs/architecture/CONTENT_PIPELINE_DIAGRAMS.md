@@ -21,7 +21,7 @@
 
 ```mermaid
 flowchart LR
-    EQUIPO["👤 Equipo<br/>escribe copy, arrastra el fichero,<br/>marca publicación = Listo"]
+    EQUIPO["👤 Equipo<br/>escribe copy, arrastra el fichero,<br/>marca Status = Listo"]
 
     subgraph NOTION["NOTION · fuente de verdad"]
         CAL[("Calendario Social Media<br/>11 propiedades del pipeline")]
@@ -76,7 +76,7 @@ flowchart TD
     WH1["🔗 Webhook postiz-sync-ig<br/>cabecera X-Sync-Token"]
     WH2["🔗 Webhook ruta secreta<br/>para el botón de Notion"]
 
-    LEER["Notion: leer cola<br/>filtro: Plataforma=Instagram<br/>Y publicación no vacía"]
+    LEER["Notion: leer cola<br/>filtro: Plataforma=Instagram<br/>Y Status no vacío"]
     PLAN{{"Planificar<br/>puertas y validaciones"}}
 
     CRON --> LEER
@@ -85,7 +85,7 @@ flowchart TD
     LEER --> PLAN
 
     PLAN -->|"crear · recrear"| LOOP["Recorrer filas<br/>batch = 1"]
-    PLAN -->|"ERROR"| MARCAR["Notion: marcar Error<br/>publicación=Error + motivo"]
+    PLAN -->|"ERROR"| MARCAR["Notion: marcar Error<br/>Status=Error + motivo"]
     PLAN -->|"ignorar · fuera de ventana<br/>saltar · no tocar"| NADA["Sin acción"]
 
     LOOP --> SUB["Ejecutar subflow<br/>espera a que termine"]
@@ -103,7 +103,7 @@ y sale como «saltar» en vez de `Error` — lo contrario de la regla.
 
 ```mermaid
 flowchart TD
-    START(["fila de Notion"]) --> P1{"publicación<br/>= Publicado?"}
+    START(["fila de Notion"]) --> P1{"Status<br/>= Publicado?"}
     P1 -->|sí| NT["no tocar jamás"]
     P1 -->|no| P2{"estado vivo?<br/>Listo · Programado<br/>En Postiz borrador"}
     P2 -->|no| IG1["ignorar"]
@@ -194,7 +194,7 @@ Va 20 minutos después del sync para que los `❌ postiz_post_id` ya estén escr
 flowchart TD
     CR["⏰ Cron 06:20 Madrid"] --> GP["Postiz: GET ventana<br/>de hoy-30d a hoy+15d"]
     WM["🔗 Webhook manual"] --> GP
-    GP --> GN["Notion: filas vivas<br/>toda fila con publicación puesta"]
+    GP --> GN["Notion: filas vivas<br/>toda fila con Status puesto"]
     GN --> RECON{{"Reconciliar"}}
 
     RECON -->|"post que nadie reclama"| QR["¿retirar?"]
@@ -268,7 +268,7 @@ flowchart TD
 
 ---
 
-## 6. La propiedad `publicación`, estado a estado
+## 6. La propiedad `Status`, estado a estado
 
 Sólo hay una transición que escribe una persona: **`Listo`**. Todo lo demás lo pone n8n.
 
@@ -323,14 +323,14 @@ sequenceDiagram
     Note over E,N: puede pulsar el botón y no esperar al cron
 
     S->>N: 06:00 · lee la cola
-    N-->>S: filas con publicación puesta
+    N-->>S: filas con Status puesto
     S->>N: pide la URL FRESCA del asset
     S->>P: POST /upload-from-url (sólo la URL)
     P->>N: descarga el fichero por streaming
     S->>N: escribe ❌ postiz_media
     S->>P: POST /posts
     P-->>S: postId
-    S->>N: ❌ postiz_post_id + publicación=Programado
+    S->>N: ❌ postiz_post_id + Status=Programado
     P->>T: arranca postWorkflowV106
 
     R->>P: 06:20 · GET ventana
@@ -341,7 +341,7 @@ sequenceDiagram
     T->>I: publica
     I-->>T: permalink
     T->>W: webhook con el post completo
-    W->>N: publicación=Publicado + ❌ release_url
+    W->>N: Status=Publicado + ❌ release_url
 ```
 
 ---

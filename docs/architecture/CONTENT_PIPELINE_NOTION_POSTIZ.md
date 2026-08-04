@@ -17,7 +17,7 @@
 
 Tres herramientas, todas con UI, ninguna que obligue al equipo a programar.
 
-**Notion es la fuente de verdad (SSoT) — incluidos los ficheros máster.** El equipo no sale de Notion: planifica, escribe el copy, arrastra el vídeo a la fila y marca `publicación = Listo`.
+**Notion es la fuente de verdad (SSoT) — incluidos los ficheros máster.** El equipo no sale de Notion: planifica, escribe el copy, arrastra el vídeo a la fila y marca `Status = Listo`.
 
 La restricción que gobierna todo el diseño es que **Notion no sirve URLs públicas estables** (enlaces firmados con 1 hora de caducidad) e **Instagram exige una URL alcanzable desde internet**. Por tanto los bytes tienen que acabar en un host público en el momento de publicar.
 
@@ -297,8 +297,8 @@ De aquí sale la regla más importante de toda la implementación:
 - ✗ **Postiz nunca escribe en Notion.** Quien cierra el bucle es n8n. Dos escritores = ninguna verdad.
 - ✗ **Nunca se aprueba dentro de Postiz.** Dos sitios de aprobación = ninguno fiable en tres semanas.
 - ✗ **Nunca hay un LLM dentro del camino de publicación.** La creatividad ocurre antes, en Notion.
-- ✗ **Nunca se editan a mano** `❌ postiz_post_id`, `❌ postiz_media`, `❌ release_url` ni `publicación = Programado`.
-- ✓ **El `❌ postiz_post_id` dice la verdad, no el `status`.** El status es para las personas; el ID es para la máquina.
+- ✗ **Nunca se editan a mano** `❌ postiz_post_id`, `❌ postiz_media`, `❌ release_url` ni `Status = Programado`.
+- ✓ **El `❌ postiz_post_id` dice la verdad, no el `Status`.** El estado es para las personas; el ID es para la máquina: si los dos se contradicen, manda el ID.
 - ✓ **Una fila = un post = una integración.** Aunque hoy sólo haya Instagram.
 
 ---
@@ -309,7 +309,9 @@ De aquí sale la regla más importante de toda la implementación:
 
 ### 7.1 Lo que ya tiene y se aprovecha
 
-`Name`, `Status`, `Brand` (4 marcas), `Plataforma` (5), `Tipo`, `Fecha`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas`, `Validación`.
+`Name`, `Brand` (4 marcas), `Plataforma` (5), `Tipo`, `Fecha`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas`, `Validación`.
+
+*(Había también un `Status` de tipo *status* con el ciclo de producción del equipo. Se fusionó con el estado del pipeline — §7.2.)*
 
 Dos alimentan el pipeline sin tocarlas:
 
@@ -341,7 +343,7 @@ El worker **sólo mira filas con `Plataforma` conteniendo Instagram**. Todo lo d
 | `media` | **Files** | equipo | `value[0].image[]` — **en orden** |
 | `first_comment` | Text | equipo / agente | `value[1].content` (§7.3) |
 | `modo` | Select: `borrador`·`programar` | equipo | **`type`** (§7.2.2) |
-| `publicación` | Select | equipo → n8n | ✗ — el estado del pipeline (§8) |
+| `Status` | Select | equipo → n8n | ✗ — el estado del pipeline (§8) |
 | `❌ postiz_post_id` | Text | **n8n** | — el candado |
 | `❌ postiz_media` | Text | **n8n** | — JSON `[{id, path}]`, mismo orden que `media`. Ver aviso |
 | `❌ error_log` | Text | **n8n** | — último error |
@@ -357,10 +359,10 @@ Y tres cosas que **no** son propiedades nuevas:
 > ### ⚠️ Renombrar una propiedad rompe el worker
 > Los workflows buscan las propiedades **por su nombre exacto**, acentos y emoji incluidos. Renombrar una en Notion y no tocar n8n tiene dos desenlaces, ninguno bueno:
 >
-> - `Plataforma` o `publicación` → el sync falla entero y **no publica nada**. Al menos se nota.
+> - `Plataforma` o `Status` → el sync falla entero y **no publica nada**. Al menos se nota.
 > - Cualquier otra → el sync sigue corriendo pero **deja de ver ese campo**, y la fila acaba en `Error` con un motivo engañoso («sin cuenta» con la cuenta puesta).
 >
-> **Se puede renombrar**, pero hay que actualizar los cuatro workflows en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Status`, `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas` y `Validación`. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
+> **Se puede renombrar**, pero hay que actualizar los cuatro workflows en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas` y `Validación`. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
 
 Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
@@ -381,12 +383,17 @@ Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log
 > [{"id":"…","path":"https://postiz.dustincalderon.com/uploads/…"}]
 > ```
 
-> ### Por qué `publicación` y no ampliar `Status`
-> Lo natural sería añadir `Listo`, `Programado` y `Error` al `Status` que ya tienes y tener un único ciclo. **Pero `Status` es de tipo *status* y el DDL de la API de Notion no permite añadirle opciones** — habría que hacerlo a mano.
+> ### `Status` es una sola propiedad, y antes fueron dos
+> El diseño original tenía **dos**: el `Status` original —de tipo *status*, con el ciclo de producción del equipo— y una `publicación` aparte con los estados del pipeline. La razón era técnica: **al tipo *status* la API de Notion no le puede añadir opciones**, así que no había forma de meterle `Listo`, `Programado` ni `Error` desde un script.
 >
-> Además `Status` cubre LinkedIn y YouTube, donde esos estados no significan nada.
+> **Se fusionaron.** El `Status` original se borró y `publicación` pasó a llamarse `Status`. Dos motivos:
 >
-> Se crea `publicación` aparte para no bloquear el montaje. **Si prefieres un único campo, amplía `Status` a mano y se elimina `publicación`** — el worker sólo necesita saber qué propiedad mirar.
+> - **Convivían dos vocabularios que se pisaban.** «Borrador» significaba una cosa en `Status`, otra en `modo` y otra en `publicación`. «Publicado» aparecía en dos propiedades con sentidos distintos —lo dio por cerrado una persona, o salió de verdad en Instagram—.
+> - **El calendario es de Instagram.** De 136 filas, 99 son sólo de Instagram y apenas 4 de otra plataforma. Mantener un ciclo de producción separado «para las demás plataformas» no compensaba.
+>
+> El `Status` que queda es un *select*, así que **ahora sí se le pueden añadir opciones por API** si algún día hace falta vocabulario de producción (`Sin empezar`, `En progreso`).
+>
+> Se guardó copia de los 136 valores del `Status` anterior en `/opt/homeserver/n8n-workflows/backup-Status-20260804.json`.
 
 > ### Por qué `cuenta` y no reutilizar `Brand`
 > `Brand` es multi-select y sirve para planificar. Si el worker dependiera de que tenga exactamente un valor, sería **una convención que la máquina necesita y no puede verificar** — justo lo que falla un martes cualquiera. Una propiedad explícita cuesta menos que ese riesgo, y `Brand` sigue sin restricciones nuevas.
@@ -420,7 +427,7 @@ Por defecto, `programar`.
 
 `borrador` sirve para dos cosas: el **dry-run** editorial y para revisar una pieza en la vista real de Postiz antes de soltarla. Cambiar de `borrador` a `programar` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
 
-> **No contradice "nunca se aprueba en Postiz" (§6).** La aprobación sigue siendo `publicación = Listo` en Notion. `modo` sólo decide qué hace Postiz con algo ya aprobado. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
+> **No contradice "nunca se aprueba en Postiz" (§6).** La aprobación sigue siendo `Status = Listo` en Notion. `modo` sólo decide qué hace Postiz con algo ya aprobado. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
 ### 7.2.3 Ajustes opcionales de Instagram
 
@@ -523,7 +530,7 @@ No se resuelve con código: se resuelve exportando los slides de un carrusel con
 
 ## 8. Máquina de estados
 
-Las opciones de la propiedad `publicación` (§7.2):
+Las opciones de la propiedad `Status` (§7.2):
 
 ```
                                       modo = programar
@@ -541,19 +548,19 @@ Las opciones de la propiedad `publicación` (§7.2):
 
 **El equipo sólo escribe `Listo`.** Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-El `Status` que ya tienes sigue siendo tuyo y describe la producción de la pieza —Borrador, En progreso, Publicado…— para todas las plataformas. **n8n no lo toca nunca.**
+**`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
-A partir de `Listo` nadie vuelve a tocar `publicación` — pero **sí se puede seguir editando el contenido**: el sync propaga los cambios mientras el post no se haya publicado (§9).
+A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir editando el contenido**: el sync propaga los cambios mientras el post no se haya publicado (§9).
 
 `Programado → Publicado` y `Programado → Error` los escribe n8n al recibir el webhook de Postiz. Ninguna de las dos transiciones necesita polling.
 
-**Con `modo = borrador`** (§7.2.2) la fila sincronizada no va a `Programado` sino a **`En Postiz (borrador)`**. Es un estado propio a propósito: si reutilizáramos `Programado`, alguien daría por hecho que va a salir y no saldría nunca. Desde ahí se pasa a `Programado` cambiando `modo`, no la propiedad `publicación`.
+**Con `modo = borrador`** (§7.2.2) la fila sincronizada no va a `Programado` sino a **`En Postiz (borrador)`**. Es un estado propio a propósito: si reutilizáramos `Programado`, alguien daría por hecho que va a salir y no saldría nunca. Desde ahí se pasa a `Programado` cambiando `modo`, no la propiedad `Status`.
 
-**Postiz no se entera de que la pieza existe hasta que `publicación = Listo`.** El borrador *editorial* vive en Notion y no sale de ahí. Lo que Postiz recibe ya está aprobado; `modo` sólo decide si además queda programado o esperando.
+**Postiz no se entera de que la pieza existe hasta que `Status = Listo`.** El borrador *editorial* vive en Notion y no sale de ahí. Lo que Postiz recibe ya está aprobado; `modo` sólo decide si además queda programado o esperando.
 
 ### 8.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `publicación` a `Listo` vaciando `❌ error_log`.
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo` vaciando `❌ error_log`.
 
 Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
@@ -602,8 +609,8 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 | Situación | Acción |
 |---|---|
 | `Plataforma` no contiene Instagram | Invisible para el worker |
-| `publicación` vacío | No crear nada — **la retirada (§9.7) lo borra de Postiz si existía** |
-| `publicación` = `Publicado` | **No tocar jamás** |
+| `Status` vacío | No crear nada — **la retirada (§9.7) lo borra de Postiz si existía** |
+| `Status` = `Publicado` | **No tocar jamás** |
 | Dentro del margen de seguridad (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
 | `❌ postiz_post_id` vacío | Crear |
 | Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** |
@@ -611,7 +618,7 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 | `Fecha` sin hora | `Error` — nunca se adivina la hora |
 | `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
 
-> ⚠️ La segunda fila **no es "ignorar y seguir"**. Si sólo se implementa esta tabla y no §9.7, vaciar `publicación` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
+> ⚠️ La segunda fila **no es "ignorar y seguir"**. Si sólo se implementa esta tabla y no §9.7, vaciar `Status` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
 
 > ### ⚠️ El orden de las puertas importa: primero la hora, después la ventana
 > Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen de 2 h se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
@@ -641,11 +648,11 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
       value[1].content            = first_comment        (si lo hay, §7.3)
       settings.collaborators[]    = colaboradores        (si los hay)
       └──► ESCRIBE ❌ postiz_post_id                        [write 2]
-           publicación = Programado           si modo = programar
-           publicación = En Postiz (borrador) si modo = borrador
+           Status = Programado           si modo = programar
+           Status = En Postiz (borrador) si modo = borrador
 
    si el paso 5 falla:
-      publicación = Error · ❌ error_log = motivo
+      Status = Error · ❌ error_log = motivo
       y si el media se subió EN ESTA pasada:
         DELETE /public/v1/media/:id  +  vaciar ❌ postiz_media
 ```
@@ -719,12 +726,12 @@ Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay q
 Con el webhook de fallo añadido (§4.4), **publicado y fallido llegan por el mismo canal**:
 
 ```
-Postiz publica (o falla) ──webhook──► n8n ──► publicación = Publicado | Error
+Postiz publica (o falla) ──webhook──► n8n ──► Status = Publicado | Error
                                               ❌ release_url = permalink   (si publicó)
                                               ❌ error_log   = motivo      (si falló)
 ```
 
-> Es `publicación`, la propiedad del pipeline — **nunca `Status`**, que es tuya y n8n no toca jamás (§6, §8).
+> Es la propiedad `Status` de Notion — no confundir con el `state` interno de Postiz, que es otra cosa y usa otros valores (`QUEUE`, `PUBLISHED`, `ERROR`).
 
 n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, el post está en Instagram aunque el `state` diga `ERROR` (§4.4.3). Sólo si vienen vacíos y el `state` es `ERROR` la fila va a `Error`. Cualquier otra cosa se ignora sin escribir nada.
 
@@ -767,7 +774,7 @@ El subflow de §9.2 itera sobre las filas de Notion. Todo lo que desaparece de e
 | Acción en Notion | Sin pasada de retirada |
 |---|---|
 | Se borra la fila | El post se publica igualmente |
-| `publicación` vuelve de `Listo` a vacío | El post se publica igualmente |
+| `Status` vuelve de `Listo` a vacío | El post se publica igualmente |
 | `publish_at` se mueve fuera de la ventana | Se publica en la fecha vieja |
 
 El segundo es el más traicionero: la regla "`status` ∈ (Idea, Draft) → ignorar" hace exactamente lo contrario de lo que la gente espera. Alguien retira un post a borrador para repensarlo, y sale publicado.
@@ -780,7 +787,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
    └─ FILTRAR por creationMethod === 'API'         ← ver aviso rojo
    └─ para cada post aún no publicado en la ventana:
         ¿sigue habiendo una fila viva en Notion que lo reclame?
-          (viva = publicación en Listo · Programado · En Postiz (borrador))
+          (viva = Status en Listo · Programado · En Postiz (borrador))
           no ──► DELETE /public/v1/posts/:id
 ```
 
@@ -794,7 +801,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 > | UI de Postiz | `WEB` |
 > | Este pipeline (API pública) | `API` |
 >
-> **La retirada sólo toca `API`.** Comprobado: con el post de prueba reclamado, la pasada devuelve «nada que hacer» y el post `WEB` sigue intacto; al vaciar `publicación`, se lleva el de la API —y su comentario— y sigue sin tocar el `WEB`.
+> **La retirada sólo toca `API`.** Comprobado: con el post de prueba reclamado, la pasada devuelve «nada que hacer» y el post `WEB` sigue intacto; al vaciar `Status`, se lleva el de la API —y su comentario— y sigue sin tocar el `WEB`.
 
 > ### ⚠️ El endpoint no filtra por estado
 > `posts.repository.ts:129-172` **no filtra por `state`**: devuelve también `PUBLISHED`, `ERROR` y `DRAFT`. Y con `intervalInDays` no nulo puede devolver posts **fuera de la ventana** (`:152-157`).
@@ -906,7 +913,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 
 ### 10.2 La capa creativa — el motivo de todo esto
 
-- Redacción de borradores con Claude vía **Notion MCP**, creando filas con el copy ya escrito y `publicación` vacío, listas para revisar.
+- Redacción de borradores con Claude vía **Notion MCP**, creando filas con el copy ya escrito y `Status` vacío, listas para revisar.
 - Sistema de captura de materia prima: ideas, objeciones reales de clientes, ángulos.
 
 > **No necesita que se construya nada antes**, y es la única razón por la que el resto merece la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
@@ -937,7 +944,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | Estructura en Notion | **Una sola tabla** — el calendario existente, con 11 propiedades más (§7.2) |
 | IDs de integración | Los tres, verificados en la base de datos (§7.2.1) |
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
-| Estado del pipeline | Propiedad `publicación`, separada del `Status` humano (§7.2) |
+| Estado del pipeline | Propiedad `Status`, única — antes eran dos y se fusionaron (§7.2) |
 | Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
 | Archivo en Drive | **Después**, cuando el pipeline funcione. Trabajo aparte, fuera del camino de publicación |
 | Plan de Notion | **De pago** → el botón webhook es viable |
@@ -1032,7 +1039,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
-**11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `publicación`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. Tipos y opciones correctos.
+**11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. Tipos y opciones correctos.
 
 > ### ⚠️ Las descripciones de propiedad no se pueden escribir por API — y se borran solas
 > Comprobado ejecutándolo contra Notion:
@@ -1051,9 +1058,9 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | Vista | Tipo | Filtro | Orden |
 |---|---|---|---|
 | `IG · Publicación` | tabla | `Plataforma` contiene `Instagram` | `Fecha` ascendente |
-| `⚠️ Averías` | tabla | `publicación` es `Error` | `Fecha` ascendente |
+| `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
 
-`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `publicación`, `modo`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `❌ error_log` y `❌ postiz_post_id`.
+`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `Status`, `modo`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `❌ error_log` y `❌ postiz_post_id`.
 
 **1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas** (`time_format: "H:mm"`).
 
