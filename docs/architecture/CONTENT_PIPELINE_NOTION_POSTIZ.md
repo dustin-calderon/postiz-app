@@ -309,7 +309,9 @@ De aquí sale la regla más importante de toda la implementación:
 
 ### 7.1 Lo que ya tiene y se aprovecha
 
-`Name`, `Brand` (4 marcas), `Plataforma` (5), `Tipo`, `Fecha`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas`, `Validación`.
+`Name`, `Brand` (4 marcas), `Plataforma` (5), `Tipo`, `Fecha`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Agendada`, `Validación`.
+
+> Esta lista cambia cuando el equipo reorganiza el calendario, y da igual: **el pipeline no mira ninguna de ellas**. La lista que sí importa es la de §7.2.
 
 *(Había también un `Status` de tipo *status* con el ciclo de producción del equipo. Se fusionó con el estado del pipeline — §7.2.)*
 
@@ -362,7 +364,7 @@ Y tres cosas que **no** son propiedades nuevas:
 > - `Plataforma` o `Status` → el sync falla entero y **no publica nada**. Al menos se nota.
 > - Cualquier otra → el sync sigue corriendo pero **deja de ver ese campo**, y la fila acaba en `Error` con un motivo engañoso («sin cuenta» con la cuenta puesta).
 >
-> **Se puede renombrar**, pero hay que actualizar los cuatro workflows en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas` y `Validación`. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
+> **Se puede renombrar**, pero hay que actualizar los cuatro workflows en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Agendada` y `Validación`; y cualquier otra que se añada. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
 
 Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
