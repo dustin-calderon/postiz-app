@@ -101,6 +101,10 @@ El **orden importa**: las validaciones estructurales van antes que la ventana y 
 Si no, una fila sin hora se parsea como medianoche UTC, cae dentro del margen de 2 h
 y sale como «saltar» en vez de `Error` — lo contrario de la regla.
 
+Y el margen lleva un **`Y ya tiene ❌ postiz_post_id`** que no es adorno: sin él, una fila
+nueva aprobada para dentro de 2 h se salta en cada pasada —la fecha sólo se acerca— y
+nunca llega a crearse. Protege el borrar-y-recrear, no el crear (§9.3 del plan).
+
 ```mermaid
 flowchart TD
     START(["fila de Notion"]) --> P1{"Status<br/>= Publicado?"}
@@ -116,7 +120,7 @@ flowchart TD
     W -->|no| PA{"fecha ya pasó?"}
     PA -->|"sí, con post creado"| REC["ignorar<br/>lo revisa la recuperación"]
     PA -->|"sí, sin post"| ERR
-    PA -->|no| M{"fecha < ahora+2h?"}
+    PA -->|no| M{"fecha < ahora+2h<br/>Y ya tiene<br/>❌ postiz_post_id?"}
     M -->|sí| SALT["saltar<br/>margen de seguridad"]
     M -->|no| CR{"tiene ❌ postiz_post_id?"}
     CR -->|no| CREAR["crear"]

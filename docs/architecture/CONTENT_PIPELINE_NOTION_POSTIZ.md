@@ -613,7 +613,7 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 | `Plataforma` no contiene Instagram | Invisible para el worker |
 | `Status` vacío | No crear nada — **la retirada (§9.7) lo borra de Postiz si existía** |
 | `Status` = `Publicado` | **No tocar jamás** |
-| Dentro del margen de seguridad (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
+| Dentro del margen de seguridad **y ya tiene `❌ postiz_post_id`** (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
 | `❌ postiz_post_id` vacío | Crear |
 | Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** |
 | `❌ postiz_media` con valor | No re-subir los assets |
@@ -715,13 +715,35 @@ Las dos escrituras siguen separadas: guardar `❌ postiz_media` en cuanto sube h
 
 ### 9.3 El margen de seguridad — obligatorio
 
-**No se toca ninguna fila cuyo `publish_at` esté dentro de las próximas 2 horas.**
+**No se borra y recrea ninguna fila cuyo `publish_at` esté dentro de las próximas 2 horas.**
 
 Borrar y recrear abre una ventana en la que el post no existe en Postiz. Hacerlo cerca de la hora de publicación es una carrera contra el orchestrator, con dos finales malos: el post se pierde, o se recrea con una fecha ya pasada y el comportamiento deja de ser predecible.
 
 > **Este guardarraíl vive en el subflow, no en el horario del cron.** La hora del cron (06:00 Europe/Madrid) ya garantiza que **el cron** nunca colisione con una publicación. Pero **el botón se dispara cuando alguien lo pulsa**, y antes o después alguien va a tocar un post veinte minutos antes de que salga. El guardarraíl existe por el botón, no por el cron. Son tres líneas en el subflow.
 
 Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay que cambiar algo a 20 minutos de publicar, se hace a mano en Postiz — es la única excepción a "nunca se aprueba en Postiz", y es una excepción de emergencia.
+
+> ### ⚠️ El margen sólo se aplica a lo que ya está en Postiz
+>
+> La condición es `dentro del margen` **Y** `❌ postiz_post_id` no vacío. Sin la segunda mitad el guardarraíl se vuelve del revés y **come filas nuevas**:
+>
+> - Una fila aprobada a 40 minutos de su hora cae en el margen y se salta.
+> - En la siguiente pasada la fecha está **más cerca**, no más lejos: se vuelve a saltar.
+> - No hay salida. Nunca se crea, y cuando la fecha pasa la fila termina en `Error` con el motivo equivocado.
+>
+> El peligro que justifica el margen es la ventana de no-existencia entre el `DELETE` y el `POST`. Una fila sin `❌ postiz_post_id` no tiene nada que borrar: crearla es una sola operación atómica y no hay carrera posible. Aplicarle el margen no protege nada y rompe el caso más común — aprobar algo para hoy mismo.
+>
+> Salió a la luz con una fila real programada para dentro de dos horas que el botón se negaba a crear, pulsada tras pulsada, sin escribir un solo error.
+
+> ### La hora programada es cuándo *empieza* a publicar, no cuándo aparece
+>
+> Temporal despierta el workflow al segundo exacto, pero publicar en Instagram no es una llamada: Postiz crea un contenedor por imagen y **sondea el estado de cada uno hasta que Meta los da por procesados** (`instagram.provider.ts:680-695`). Los contenedores se crean en paralelo, así que manda el más lento.
+>
+> El sondeo tiene un suelo estructural: el `await timer(30000)` está **antes** de asignar `status = status_code`, de modo que siempre se espera un ciclo completo de 30 s aunque Meta responda «listo» a la primera.
+>
+> Medido en un carrusel de 5 fotos: timer disparado a las `18:40:00`, workflow completado a las `18:42:15` — **2 min 15 s**. Un reel pesado tarda más.
+>
+> Consecuencia práctica: si la pieza tiene que estar visible a una hora concreta, la `Fecha` de Notion se pone unos minutos antes. Y no hay que dar por fallida una publicación hasta pasados unos minutos de su hora.
 
 ### 9.4 Cierre del bucle: reactivo
 
@@ -1098,6 +1120,22 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 
 **Copia durable:** los cuatro workflows están exportados en `/opt/homeserver/n8n-workflows/postiz-<id>.json` (modo `600`). **No van a este repositorio**: el receptor lleva su ruta secreta dentro, y esto es un fork de un proyecto público (§14.4).
 
+> ### La batería de pruebas — `/opt/homeserver/n8n-workflows/suite-pruebas-postiz.py`
+>
+> **34 comprobaciones contra producción sin publicar nada en Instagram.** Se ejecuta con el entorno del servidor cargado:
+>
+> ```
+> set -a; . /opt/homeserver/.env; set +a; python3 /opt/homeserver/n8n-workflows/suite-pruebas-postiz.py
+> ```
+>
+> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, el estado en reposo y la limpieza de sus propios ficheros.
+>
+> Tres cosas que hay que respetar al tocarla, porque las tres ya dieron un resultado falso:
+>
+> - **`User-Agent` obligatorio.** Cloudflare bloquea `Python-urllib` en este dominio (§4.1) y devuelve `403` sin que la petición llegue a n8n. Los checks que *esperan* `403` entonces **pasan por el motivo equivocado** — por eso ahora comprueban además que el cuerpo sea de n8n y no una página de Cloudflare.
+> - **Fechas relativas a hoy, nunca fijas.** Una fecha escrita a mano se sale de la ventana de 15 días con el tiempo y el sync la ignora con razón; se lee como una avería del pipeline.
+> - **La fila del margen usa `modo = borrador` a propósito.** Su fecha cae dentro de 40 minutos: en `programar` saldría publicada de verdad si la limpieza fallara. El margen se evalúa en `Planificar`, antes de que `modo` importe, así que la regresión se prueba igual con riesgo cero.
+
 > **Convención: todo va por `httpRequest`, no por nodos de integración.** Ningún workflow de esta instancia usa el nodo de Notion; se llama a la API directamente. Conviene mantenerlo — un nodo de tercero añade una dependencia que se actualiza sola y puede cambiar de comportamiento bajo los pies.
 
 **Por qué la retirada es un workflow aparte y va 20 minutos después.** Es la parte destructiva. Encadenarla al sync obliga a razonar sobre qué pasa cuando no hay filas que crear (los nodos sin items no se ejecutan, y la retirada no correría nunca justo el día que más falta hace). Separada, siempre corre, y el desfase garantiza que el sync ya ha escrito los `❌ postiz_post_id` que ella va a leer.
@@ -1131,7 +1169,6 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 
 | Límite | Consecuencia |
 |---|---|
-| **Nunca se ha publicado de verdad** | Todo se probó por el camino de fallo o con fechas que se retiraron. La primera publicación real será la primera vez que el camino completo llegue a Instagram |
 | **Colaboradores en `graph.instagram.com`** | Se envían, pero no está comprobado que Meta los acepte en la API de Instagram Login. Deuda aceptada (§11, decisión #7) |
 | **Más de 100 filas accionables** | Ninguna de las dos consultas a Notion pagina. **Fallan a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Con el filtro por estados vivos, hoy el margen es enorme |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
