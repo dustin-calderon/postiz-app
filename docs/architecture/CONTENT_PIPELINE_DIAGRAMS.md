@@ -24,7 +24,7 @@ flowchart LR
     EQUIPO["👤 Equipo<br/>escribe copy, arrastra el fichero,<br/>marca Status = Listo"]
 
     subgraph NOTION["NOTION · fuente de verdad"]
-        CAL[("Calendario Social Media<br/>11 propiedades del pipeline")]
+        CAL[("Calendario Social Media<br/>11 propiedades nuevas<br/>+ Fecha, Tipo y Name, que ya existían")]
     end
 
     subgraph N8N["n8n · orquestador, sin estado propio"]

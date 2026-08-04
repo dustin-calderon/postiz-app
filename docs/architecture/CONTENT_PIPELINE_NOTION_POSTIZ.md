@@ -431,6 +431,11 @@ Por defecto, `programar`.
 
 > **No contradice "nunca se aprueba en Postiz" (§6).** La aprobación sigue siendo `Status = Listo` en Notion. `modo` sólo decide qué hace Postiz con algo ya aprobado. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
+> ### ⚠️ Un borrador **no pasa por la validación del servidor**
+> `checkValidity`, los ajustes y el límite de 2200 caracteres se comprueban **sólo** dentro de `if (body.type !== 'draft')` (§4.2, `public.integrations.controller.ts:267-279`). Un `borrador` entra con lo único que se mira siempre: que no esté vacío del todo.
+>
+> Consecuencia: una pieza que en `borrador` se crea sin quejarse puede **fallar al pasarla a `programar`**. El dry-run editorial no es un dry-run técnico. Las validaciones de n8n (§9.2) sí corren en ambos casos, y son las que atrapan casi todo.
+
 ### 7.2.3 Ajustes opcionales de Instagram
 
 Se añaden a la tabla el día que se necesiten. Añadir una propiedad en Notion cuesta diez segundos; lo que importa es que el mapeo esté escrito.
