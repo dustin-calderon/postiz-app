@@ -1,7 +1,7 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2, 3a y **3b cerradas**. El sync escribe, retira y recupera; probado de punta a punta con un reel real de 150 MB.
-> **Queda un único paso manual:** dar de alta el webhook en la UI de Postiz (§14.7).
+> **Estado:** Fases 0, 2, 3a y **3b cerradas**. El sync escribe, retira y recupera; probado de punta a punta con un reel real de 150 MB, y el webhook de Postiz entrega en n8n con contenido (§14.7).
+> **Sin publicar nada en Instagram todavía**, a propósito.
 > **Inventario completo de lo implementado y lo no verificado: §14.**
 > **Fecha:** agosto 2026 · última verificación 2026-08-04
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
@@ -1255,7 +1255,8 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 | Ejecución `203001` de n8n | ⏸️ Queda en el historial |
 | Fila de Notion «__ZZ AUDIT pipeline (borrar)» | ✅ Archivada |
 | Posts de prueba en Postiz (2027 y 18-ago) + comentarios | ✅ Soft-deleted (por la propia retirada) |
-| Workflow de Temporal `zzaudit-webhookpath-1` | ⏸️ Completado, queda en el historial |
+| Workflows de Temporal `zzaudit-webhookpath-1`, `zzaudit-entrega-1/2` | ⏸️ Completados, quedan en el historial |
+| Borrador de prueba de la entrega (`cmsegdkbi…`) | ✅ Borrado vía API |
 | 4 media de prueba (~470 MB) | ⏸️ **Pendiente: borrarlos en la UI** — ver §14.7 |
 
 > ### 🔑 El token del webhook estaba en `/tmp` y era legible por cualquiera
@@ -1285,31 +1286,66 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 | Retirada — función | Al vaciar `publicación`: borra el post de la API **y su comentario**, y sigue sin tocar el `WEB` |
 | Receptor de webhook | 4 payloads: publicado · error · **error con `releaseURL`** · `[]` vacío |
 | Camino de fallo previo al bucle | `getPost → changeState → sendWebhooks`, workflow `COMPLETED` |
+| **Entrega real Postiz → n8n** | Webhook recibido **con contenido**, incluidos `error` y `releaseId` (§14.7) |
+| Post sin fila en Notion | El receptor lo ignora y **no** intenta escribir (§14.7, aviso del spread) |
 | Límite de Cloudflare | 90 MB pasa · 100 MB y 150 MB dan `413` del edge |
 | Diagnóstico de §4.4.1 | `Post.id` y `releaseId` disjuntos en producción (0 coincidencias) |
 
 **Lo que sigue sin verificarse funcionando:**
 
-1. **La entrega real del webhook de Postiz a n8n.** El emisor está arreglado y probado; el receptor está probado con payloads reales. Falta **el destino**: la tabla `Webhooks` está vacía y darlo de alta exige la UI (§14.7). Hasta entonces el bucle lo cierra la pasada de recuperación de las 06:20, no el webhook.
-2. **Una publicación real en Instagram.** A propósito: no se ha publicado nada en las cuentas de producción.
+1. **Una publicación real en Instagram.** A propósito: no se ha publicado nada en las cuentas de producción. Todo se probó por el camino de fallo o con fechas dentro de ventana que se retiraron después.
 3. **Colaboradores en `graph.instagram.com`** — deuda técnica por decisión, no se probará.
 4. **Más de 100 filas accionables.** Ninguna de las dos consultas a Notion pagina: **fallan a las claras** con un error si `has_more` es `true`, en vez de sincronizar media cola en silencio. Con el filtro por `publicación` (sólo estados vivos) hoy hay **0**, así que el margen es enorme.
 
 Y una decisión abierta: qué hacer si el sync entero falla (Notion caído a las 06:00).
 
-### 14.7 El único paso manual que queda
+### 14.7 El webhook, dado de alta · ✅ y el bucle cerrado de verdad
 
-**Dar de alta el webhook en Postiz.** No hay forma de hacerlo por API: `POST /webhooks` vive en la API con sesión (`webhooks.controller.ts`), no en la pública, y con la API key devuelve `401`.
+**Dado de alta a mano en la UI**, que es la única vía: `POST /webhooks` vive en la API con sesión (`webhooks.controller.ts`), no en la pública, y con la API key devuelve `401`.
 
-En la UI de Postiz → *Settings* → *Webhooks* → añadir:
+| Campo | Valor |
+|---|---|
+| Nombre | `n8n sync Instagram` |
+| URL | `https://auto.dustincalderon.com/webhook/` + `N8N_POSTIZ_WEBHOOK_PATH` |
+| Integraciones | **las 3 de Instagram** (no «todas») |
 
-- **Nombre:** `n8n sync Instagram`
-- **URL:** `https://auto.dustincalderon.com/webhook/` + el valor de `N8N_POSTIZ_WEBHOOK_PATH` de `/opt/homeserver/.env`
-- **Integraciones:** ninguna (así vale para las tres cuentas)
+**✅ Entrega verificada de punta a punta en producción**, sin publicar nada: se creó un **borrador** (que nunca arranca workflow ni publica) y se lanzó su workflow a mano, cayendo por el camino `Already posted`. El cuerpo llegó **completo**:
 
-Sin esto **el pipeline funciona igual**: §9.4 ya decía que el webhook es el camino rápido, no el único. Lo que se pierde es la latencia — el estado en Notion se cierra en la pasada de las 06:20 en vez de al instante.
+```json
+[{ "id": "cmsegdkbi…", "content": "…", "releaseURL": null, "releaseId": null,
+   "error": "Already posted", "state": "ERROR",
+   "integration": { "id": "cmqjq77hg…", "providerIdentifier": "instagram-standalone" } }]
+```
 
-**Y de paso, en la misma UI:** borrar en la biblioteca de medios los 4 ficheros de prueba (~470 MB, dos reels de 150 MB y dos imágenes, subidos el 3-4 de agosto). No hay endpoint público para borrar media, y si se quedan son huérfanos permanentes — el mismo agujero de §14.5.
+Es exactamente lo que §4.4.1 decía que **no** llegaba, más los dos campos que se añadieron al fork (`releaseId`, `error`). El defecto original está cerrado.
+
+> ### ⚠️ El orden del spread — un fallo que sólo aparecía con posts ajenos al pipeline
+> Esa primera entrega **falló en n8n**, y el motivo merece quedar escrito porque es de los que no se ven leyendo:
+>
+> ```js
+> // MAL: ...ctx va al final y sobreescribe accion con el 'escribir' que trae ctx
+> return [{ json: { accion: 'ignorar', motivo: '…', ...ctx } }];
+> ```
+>
+> Cuando ninguna fila de Notion reclama el post, el nodo devolvía `accion: 'escribir'` igualmente y la siguiente llamada iba a `PATCH /v1/pages/undefined` → `Invalid request URL`.
+>
+> **Sólo se manifiesta con posts que no vienen del pipeline** — es decir, con cada publicación hecha a mano desde la UI de Postiz, que son las que hoy existen. Las pruebas anteriores del receptor no lo destaparon porque todas usaban una fila que sí existía.
+>
+> Corregido con `Object.assign({}, ctx, { accion: … })` y reprobado con el mismo escenario: ahora termina en `success` y sale por «Sin fila que actualizar». De paso, `release_url` se limpia cuando el estado es `Error`, para que no quede un permalink viejo contradiciendo al estado.
+
+> ### ⚠️ Consecuencia de elegir «integraciones específicas»
+> El filtro de `sendWebhooks` (`post.activity.ts:316-323`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas, **sólo entrega cuando el `integrationId` coincide**.
+>
+> Dos de los cinco caminos previos al bucle (`:86` y `:108`, «No Post») no conocen la integración y pasan `''`, así que **no entregan**. No se pierde nada: en esos casos el post no existe y el cuerpo sería `[]` de todos modos.
+>
+> **Lo que sí es una trampa a futuro:** el día que se conecte una cuarta cuenta de Instagram, habrá que añadirla aquí a mano o sus avisos no llegarán, en silencio. Con «todas las integraciones» eso no pasa. Merece la pena cambiarlo si algún día se añade una cuenta.
+
+> ### 🔑 No rotar la API key sin avisar a n8n
+> El botón *Rotate Key* de *Settings → Developers* invalida la clave que usa la credencial `h6bGMcfTHiZUD0dy`. Rompería **los cuatro workflows a la vez** y de forma silenciosa: no se notaría hasta la pasada de las 06:00. Si se rota, hay que actualizar la credencial de n8n el mismo día.
+>
+> El resto de esa pantalla —CLI, skill del agente, MCP de Postiz, nodo comunitario de n8n— **no se usa a propósito**: todo eso publica *directamente en Postiz*, saltándose Notion, que es justo lo que prohíbe §6. La Fase 4 usa el **MCP de Notion**, no el de Postiz.
+
+**Queda pendiente en la misma UI:** borrar en la biblioteca de medios los ficheros de prueba (~470 MB, dos reels de 150 MB y dos imágenes, del 3-4 de agosto). No hay endpoint público para borrar media, y si se quedan son huérfanos permanentes — el mismo agujero de §14.5.
 
 ## 15. Fuentes
 
