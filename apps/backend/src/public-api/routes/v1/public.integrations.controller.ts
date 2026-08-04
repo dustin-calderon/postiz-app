@@ -259,6 +259,33 @@ export class PublicIntegrationsController {
     return this._postsService.deletePost(org.id, group);
   }
 
+  /**
+   * Soft-deletes a media item, exactly like the UI's delete button.
+   *
+   * Without this, an API client that uploads an asset and then fails to create
+   * the post has no way to clean up: the cleanup job only ever considers media
+   * referenced by a PUBLISHED post, so a file that was uploaded and never
+   * published is orphaned forever. Marking `deletedAt` hands it to Phase 2 of
+   * the cleanup, which removes the blob after the grace period.
+   */
+  @Delete('/media/:id')
+  async deleteMedia(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+
+    const media = await this._mediaService.getMediaById(id);
+    // Checked explicitly rather than relying on the update's WHERE, so that a
+    // wrong id gives a readable 404 instead of a Prisma error surfacing as 500.
+    if (!media || media.organizationId !== org.id || media.deletedAt) {
+      throw new HttpException({ msg: 'Media not found' }, 404);
+    }
+
+    await this._mediaService.deleteMedia(org.id, id);
+    return { id, deleted: true };
+  }
+
   @Get('/is-connected')
   async getActiveIntegrations(@GetOrgFromRequest() org: Organization) {
     Sentry.metrics.count('public_api-request', 1);
