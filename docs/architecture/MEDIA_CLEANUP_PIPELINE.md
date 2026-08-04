@@ -102,9 +102,9 @@ El filtro del **Step 2 es positivo**: sólo es candidato lo que aparece en un `P
 
 El pipeline Notion → Postiz sube cada asset con `POST /public/v1/upload-from-url` **antes** de crear el post. Si la creación falla después (validación de Instagram, red, throttle), el fichero queda subido y sin dueño.
 
-Lo mitiga que el worker guarda `postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar, así que un mismo asset no se duplica por reintento. Queda basura sólo cuando la fila se abandona sin corregirse.
+Lo mitiga que el worker guarda `❌ postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar, así que un mismo asset no se duplica por reintento. Queda basura sólo cuando la fila se abandona sin corregirse.
 
-**✅ Resuelto para el caso que lo generaba** (2026-08-04): se añadió **`DELETE /public/v1/media/:id`** a la API pública del fork y el worker borra lo que acaba de subir si el `POST /posts` falla, vaciando además `postiz_media` para que el reintento vuelva a subir.
+**✅ Resuelto para el caso que lo generaba** (2026-08-04): se añadió **`DELETE /public/v1/media/:id`** a la API pública del fork y el worker borra lo que acaba de subir si el `POST /posts` falla, vaciando además `❌ postiz_media` para que el reintento vuelva a subir.
 
 El endpoint espeja el borrado de la UI —soft-delete— en vez de inventar semántica nueva, así que el blob lo sigue quitando la Phase 2 pasado el periodo de gracia. Comprueba la pertenencia a la organización de forma explícita y devuelve `404` legible para un id ajeno, inexistente o ya borrado.
 

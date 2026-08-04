@@ -108,7 +108,7 @@ flowchart TD
     P1 -->|no| P2{"estado vivo?<br/>Listo · Programado<br/>En Postiz borrador"}
     P2 -->|no| IG1["ignorar"]
 
-    P2 -->|sí| V["Validaciones estructurales<br/>· Fecha con hora y offset<br/>· cuenta con integration.id<br/>· content no vacío<br/>· 1 a 10 assets<br/>· colaboradores: ni carrusel ni story"]
+    P2 -->|sí| V["Validaciones estructurales<br/>· Fecha con hora y offset<br/>· cuenta con integration.id<br/>· copy no vacío<br/>· 1 a 10 media<br/>· colaboradores: ni carrusel ni story"]
     V -->|"algo falla"| ERR["ERROR + motivo"]
 
     V -->|"todo bien"| W{"fecha > hoy+15d?"}
@@ -118,7 +118,7 @@ flowchart TD
     PA -->|"sí, sin post"| ERR
     PA -->|no| M{"fecha < ahora+2h?"}
     M -->|sí| SALT["saltar<br/>margen de seguridad"]
-    M -->|no| CR{"tiene postiz_post_id?"}
+    M -->|no| CR{"tiene ❌ postiz_post_id?"}
     CR -->|no| CREAR["crear"]
     CR -->|sí| RECREAR["recrear"]
 
@@ -141,15 +141,15 @@ flowchart TD
     RELEER --> PREP["Preparar<br/>decide qué hay que hacer"]
 
     PREP --> QDEL{"¿borrar<br/>anterior?"}
-    QDEL -->|"tiene postiz_post_id"| DEL["Postiz: DELETE post anterior"]
+    QDEL -->|"tiene ❌ postiz_post_id"| DEL["Postiz: DELETE post anterior"]
     DEL --> TRAS["Tras borrar<br/>ignora el cuerpo: siempre dice error:true"]
     QDEL -->|no| QUP
     TRAS --> QUP{"¿subir<br/>assets?"}
 
-    QUP -->|"postiz_media vacío<br/>o no cuadra"| EXP["Expandir assets<br/>un item por fichero"]
+    QUP -->|"❌ postiz_media vacío<br/>o no cuadra"| EXP["Expandir assets<br/>un item por fichero"]
     EXP --> UP["Postiz: upload-from-url<br/>por streaming"]
     UP --> REC["Recolectar media<br/>respeta el ORDEN"]
-    REC --> GM["Notion: guardar postiz_media<br/>ESCRITURA 1"]
+    REC --> GM["Notion: guardar ❌ postiz_media<br/>ESCRITURA 1"]
     GM --> MS["Media subida"]
 
     QUP -->|"reutilizable"| MR["Media reutilizada<br/>no se resube nada"]
@@ -175,20 +175,20 @@ flowchart TD
     style DELM fill:#742a2a,stroke:#fc8181,color:#fff
 ```
 
-**Por qué dos escrituras y no una.** Guardar `postiz_media` en cuanto sube hace el proceso
+**Por qué dos escrituras y no una.** Guardar `❌ postiz_media` en cuanto sube hace el proceso
 reanudable: si algo falla después, el reintento **no vuelve a mover el fichero**.
 
 **Por qué se borra el media al fallar.** La limpieza automática sólo hace candidato lo que
 aparece en un post _publicado_. Un fichero subido y nunca publicado no lo recoge nadie —
 ni a los 30 días ni nunca. Se borra **sólo si se subió en esa misma pasada**: si venía
-reutilizado, borrarlo dejaría `postiz_media` apuntando a la nada.
+reutilizado, borrarlo dejaría `❌ postiz_media` apuntando a la nada.
 
 ---
 
 ## 4. Retirada y recuperación — `rxVcGlxSZjzzI5ez`
 
 Reconciliar no es sólo crear lo que falta: es **retirar lo que ya no debe existir**.
-Va 20 minutos después del sync para que los `postiz_post_id` ya estén escritos.
+Va 20 minutos después del sync para que los `❌ postiz_post_id` ya estén escritos.
 
 ```mermaid
 flowchart TD
@@ -243,11 +243,11 @@ flowchart TD
     WH["Webhook de Postiz<br/>ruta secreta · lo llama post.activity.ts"] --> INT{{"Interpretar payload"}}
 
     INT -->|"cuerpo vacío []"| IGN["Ignorado<br/>post borrado o v1.0.5"]
-    INT -->|"releaseURL o releaseId<br/>CON valor"| PUB["Publicado<br/>+ release_url"]
+    INT -->|"releaseURL o releaseId<br/>CON valor"| PUB["Publicado<br/>+ ❌ release_url"]
     INT -->|"sin releaseURL<br/>y state=ERROR"| ERR["Error + motivo"]
     INT -->|"QUEUE u otro"| IGN
 
-    PUB --> BUS["Notion: buscar fila por postiz_post_id"]
+    PUB --> BUS["Notion: buscar fila por ❌ postiz_post_id"]
     ERR --> BUS
     BUS --> RESOL["Resolver fila<br/>0 · 1 · varias"]
     RESOL --> RES{"¿Fila encontrada?"}
@@ -327,10 +327,10 @@ sequenceDiagram
     S->>N: pide la URL FRESCA del asset
     S->>P: POST /upload-from-url (sólo la URL)
     P->>N: descarga el fichero por streaming
-    S->>N: escribe postiz_media
+    S->>N: escribe ❌ postiz_media
     S->>P: POST /posts
     P-->>S: postId
-    S->>N: postiz_post_id + publicación=Programado
+    S->>N: ❌ postiz_post_id + publicación=Programado
     P->>T: arranca postWorkflowV106
 
     R->>P: 06:20 · GET ventana
@@ -341,7 +341,7 @@ sequenceDiagram
     T->>I: publica
     I-->>T: permalink
     T->>W: webhook con el post completo
-    W->>N: publicación=Publicado + release_url
+    W->>N: publicación=Publicado + ❌ release_url
 ```
 
 ---
@@ -350,7 +350,7 @@ sequenceDiagram
 
 | Falla                                                                | Lo detecta                   | La fila acaba en           | ¿Se limpia?                           |
 | -------------------------------------------------------------------- | ---------------------------- | -------------------------- | ------------------------------------- |
-| Validación previa (sin hora, >10 assets, colaboradores en carrusel…) | `Planificar`                 | `Error` + motivo           | No se subió nada                      |
+| Validación previa (sin hora, >10 ficheros, colaboradores en carrusel…) | `Planificar`                 | `Error` + motivo           | No se subió nada                      |
 | El asset no se puede descargar o pasa de 1 GiB                       | `upload-from-url` → 400      | `Error` + motivo de Postiz | No llegó a crearse media              |
 | `POST /posts` rechazado (copy largo, media inválido…)                | subflow                      | `Error` + motivo           | **Borra el media que acaba de subir** |
 | Instagram rechaza al publicar                                        | `postWorkflowV106`           | `Error` vía webhook        | El media sobrevive para el reintento  |

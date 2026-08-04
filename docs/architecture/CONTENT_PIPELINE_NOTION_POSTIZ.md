@@ -201,7 +201,7 @@ Es decir: `state=ERROR` cubre dos situaciones opuestas.
 >
 > **La regla correcta es `releaseURL`/`releaseId` no vacío ⇒ publicado**, mande lo que mande el `state`. Implementada en el receptor y en la pasada de recuperación.
 
-Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `releaseId` y `error` en su `select`. Sin `error`, `error_log` nunca podría llevar el motivo que pide §9.4.
+Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `releaseId` y `error` en su `select`. Sin `error`, `❌ error_log` nunca podría llevar el motivo que pide §9.4.
 
 ### 4.5 Postiz valida el post antes de crearlo
 
@@ -297,8 +297,8 @@ De aquí sale la regla más importante de toda la implementación:
 - ✗ **Postiz nunca escribe en Notion.** Quien cierra el bucle es n8n. Dos escritores = ninguna verdad.
 - ✗ **Nunca se aprueba dentro de Postiz.** Dos sitios de aprobación = ninguno fiable en tres semanas.
 - ✗ **Nunca hay un LLM dentro del camino de publicación.** La creatividad ocurre antes, en Notion.
-- ✗ **Nunca se editan a mano** `postiz_post_id`, `postiz_media`, `release_url` ni `publicación = Programado`.
-- ✓ **El `postiz_post_id` dice la verdad, no el `status`.** El status es para las personas; el ID es para la máquina.
+- ✗ **Nunca se editan a mano** `❌ postiz_post_id`, `❌ postiz_media`, `❌ release_url` ni `publicación = Programado`.
+- ✓ **El `❌ postiz_post_id` dice la verdad, no el `status`.** El status es para las personas; el ID es para la máquina.
 - ✓ **Una fila = un post = una integración.** Aunque hoy sólo haya Instagram.
 
 ---
@@ -331,30 +331,38 @@ El worker **sólo mira filas con `Plataforma` conteniendo Instagram**. Todo lo d
 
 **Una fila = un post en Postiz.** Cuando una pieza es compartida entre cuentas, **no son varios posts**: publica una cuenta y las demás van como **colaboradoras de Instagram** (§7.2.4). Un post, un ID, un estado.
 
-**Once propiedades nuevas, ni una más.** (Diez en la tabla, más `release_url`, que dejó de reutilizar `URL` al cerrarse la decisión #3 de §11.)
+**Once propiedades nuevas, ni una más.** (Diez en la tabla, más `❌ release_url`, que dejó de reutilizar `URL` al cerrarse la decisión #3 de §11.)
 
 | Propiedad | Tipo | Lo escribe | → API |
 |---|---|---|---|
 | `cuenta` | **Select** | equipo | `integration.id` (§7.2.1) |
 | `colaboradores` | Multi-select | equipo | `settings.collaborators[].label` — **restricciones en §7.2.4** |
-| `content` | Text | equipo / agente | `value[0].content` |
-| `assets` | **Files** | equipo | `value[0].image[]` — **en orden** |
+| `copy` | Text | equipo / agente | `value[0].content` |
+| `media` | **Files** | equipo | `value[0].image[]` — **en orden** |
 | `first_comment` | Text | equipo / agente | `value[1].content` (§7.3) |
 | `modo` | Select: `borrador`·`programar` | equipo | **`type`** (§7.2.2) |
 | `publicación` | Select | equipo → n8n | ✗ — el estado del pipeline (§8) |
-| `postiz_post_id` | Text | **n8n** | — el candado |
-| `postiz_media` | Text | **n8n** | — JSON `[{id, path}]`, mismo orden que `assets`. Ver aviso |
-| `error_log` | Text | **n8n** | — último error |
+| `❌ postiz_post_id` | Text | **n8n** | — el candado |
+| `❌ postiz_media` | Text | **n8n** | — JSON `[{id, path}]`, mismo orden que `media`. Ver aviso |
+| `❌ error_log` | Text | **n8n** | — último error |
 
 Y tres cosas que **no** son propiedades nuevas:
 
 - **`post_type`** sale de `Tipo` (§7.1). Es obligatorio en la API (`@IsDefined()` en `InstagramDto`), pero no hace falta pedirlo dos veces.
 - **`publish_at`** es `Fecha`, con hora (§7.5).
-- **`release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
+- **`❌ release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
 
 > **El aviso de error irá al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n puede resolverlo a email, con una dirección general de reserva. **Diseño decidido, implementación pendiente** (§11): hoy los fallos se ven en la vista *⚠️ Averías*.
 
-Los tres campos de n8n (`postiz_post_id`, `postiz_media`, `error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
+> ### ⚠️ Renombrar una propiedad rompe el worker
+> Los workflows buscan las propiedades **por su nombre exacto**, acentos y emoji incluidos. Renombrar una en Notion y no tocar n8n tiene dos desenlaces, ninguno bueno:
+>
+> - `Plataforma` o `publicación` → el sync falla entero y **no publica nada**. Al menos se nota.
+> - Cualquier otra → el sync sigue corriendo pero **deja de ver ese campo**, y la fila acaba en `Error` con un motivo engañoso («sin cuenta» con la cuenta puesta).
+>
+> **Se puede renombrar**, pero hay que actualizar los cuatro workflows en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Status`, `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `URL`, `Compartido con`, `Marcadas` y `Validación`. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
+
+Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
 > ### ⚠️ No basta con la URL: `MediaDto` exige `id` **y** `path`
 > `media.dto.ts:4-13` declara los dos campos como `@IsDefined()`:
@@ -458,7 +466,7 @@ const collaborators =
 
 Es decir: publicar los hashtags como primer comentario —práctica estándar en Instagram— **no requiere ningún desarrollo**. Es mandar un segundo elemento en `value`.
 
-Por eso `first_comment` es un campo propio y no parte de `content`: es una decisión editorial distinta y conviene poder verla y editarla por separado.
+Por eso `first_comment` es un campo propio y no parte de `copy`: es una decisión editorial distinta y conviene poder verla y editarla por separado.
 
 > **Dos precisiones verificadas:**
 > - **Las imágenes de un comentario se ignoran en Instagram.** `instagram.provider.ts:820-860` sólo manda `message=` a `/comments`. Un comentario con ficheros publica sólo el texto.
@@ -545,11 +553,11 @@ A partir de `Listo` nadie vuelve a tocar `publicación` — pero **sí se puede 
 
 ### 8.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `publicación` a `Listo` vaciando `error_log`.
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `publicación` a `Listo` vaciando `❌ error_log`.
 
-Al reintentar, el worker **reutiliza `postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
+Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
-> Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `postiz_media` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
+> Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `❌ postiz_media` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
 
 ## 9. El worker de n8n — reconciliación, no cola
 
@@ -596,10 +604,10 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 | `Plataforma` no contiene Instagram | Invisible para el worker |
 | `publicación` vacío | No crear nada — **la retirada (§9.7) lo borra de Postiz si existía** |
 | `publicación` = `Publicado` | **No tocar jamás** |
-| Dentro del margen de seguridad (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `error_log` (ver nota) |
-| `postiz_post_id` vacío | Crear |
-| Tiene `postiz_post_id`, aún no publicado | **Borrar y recrear** |
-| `postiz_media` con valor | No re-subir los assets |
+| Dentro del margen de seguridad (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
+| `❌ postiz_post_id` vacío | Crear |
+| Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** |
+| `❌ postiz_media` con valor | No re-subir los assets |
 | `Fecha` sin hora | `Error` — nunca se adivina la hora |
 | `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
 
@@ -608,11 +616,11 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 > ### ⚠️ El orden de las puertas importa: primero la hora, después la ventana
 > Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen de 2 h se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
 >
-> El orden implementado es: **validaciones estructurales** (hora, offset, cuenta, content, assets, colaboradores) → y sólo con una fecha válida, **ventana → pasado → margen**.
+> El orden implementado es: **validaciones estructurales** (hora, offset, cuenta, copy, media, colaboradores) → y sólo con una fecha válida, **ventana → pasado → margen**.
 >
 > No es teórico: hoy **1 de cada 100 filas** con fecha tiene hora.
 
-> **Sobre el margen y `error_log`:** saltar por el margen de seguridad no es un error, es el sistema funcionando. Escribirlo en `error_log` dejaría un mensaje de avería en una fila sana y acabaría entrenando al equipo a ignorar ese campo. Se reporta en la ejecución de n8n; la fila se recoge sola en la siguiente pasada.
+> **Sobre el margen y `❌ error_log`:** saltar por el margen de seguridad no es un error, es el sistema funcionando. Escribirlo en `❌ error_log` dejaría un mensaje de avería en una fila sana y acabaría entrenando al equipo a ignorar ese campo. Se reporta en la ejecución de n8n; la fila se recoge sola en la siguiente pasada.
 
 Superadas las puertas, cada fila es **un solo post**, así que el subflow es lineal:
 
@@ -620,40 +628,40 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 1. valida  ≤10 items · reglas de §7.4                    ← el tamaño ya no,
            colaboradores ⇒ ni carrusel ni story            lo aplica Postiz (§9.2)
 2. resuelve `cuenta` ──► integration.id                  (§7.2.1)
-3. si tiene postiz_post_id y no está publicado ──► DELETE primero
-4. si `postiz_media` está vacío:
+3. si tiene ❌ postiz_post_id y no está publicado ──► DELETE primero
+4. si `❌ postiz_media` está vacío:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
       POST /public/v1/upload-from-url  { "url": ... }
         └─ los bytes NO pasan por n8n: los baja Postiz, por streaming
-      └──► ESCRIBE postiz_media                      [write 1]
+      └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
-      value[0].content            = content
-      value[0].image[]            = postiz_media
+      value[0].content            = copy
+      value[0].image[]            = ❌ postiz_media
       value[1].content            = first_comment        (si lo hay, §7.3)
       settings.collaborators[]    = colaboradores        (si los hay)
-      └──► ESCRIBE postiz_post_id                        [write 2]
+      └──► ESCRIBE ❌ postiz_post_id                        [write 2]
            publicación = Programado           si modo = programar
            publicación = En Postiz (borrador) si modo = borrador
 
    si el paso 5 falla:
-      publicación = Error · error_log = motivo
+      publicación = Error · ❌ error_log = motivo
       y si el media se subió EN ESTA pasada:
-        DELETE /public/v1/media/:id  +  vaciar postiz_media
+        DELETE /public/v1/media/:id  +  vaciar ❌ postiz_media
 ```
 
 > ### Por qué el worker borra su propio media al fallar
 > La limpieza automática sólo hace candidato lo que aparece en un post **publicado**. Un fichero subido y nunca publicado **no lo recoge nadie**, ni a los 30 días ni nunca. Sin este paso, cada fila abandonada tras un fallo dejaría un reel de 150 MB en el Seagate para siempre.
 >
-> **Sólo se borra lo subido en esa misma pasada.** Si el media venía reutilizado de un intento anterior (§8.1), borrarlo dejaría `postiz_media` apuntando a la nada. Y cuando se borra, se vacía también `postiz_media`, para que el reintento vuelva a subir.
+> **Sólo se borra lo subido en esa misma pasada.** Si el media venía reutilizado de un intento anterior (§8.1), borrarlo dejaría `❌ postiz_media` apuntando a la nada. Y cuando se borra, se vacía también `❌ postiz_media`, para que el reintento vuelva a subir.
 >
 > Requirió **añadir `DELETE /public/v1/media/:id` a la API pública del fork** — sólo existía en la API con sesión.
 
-> **No hay fan-out.** Una pieza compartida entre cuentas es un post con colaboradores (§7.2.4), no N posts. Eso mantiene el 1:1 con Postiz —un ID, un estado, un `release_url`— y elimina cualquier necesidad de estados parciales o de una tabla intermedia.
+> **No hay fan-out.** Una pieza compartida entre cuentas es un post con colaboradores (§7.2.4), no N posts. Eso mantiene el 1:1 con Postiz —un ID, un estado, un `❌ release_url`— y elimina cualquier necesidad de estados parciales o de una tabla intermedia.
 >
 > La excepción son los **carruseles y stories compartidos**, que Instagram no permite compartir: ahí son filas independientes, y cada una sigue siendo un post. El modelo no cambia.
 
-Las dos escrituras siguen separadas: guardar `postiz_media` en cuanto sube hace el proceso **reanudable a mitad**, y evita volver a subir un reel en cada resincronización.
+Las dos escrituras siguen separadas: guardar `❌ postiz_media` en cuanto sube hace el proceso **reanudable a mitad**, y evita volver a subir un reel en cada resincronización.
 
 > ### ⚠️ Por qué `upload-from-url` y no multipart desde n8n
 >
@@ -692,7 +700,7 @@ Las dos escrituras siguen separadas: guardar `postiz_media` en cuanto sube hace 
 >
 > El único límite que queda es **`MAX_URL_UPLOAD_BYTES`**, hoy **1 GiB**, y existe para que una URL equivocada no llene el disco — no para acotar la RAM. Probado con un fichero de 1,4 GB: `400` con mensaje legible y **sin dejar fichero parcial**.
 >
-> **La sonda de tamaño de n8n se eliminó.** El límite vive ahora en un solo sitio, que es el que puede aplicarlo; duplicar la constante en los dos lados era una trampa de mantenimiento. Si Postiz lo rechaza, su mensaje llega tal cual a `error_log`.
+> **La sonda de tamaño de n8n se eliminó.** El límite vive ahora en un solo sitio, que es el que puede aplicarlo; duplicar la constante en los dos lados era una trampa de mantenimiento. Si Postiz lo rechaza, su mensaje llega tal cual a `❌ error_log`.
 >
 > `uploadStream` es **opcional** en `IUploadProvider`: quien no pueda streamear —R2 necesitaría multipart— no lo implementa y el llamante cae al camino con buffer, que se conserva intacto.
 
@@ -712,8 +720,8 @@ Con el webhook de fallo añadido (§4.4), **publicado y fallido llegan por el mi
 
 ```
 Postiz publica (o falla) ──webhook──► n8n ──► publicación = Publicado | Error
-                                              release_url = permalink   (si publicó)
-                                              error_log   = motivo      (si falló)
+                                              ❌ release_url = permalink   (si publicó)
+                                              ❌ error_log   = motivo      (si falló)
 ```
 
 > Es `publicación`, la propiedad del pipeline — **nunca `Status`**, que es tuya y n8n no toca jamás (§6, §8).
@@ -725,7 +733,7 @@ n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, 
 >
 > Por eso el cron de las 06:00 hace además una **pasada de recuperación**: para toda fila en `Programado` cuya `Fecha` ya pasó con margen, consulta el estado real en Postiz y corrige. Es barato —va incluido en el `GET` que ya hace la retirada (§9.7)— y es lo único que evita que una fila se quede en `Programado` para siempre.
 
-> **`release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration}]` (`posts.service.ts:927`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Si el webhook no está montado, ese campo se queda vacío para siempre.
+> **`❌ release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration}]` (`posts.service.ts:927`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Si el webhook no está montado, ese campo se queda vacío para siempre.
 
 ### 9.5 Por qué borrar y recrear, y no actualizar
 
@@ -740,11 +748,11 @@ Y **no pone en riesgo los assets** — pero por una razón distinta a la que par
 
 Un post recreado está vivo y sin borrar, luego protege sus ficheros. La conclusión se sostiene; **el razonamiento intuitivo es el contrario del que aplica el código**, y conviene tenerlo escrito para no equivocarse en el próximo cambio.
 
-> **Consecuencia a saber:** `postiz_post_id` cambia en cada resincronización. Es "el post actual en Postiz", no un identificador estable en el tiempo. n8n lo reescribe cada vez, así que Notion siempre tiene el vigente.
+> **Consecuencia a saber:** `❌ postiz_post_id` cambia en cada resincronización. Es "el post actual en Postiz", no un identificador estable en el tiempo. n8n lo reescribe cada vez, así que Notion siempre tiene el vigente.
 
 ### 9.6 El candado que evita duplicados
 
-Crear sólo si `postiz_post_id` está vacío.
+Crear sólo si `❌ postiz_post_id` está vacío.
 
 Escenario: n8n crea el post y justo antes del write-back se cae el contenedor. La fila queda sin ID. La siguiente pasada la vuelve a crear → **post duplicado en producción**.
 
@@ -793,7 +801,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 >
 > Si la retirada borrase todo lo que no reconoce, **borraría posts ya publicados**. El filtro por estado lo tiene que hacer n8n.
 
-El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cuanto exista, es directo y no depende de que Notion conserve el ID.
+El emparejamiento es por `❌ postiz_post_id` mientras no exista `externalId`; en cuanto exista, es directo y no depende de que Notion conserve el ID.
 
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de las próximas 2 horas se retira automáticamente.
 
@@ -913,7 +921,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 |---|---|---|---|
 | 1 | ~~Formato y zona horaria~~ | — | **Resuelta:** offset explícito, contenedor en UTC (§9.8) |
 | ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta, y el tope dejó de ser un problema.** No son 300 MB sino **1 GiB** (`MAX_URL_UPLOAD_BYTES`), y ya no protege memoria —el streaming la hace constante— sino el disco (§9.2). Probado con 672 MB |
-| ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `release_url` aparte |
+| ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `❌ release_url` aparte |
 | ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
 | 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
@@ -1024,7 +1032,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
-**11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `content`, `assets`, `first_comment`, `modo`, `publicación`, `postiz_post_id`, `postiz_media`, `error_log`, `release_url`. Tipos y opciones correctos.
+**11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `publicación`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. Tipos y opciones correctos.
 
 > ### ⚠️ Las descripciones de propiedad no se pueden escribir por API — y se borran solas
 > Comprobado ejecutándolo contra Notion:
@@ -1045,7 +1053,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `IG · Publicación` | tabla | `Plataforma` contiene `Instagram` | `Fecha` ascendente |
 | `⚠️ Averías` | tabla | `publicación` es `Error` | `Fecha` ascendente |
 
-`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `publicación`, `modo`, `content`, `assets`, `colaboradores`, `first_comment`, `error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `error_log` y `postiz_post_id`.
+`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `publicación`, `modo`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `❌ error_log` y `❌ postiz_post_id`.
 
 **1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas** (`time_format: "H:mm"`).
 
@@ -1083,7 +1091,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 
 > **Convención: todo va por `httpRequest`, no por nodos de integración.** Ningún workflow de esta instancia usa el nodo de Notion; se llama a la API directamente. Conviene mantenerlo — un nodo de tercero añade una dependencia que se actualiza sola y puede cambiar de comportamiento bajo los pies.
 
-**Por qué la retirada es un workflow aparte y va 20 minutos después.** Es la parte destructiva. Encadenarla al sync obliga a razonar sobre qué pasa cuando no hay filas que crear (los nodos sin items no se ejecutan, y la retirada no correría nunca justo el día que más falta hace). Separada, siempre corre, y el desfase garantiza que el sync ya ha escrito los `postiz_post_id` que ella va a leer.
+**Por qué la retirada es un workflow aparte y va 20 minutos después.** Es la parte destructiva. Encadenarla al sync obliga a razonar sobre qué pasa cuando no hay filas que crear (los nodos sin items no se ejecutan, y la retirada no correría nunca justo el día que más falta hace). Separada, siempre corre, y el desfase garantiza que el sync ya ha escrito los `❌ postiz_post_id` que ella va a leer.
 
 ### 14.4 En producción, fuera de todo lo anterior
 
