@@ -991,7 +991,7 @@ Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow
 | Contenedor | `healthy`, 3 procesos, **0 reinicios** |
 | `backend-error.log` | vacío |
 
-Ventana elegida: sólo había **1 post en cola, para el 14 de agosto**. Su workflow arrancó como `V105`, que sigue exportada.
+Ventana elegida: sólo había **1 post en cola** (`cmrah83mf…`, AMORISMO, creado a mano). Su workflow arrancó entonces como `V105`, que sigue exportada. *Después se editó desde la UI y volvió a arrancar como `V106` — ver §14.1.*
 
 > ### ✅ Verificado — sin publicar en Instagram
 > - El **diagnóstico** de §4.4.1 se confirmó contra la base de producción: `Post.id` y `releaseId` son espacios disjuntos (0 coincidencias), así que la `v1.0.5` nunca pudo encontrar el post.
@@ -1240,7 +1240,12 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **`upload-from-url` por streaming** | `public.integrations.controller.ts` + `local.storage.ts` (`uploadStream`) + `upload.interface.ts` |
 | Este documento | `docs/architecture/` |
 
-**Desplegado:** imagen `postiz-custom:local` (tag `local-69921960`). Verificado tras recrear: contenedor `healthy`, tres procesos con **0 reinicios**, `backend-error.log` vacío, y el workflow del post del 14 de agosto **sigue `Running`** (Temporal conserva el estado; arrancó como `V105` y ahí sigue).
+**Desplegado.** Verificado tras cada recreación: contenedor `healthy`, tres procesos con **0 reinicios**, `backend-error.log` vacío, y los workflows en vuelo intactos (Temporal conserva el estado entre reinicios).
+
+> ### La primera publicación real con la `v1.0.6` será el 28 de agosto
+> Se dijo aquí que el único post en cola arrancó como `V105` y que por tanto la próxima publicación real **no** ejercitaría el código nuevo. **Ya no es cierto:** al editarlo desde la UI (se movió del 14 al 28), `posts.service.ts:729` reinició su workflow, y arranca `postWorkflowV106`. Confirmado en Temporal.
+>
+> Y es un buen caso de prueba, porque es un post `WEB` que **ninguna fila de Notion reclama**: el webhook saldrá, el receptor no encontrará fila y responderá «ignorar» sin escribir. Es justo el escenario que rompía el fallo del *spread* (§14.7), así que sirve de validación en vivo.
 
 > Editar la `v1.0.6` en vez de crear una `v1.0.7` fue deliberado, y sólo es seguro porque se comprobó antes que **no había ninguna ejecución suya en vuelo** (la única existente estaba `Terminated`). La regla de "un fichero por versión" existe para no romper replays; sin replays que romper, una versión nueva sólo habría añadido ruido.
 
