@@ -7,6 +7,14 @@
 > **Fecha:** 2026-08-04 · refleja lo que está desplegado y activo.
 > Si un diagrama y el sistema no coinciden, manda el sistema — y hay que corregir el diagrama.
 
+> ### Cómo leer estos diagramas
+> Las cajas llevan el **nombre real del nodo de n8n** en la primera línea, y debajo una
+> aclaración de lo que hace. Así se puede abrir el workflow y encontrar la caja.
+>
+> Donde una caja representa una **decisión** (los rombos) o un grupo de pasos, la etiqueta
+> es descriptiva: el detalle exacto está en el JSON exportado de cada workflow, en
+> `/opt/homeserver/n8n-workflows/`.
+
 ---
 
 ## 1. Las cuatro piezas y quién manda
@@ -171,7 +179,7 @@ flowchart TD
 reanudable: si algo falla después, el reintento **no vuelve a mover el fichero**.
 
 **Por qué se borra el media al fallar.** La limpieza automática sólo hace candidato lo que
-aparece en un post *publicado*. Un fichero subido y nunca publicado no lo recoge nadie —
+aparece en un post _publicado_. Un fichero subido y nunca publicado no lo recoge nadie —
 ni a los 30 días ni nunca. Se borra **sólo si se subió en esa misma pasada**: si venía
 reutilizado, borrarlo dejaría `postiz_media` apuntando a la nada.
 
@@ -232,17 +240,18 @@ va en la ruta. Y la regla de lectura no es la obvia.
 
 ```mermaid
 flowchart TD
-    WH["🔗 Webhook ruta secreta<br/>lo llama post.activity.ts"] --> INT{{"Interpretar payload"}}
+    WH["Webhook de Postiz<br/>ruta secreta · lo llama post.activity.ts"] --> INT{{"Interpretar payload"}}
 
-    INT -->|"cuerpo vacío []"| IGN["ignorar<br/>post borrado o v1.0.5"]
+    INT -->|"cuerpo vacío []"| IGN["Ignorado<br/>post borrado o v1.0.5"]
     INT -->|"releaseURL o releaseId<br/>CON valor"| PUB["Publicado<br/>+ release_url"]
     INT -->|"sin releaseURL<br/>y state=ERROR"| ERR["Error + motivo"]
     INT -->|"QUEUE u otro"| IGN
 
-    PUB --> BUS["Notion: buscar fila<br/>por postiz_post_id"]
+    PUB --> BUS["Notion: buscar fila por postiz_post_id"]
     ERR --> BUS
-    BUS --> RES{"¿fila<br/>encontrada?"}
-    RES -->|"1 fila"| ESC["Notion: escribir estado"]
+    BUS --> RESOL["Resolver fila<br/>0 · 1 · varias"]
+    RESOL --> RES{"¿Fila encontrada?"}
+    RES -->|"exactamente 1"| ESC["Notion: escribir estado"]
     RES -->|"0 o varias"| SF["Sin fila que actualizar"]
 
     style INT fill:#553c9a,stroke:#b794f4,color:#fff
@@ -250,6 +259,7 @@ flowchart TD
 ```
 
 > ### ⚠️ `releaseURL` manda sobre `state`
+>
 > Si falla el primer comentario —donde van los hashtags—, Postiz marca el post padre como
 > `ERROR` **pero conserva el permalink**: Instagram ya lo tiene publicado.
 >
@@ -338,16 +348,16 @@ sequenceDiagram
 
 ## 8. Qué pasa cuando algo falla, y quién lo recoge
 
-| Falla | Lo detecta | La fila acaba en | ¿Se limpia? |
-|---|---|---|---|
-| Validación previa (sin hora, >10 assets, colaboradores en carrusel…) | `Planificar` | `Error` + motivo | No se subió nada |
-| El asset no se puede descargar o pasa de 1 GiB | `upload-from-url` → 400 | `Error` + motivo de Postiz | No llegó a crearse media |
-| `POST /posts` rechazado (copy largo, media inválido…) | subflow | `Error` + motivo | **Borra el media que acaba de subir** |
-| Instagram rechaza al publicar | `postWorkflowV106` | `Error` vía webhook | El media sobrevive para el reintento |
-| Falla el primer comentario tras publicar | receptor | **`Publicado`** + aviso | — |
-| n8n caído cuando Postiz publica | pasada de recuperación 06:20 | `Publicado` o `Error` | — |
-| Token de Instagram caducado | `refreshNeeded` → webhook | `Error` | — |
-| Notion caído a las 06:00 | *nadie* | queda como estaba | ⚠️ **decisión abierta** |
+| Falla                                                                | Lo detecta                   | La fila acaba en           | ¿Se limpia?                           |
+| -------------------------------------------------------------------- | ---------------------------- | -------------------------- | ------------------------------------- |
+| Validación previa (sin hora, >10 assets, colaboradores en carrusel…) | `Planificar`                 | `Error` + motivo           | No se subió nada                      |
+| El asset no se puede descargar o pasa de 1 GiB                       | `upload-from-url` → 400      | `Error` + motivo de Postiz | No llegó a crearse media              |
+| `POST /posts` rechazado (copy largo, media inválido…)                | subflow                      | `Error` + motivo           | **Borra el media que acaba de subir** |
+| Instagram rechaza al publicar                                        | `postWorkflowV106`           | `Error` vía webhook        | El media sobrevive para el reintento  |
+| Falla el primer comentario tras publicar                             | receptor                     | **`Publicado`** + aviso    | —                                     |
+| n8n caído cuando Postiz publica                                      | pasada de recuperación 06:20 | `Publicado` o `Error`      | —                                     |
+| Token de Instagram caducado                                          | `refreshNeeded` → webhook    | `Error`                    | —                                     |
+| Notion caído a las 06:00                                             | _nadie_                      | queda como estaba          | ⚠️**decisión abierta**                |
 
 ```mermaid
 flowchart LR
@@ -405,17 +415,17 @@ flowchart TD
 
 ## 10. Los identificadores, de un vistazo
 
-| Objeto | ID |
-|---|---|
-| Sync (cron 06:00 + botón) | `eKxZPM4zjwhNb3vf` |
-| Subflow (una fila) | `A0XMq6dLdAWvwMPv` |
-| Retirada y recuperación (cron 06:20) | `rxVcGlxSZjzzI5ez` |
-| Receptor de estado | `VMezjZaMTIU5dIUz` |
-| Calendario de Notion | `186a2405-a123-81dc-832f-000b82a65c0c` |
-| Organización de Postiz | `30c506a6-0a2c-4661-95bb-abec2e14b3f2` |
-| Dustin Calderón (IG) | `cmqjq77hg0001mw7y2xf6bg86` |
-| CITEM (IG) | `cmqjqapu00003mw7yrudcwklj` |
-| AMORISMO VOL III (IG) | `cmqjqfvnw0005mw7yoywgo6he` |
+| Objeto                               | ID                                     |
+| ------------------------------------ | -------------------------------------- |
+| Sync (cron 06:00 + botón)            | `eKxZPM4zjwhNb3vf`                     |
+| Subflow (una fila)                   | `A0XMq6dLdAWvwMPv`                     |
+| Retirada y recuperación (cron 06:20) | `rxVcGlxSZjzzI5ez`                     |
+| Receptor de estado                   | `VMezjZaMTIU5dIUz`                     |
+| Calendario de Notion                 | `186a2405-a123-81dc-832f-000b82a65c0c` |
+| Organización de Postiz               | `30c506a6-0a2c-4661-95bb-abec2e14b3f2` |
+| Dustin Calderón (IG)                 | `cmqjq77hg0001mw7y2xf6bg86`            |
+| CITEM (IG)                           | `cmqjqapu00003mw7yrudcwklj`            |
+| AMORISMO VOL III (IG)                | `cmqjqfvnw0005mw7yoywgo6he`            |
 
 Las rutas secretas de los webhooks **no se escriben aquí**: viven en `/opt/homeserver/.env`
 como `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_SYNC_IG_BUTTON_PATH`.
