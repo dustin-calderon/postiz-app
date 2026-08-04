@@ -68,7 +68,9 @@ Limpia archivos físicos que el endpoint `DELETE /media/:id` dejó sin purgar (s
 
 ### Throughput
 
-Ambas fases procesan en **batches de 100** y **loopean hasta vaciar** los candidatos, con un safety cap de **10 iteraciones por fase** (1000 archivos máximo por ciclo de 24h) para prevenir loops infinitos por bugs.
+Ambas fases procesan en **batches de 100** y **loopean hasta vaciar** los candidatos, con un safety cap de **10 iteraciones por fase** para prevenir loops infinitos por bugs.
+
+> El cap es **por fase, no por ciclo**: `cleanupStaleMedia()` corre los dos bucles de `MAX_ITERATIONS = 10` de forma independiente. El techo real de una pasada de 24 h son **~2000 archivos** (1000 en Phase 1 + 1000 en Phase 2), no 1000.
 
 ---
 
@@ -139,7 +141,9 @@ El campo `Post.image` es `String?` — un JSON serializado de `MediaDto[]`:
 [{"id":"abc123","path":"https://bucket.r2.dev/filename.png","alt":"Descripción"}]
 ```
 
-El matching se hace con `LIKE '%' || media.path || '%'` contra este JSON string. Funciona porque `path` contiene un hash único (`makeId(10)` para R2, 32-char hex para local) que hace los falsos positivos imposibles.
+El matching se hace con `LIKE '%' || media.path || '%'` contra este JSON string. Funciona porque `path` contiene un identificador aleatorio suficientemente largo, que hace los falsos positivos inverosímiles.
+
+> **No son hashes**, aunque lo parezcan: ninguno se deriva del contenido del fichero. R2 usa `makeId(10)` (`make.is.ts`), 10 caracteres alfanuméricos de `Math.random()`; local usa 32 dígitos hexadecimales, también de `Math.random()`. La unicidad es probabilística, no criptográfica — que para este uso basta, pero conviene no llamarlo hash y acabar razonando sobre una propiedad que no tiene.
 
 ---
 

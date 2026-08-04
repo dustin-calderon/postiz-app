@@ -5,7 +5,13 @@
 > **Inventario completo de lo implementado y lo no verificado: §14.**
 > **Fecha:** agosto 2026 · última verificación 2026-08-04
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
-> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
+>
+> ### 🗺️ ¿Buscas cómo encaja todo, no por qué?
+> **→ [CONTENT_PIPELINE_DIAGRAMS.md](./CONTENT_PIPELINE_DIAGRAMS.md)** — el mapa visual: los cuatro workflows nodo a nodo, las puertas del planificador, la máquina de estados, la secuencia de un día y qué pasa cuando algo falla.
+>
+> Este documento explica **por qué** cada decisión es como es. Aquél enseña **cómo funciona**. Si sólo vas a leer uno y quieres operar el sistema, empieza por los diagramas.
+>
+> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md)
 
 ---
 
@@ -176,6 +182,12 @@ SELECT count(*) FROM "Post" p WHERE EXISTS (SELECT 1 FROM "Post" q WHERE q."rele
 
 Cero solapamiento: la `v1.0.5` **nunca** pudo encontrar el post. Y la consulta de la `v1.0.6`, con el id interno, devuelve la fila con su `content` y su `state`.
 
+### 4.4.2 La entrega del webhook no está garantizada
+
+`post.activity.ts:326-340` envuelve el `fetch` en `try { … } catch (e) { /**empty**/ }`. Si n8n está caído o hay timeout, **el fallo se traga sin log y sin reintento**, y el `Promise.all` no propaga nada al workflow.
+
+Un `Publicado` perdido no se recupera solo. **Por eso no se puede eliminar el polling del todo** (§9.4).
+
 ### 4.4.3 El `state` no basta para saber si se publicó
 
 `updatePost` (`posts.repository.ts:392-402`) marca `state='PUBLISHED'` **y** guarda `releaseURL`/`releaseId`. Si después falla el primer comentario —el sitio recomendado para los hashtags (§7.3)—, `changeState` pone `ERROR` **sobre el post padre** y `releaseURL` **se conserva**.
@@ -195,27 +207,16 @@ Es decir: `state=ERROR` cubre dos situaciones opuestas.
 
 Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `releaseId` y `error` en su `select`. Sin `error`, `error_log` nunca podría llevar el motivo que pide §9.4.
 
-### 4.4.2 La entrega del webhook no está garantizada
-
-`post.activity.ts:326-340` envuelve el `fetch` en `try { … } catch (e) { /**empty**/ }`. Si n8n está caído o hay timeout, **el fallo se traga sin log y sin reintento**, y el `Promise.all` no propaga nada al workflow.
-
-Un `Publicado` perdido no se recupera solo. **Por eso no se puede eliminar el polling del todo** (§9.4).
-
-### 4.8 Borrar un post termina su workflow
-
-`posts.service.ts:660-677`: `deletePost` busca las ejecuciones de Temporal asociadas y las termina.
-
-```ts
-query: `postId="${post.id}" AND ExecutionStatus="Running"`
-...
-await workflow.terminate();
-```
-
-**Esta es la garantía que hace viable el modelo de reconciliación** (§9). Sin ella, borrar y recrear dejaría workflows zombis publicando posts borrados.
-
 ### 4.5 Postiz valida el post antes de crearlo
 
 `instagram.provider.ts:48-57` rechaza >10 medias y exige al menos una. El API público ejecuta `validatePosts` antes de crear nada y devuelve un 400 legible. La validación en n8n sigue siendo buena idea (fallar antes es mejor), pero no es la última línea de defensa.
+
+> ### ⚠️ …salvo con `modo = borrador`, donde casi no valida nada
+> El resultado de `checkValidity` viaja en `item.errors`, y ese campo **sólo se comprueba dentro de `if (body.type !== 'draft')`** (`public.integrations.controller.ts:267-279`). Fuera de ese bloque queda una sola comprobación: `emptyContent`, que exige que el texto **y** las imágenes estén vacíos **a la vez** (`posts.service.ts:831-835`).
+>
+> Es decir: un borrador sin ninguna imagen pero con copy pasa sin queja, aunque `checkValidity` lo habría rechazado con *«Should have at least one media»*.
+>
+> **Con `modo = borrador`, n8n es la única defensa incluso para las reglas que §7.4 marca como «✅ Sí».** Es la misma razón por la que §10 descarta usar borradores como dry-run.
 
 ### 4.6 `createPost` devuelve un ID por integración
 
@@ -236,6 +237,18 @@ Según [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md):
 > Esto sólo es cierto porque Notion guarda el máster. Si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla.
 
 ---
+
+### 4.8 Borrar un post termina su workflow
+
+`posts.service.ts:660-677`: `deletePost` busca las ejecuciones de Temporal asociadas y las termina.
+
+```ts
+query: `postId="${post.id}" AND ExecutionStatus="Running"`
+...
+await workflow.terminate();
+```
+
+**Esta es la garantía que hace viable el modelo de reconciliación** (§9). Sin ella, borrar y recrear dejaría workflows zombis publicando posts borrados.
 
 ### 4.9 ⚠️ Las 3 cuentas usan `instagram-standalone`, no `instagram`
 
@@ -265,7 +278,7 @@ override async checkValidity(...) {
 
 **2. El audio nunca se aplica.** `instagram.provider.ts:649-654` exige `type === 'graph.facebook.com'`. Con `graph.instagram.com` la condición es falsa y el parámetro **se descarta en silencio**, sin error. No tiene sentido exponer `audio_id` en Notion.
 
-**3. Los colaboradores sí se envían** — el bloque de `instagram.provider.ts:640-645` no distingue por `type`. Lo que **no está verificado** es que Meta los acepte en la API de Instagram Login. Se comprueba en la Fase 1, publicando uno de verdad.
+**3. Los colaboradores sí se envían** — el bloque de `instagram.provider.ts:640-645` no distingue por `type`. Lo que **no está verificado** es que Meta los acepte en la API de Instagram Login. **Se aceptó como deuda técnica y no se va a probar de momento** (decisión #7 de §11): comprobarlo exige publicar de verdad en una cuenta real.
 
 > **Regla general para este documento:** ante cualquier afirmación sobre validación, manda `instagram.standalone.provider.ts`, no `instagram.provider.ts`. Sólo la lógica de publicación y `handleErrors` son compartidas.
 
@@ -343,7 +356,7 @@ Y tres cosas que **no** son propiedades nuevas:
 - **`publish_at`** es `Fecha`, con hora (§7.5).
 - **`release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
 
-> **El aviso de error va al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n lo resuelve a email, con una dirección general de reserva (§10, Fase 3b).
+> **El aviso de error irá al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n puede resolverlo a email, con una dirección general de reserva. **Diseño decidido, implementación pendiente** (§10, Fase 3b, punto 17): hoy los fallos se ven en la vista *⚠️ Averías*.
 
 Los tres campos de n8n (`postiz_post_id`, `postiz_media`, `error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
@@ -463,15 +476,17 @@ El worker las comprueba antes de gastar una llamada. Todas verificadas en `insta
 
 | Regla | ¿La para Postiz? | Dónde |
 |---|---|---|
-| Al menos 1 media | ✅ Sí | `instagram.standalone.provider.ts:50-52` |
-| Trial reel: 1 media y vídeo | ✅ Sí | `instagram.standalone.provider.ts:53-63` |
+| Al menos 1 media | ✅ Sí\* | `instagram.standalone.provider.ts:50-52` |
+| Trial reel: 1 media y vídeo | ✅ Sí\* | `instagram.standalone.provider.ts:53-63` |
 | **Máximo 10 medias** | ❌ **No** | El provider normal sí, el standalone **no**. Llega a Meta |
 | **Carrusel: mínimo 2 medias** | ❌ No | Error de Instagram, traducido en `instagram.provider.ts:362-367` |
 | **Colaboradores en carrusel** | ❌ No | Error de Instagram, traducido en `instagram.provider.ts:376-381` |
 | **Colaboradores en story** | ❌ No | Se **descartan en silencio** (`!isStory`, sin error) |
 | **Audio** | ❌ No | Se **descarta en silencio**: exige `graph.facebook.com` (§4.9) |
 
-> ### ⚠️ Cuatro de estas siete no dan error, o lo dan tarde
+> **\* Sólo con `modo = programar`.** Con `borrador`, Postiz se salta `checkValidity` entero (§4.5), así que **ninguna** de las siete la para: son 7 de 7 a cargo de n8n.
+
+> ### ⚠️ Cinco de estas siete no dan error, o lo dan tarde
 > Con el provider standalone, **n8n es la única validación real**. Lo que no compruebe el worker, o lo rechaza Meta a mitad de la publicación, o —peor— se aplica a medias sin avisar.
 >
 > Las dos de "silencio" son las peligrosas: pones colaboradores en una story o un audio en un reel, la publicación sale **correcta pero sin eso**, y nadie se entera. El worker debe rechazarlas explícitamente.
@@ -593,8 +608,8 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 Superadas las puertas, cada fila es **un solo post**, así que el subflow es lineal:
 
 ```
-1. valida  ≤10 items · tamaño · reglas de §7.4
-           colaboradores ⇒ ni carrusel ni story          (§7.2.4)
+1. valida  ≤10 items · reglas de §7.4                    ← el tamaño ya no,
+           colaboradores ⇒ ni carrusel ni story            lo aplica Postiz (§9.2)
 2. resuelve `cuenta` ──► integration.id                  (§7.2.1)
 3. si tiene postiz_post_id y no está publicado ──► DELETE primero
 4. si `postiz_media` está vacío:
@@ -687,10 +702,12 @@ Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay q
 Con el webhook de fallo añadido (§4.4, §10 Fase 3a), **publicado y fallido llegan por el mismo canal**:
 
 ```
-Postiz publica (o falla) ──webhook──► n8n ──► status      = Published | Error
+Postiz publica (o falla) ──webhook──► n8n ──► publicación = Publicado | Error
                                               release_url = permalink   (si publicó)
                                               error_log   = motivo      (si falló)
 ```
+
+> Es `publicación`, la propiedad del pipeline — **nunca `Status`**, que es tuya y n8n no toca jamás (§6, §8).
 
 n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, el post está en Instagram aunque el `state` diga `ERROR` (§4.4.3). Sólo si vienen vacíos y el `state` es `ERROR` la fila va a `Error`. Cualquier otra cosa se ignora sin escribir nada.
 
@@ -775,7 +792,7 @@ El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cu
 
 **✅ Ejecutado de punta a punta el 2026-08-03**, no sólo derivado de los DTOs. Se subió un fichero, se creó un post programado para 2027 y se borró. Resultados abajo.
 
-Ejemplo real para una de las tres cuentas:
+Ejemplo de la forma exacta del cuerpo, para una de las tres cuentas. *(La fecha aquí es ilustrativa; la del ensayo de punta a punta fue `2027-01-15T10:00:00+01:00`, más abajo.)*
 
 ```json
 {
@@ -828,7 +845,7 @@ Ejemplo real para una de las tres cuentas:
 | `DELETE /posts/:id` | **200** | `{"error":true}` ⚠️ |
 
 > ### ⚠️ `DELETE` devuelve `{"error":true}` aunque funcione
-> Confirmado ejecutándolo: el post y su comentario quedaron correctamente soft-deleted, y aun así la respuesta fue `{"error":true}` con 200. `posts.service.ts:681` devuelve eso siempre.
+> Confirmado ejecutándolo: el post y su comentario quedaron correctamente soft-deleted, y aun así la respuesta fue `{"error":true}` con 200. `posts.service.ts:683` devuelve eso siempre.
 >
 > **n8n no puede usar el cuerpo como señal de éxito.** Si necesita certeza, tiene que releer el estado; en la práctica basta con no tratar esa respuesta como fallo.
 
@@ -866,7 +883,7 @@ CLOUDFLARE_BUCKET_URL=…r2.dev/      ← ANTES; se le quitó la barra final. In
 API_LIMIT=30                        ← ANTES del cambio; hoy 300 (ver más abajo)
 ```
 
-Con `local`, la URL pública es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts:76,109`).
+Con `local`, la URL pública es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts:84,133,193`).
 
 **Prueba de alcance externo — y el falso positivo que generó:**
 
@@ -925,6 +942,11 @@ Lo que se aprende, y sale gratis:
 
 Si a las dos semanas la cola está llena y al día, el sync merece la pena. Si está a medias, el problema no es de automatización y automatizarlo lo empeora.
 
+> ### ⚠️ Esta fase se saltó, y conviene saberlo
+> Las fases 2, 3a y 3b se construyeron **sin esperar** las dos semanas de cola a mano. La razón fue práctica: el esquema de Notion y el worker se podían montar mientras tanto, y montarlos destapó defectos del fork que había que arreglar de todos modos.
+>
+> **Pero el filtro que plantea esta fase sigue sin pasarse.** El sistema está listo; lo que no está demostrado es que el equipo llene la cola con la disciplina que exige —una fila por post, hora obligatoria, `cuenta` y `colaboradores` elegidos—. Si a las dos semanas de uso real la cola está a medias, el problema no lo arregla el sync, y esta sección explica por qué.
+
 ### Fase 2 — Notion · **PROPIEDADES CREADAS (2026-08-03)**
 
 **4. ✅ Hecho.** Las 10 propiedades de §7.2 están creadas en `collection://186a2405-a123-81dc-832f-000b82a65c0c`, con descripción en cada una y las opciones de `cuenta`, `modo` y `publicación` ya pobladas. No se creó ninguna tabla.
@@ -976,7 +998,7 @@ Criterio para tocar el fork: **sólo donde la alternativa es imposible o frágil
 | 2 | `notifyFailure()` en los tres `return false` | El webhook sólo salía en éxito (§4.4) |
 | 3 | `changeState('ERROR')` en el camino de reintentos agotados | Ese camino salía con el post en `QUEUE` (§4.4) |
 
-Cambios asociados: `workflows/index.ts` exporta la nueva versión, `posts.service.ts:729` arranca `postWorkflowV106`, y la llamada recursiva de `repeat-post` (`:442`) apunta a sí misma.
+Cambios asociados: `workflows/index.ts` exporta la nueva versión, `posts.service.ts:729` arranca `postWorkflowV106`, y la llamada recursiva de `repeat-post` (`:462`) apunta a sí misma.
 
 Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow.v1.0.5.ts` sin cambios.
 
@@ -1089,7 +1111,7 @@ Verificado contra la API real:
 11. ✅ **Zona horaria fijada y probada** (§7.5): `10:00+02:00` enviado → `08:00` UTC almacenado, con un post real.
 12. ✅ **Subflow de sync** (§9.2) con el margen de seguridad (§9.3) — `A0XMq6dLdAWvwMPv`.
 13. ✅ **Cron 06:00 Europe/Madrid** sobre la ventana de 15 días (`eKxZPM4zjwhNb3vf`) **+ retirada y recuperación a las 06:20** (`rxVcGlxSZjzzI5ez`, §14.3). Confirmado que la zona del cron es Madrid de verdad: el contenedor de n8n corre con `TZ` y `GENERIC_TIMEZONE` = `Europe/Madrid`.
-14. ⏸️ **A mano en la UI de Notion — el único paso que queda.** Propiedad Botón `Sincronizar ahora` → acción *Enviar webhook*. Hay **dos URLs válidas**, se usa la que permita la UI:
+14. ✅ **Hecho a mano en la UI de Notion** (la API no lo permite, ver aviso). Propiedad Botón `Sync now` → acción *Enviar webhook*, apuntando a la ruta secreta. Hay **dos URLs válidas** y se usó la segunda:
 
     | Si la UI deja añadir cabeceras | Si no |
     |---|---|
@@ -1122,7 +1144,7 @@ Verificado contra la API real:
 16. ✅ **Dry-run hecho — programando de verdad, no con `modo = borrador`.** Se creó un post con fecha dentro de ventana, se comprobó en Postiz y se retiró con la propia pasada de retirada. Cero publicaciones en Instagram.
 
 > ### ⚠️ Los drafts se saltan la validación entera
-> `public.integrations.controller.ts:219` → `if (body.type !== 'draft')`. Todo el bloque que lanza `PostValidationException` (`:220-231`) **no se ejecuta para drafts**. Sólo se comprueba `emptyContent`.
+> `public.integrations.controller.ts:267` → `if (body.type !== 'draft')`. Todo el bloque que lanza `PostValidationException` (`:268-278`, via el helper `fail()` de `:250-256`) **no se ejecuta para drafts**. Sólo se comprueba `emptyContent`.
 >
 > Un post que fallaría en `programar` **se crea sin una queja en `borrador`**. Usar drafts como dry-run no valida nada de lo que se quiere validar: da una falsa sensación de que todo está bien.
 >
@@ -1163,7 +1185,7 @@ Verificado contra la API real:
 | IDs de integración | Los tres, verificados en la base de datos (§7.2.1) |
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `publicación`, separada del `Status` humano (§7.2) |
-| Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva |
+| Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva — *decidido el diseño; sin implementar (punto 17)* |
 | Archivo en Drive | **Después**, cuando el pipeline funcione. Trabajo aparte, fuera del camino de publicación |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Margen de seguridad | **2 h** (§9.3) |
@@ -1342,7 +1364,9 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 >
 > La salida es soft-borrarlo a mano. **Verificado que eso basta:** la fase 2 (`findOrphanedSoftDeletedMedia`) selecciona cualquier media con `deletedAt` de más de 7 días, sin mirar si se publicó. Es decir, el agujero está en *quién marca el `deletedAt`*, no en la limpieza.
 >
-> **Sigue siendo un agujero del pipeline, y ahora con un emisor real:** cada vez que el sync suba un asset y el `POST /posts` falle después, ese fichero queda huérfano y permanente. Lo mitiga que el reintento **reutiliza `postiz_media`** en vez de resubir (§8.1), así que no se acumulan por reintento — sólo queda basura si la fila se abandona. **Decisión #6 de §11, aún abierta.**
+> **✅ Cerrado para el caso que lo generaba** (decisión #6 de §11): se añadió `DELETE /public/v1/media/:id` y el subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2). Verificado con un fallo real: 30 medios vivos antes y después.
+>
+> **Lo que sigue sin cubrir** es la subida parcial de un carrusel —si el asset 1 sube y el 2 falla, el primero queda huérfano— y cualquier fila que se abandone sin corregir. A este volumen no compensa; está desarrollado en [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md).
 
 ### 14.6 Qué se verificó ejecutándolo, y qué no
 
@@ -1384,7 +1408,7 @@ Y una decisión abierta: qué hacer si el sync entero falla (Notion caído a las
 |---|---|
 | Nombre | `n8n sync Instagram` |
 | URL | `https://auto.dustincalderon.com/webhook/` + `N8N_POSTIZ_WEBHOOK_PATH` |
-| Integraciones | **las 3 de Instagram** (no «todas») |
+| Integraciones | **las 4 conectadas**: las 3 de Instagram y el TikTok (no la opción «todas») |
 
 **✅ Entrega verificada de punta a punta en producción**, sin publicar nada: se creó un **borrador** (que nunca arranca workflow ni publica) y se lanzó su workflow a mano, cayendo por el camino `Already posted`. El cuerpo llegó **completo**:
 
@@ -1413,9 +1437,11 @@ Es exactamente lo que §4.4.1 decía que **no** llegaba, más los dos campos que
 > ### ⚠️ Consecuencia de elegir «integraciones específicas»
 > El filtro de `sendWebhooks` (`post.activity.ts:316-323`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas, **sólo entrega cuando el `integrationId` coincide**.
 >
-> Dos de los cinco caminos previos al bucle (`:86` y `:108`, «No Post») no conocen la integración y pasan `''`, así que **no entregan**. No se pierde nada: en esos casos el post no existe y el cuerpo sería `[]` de todos modos.
+> Dos de los cinco caminos previos al bucle («No Post») no conocen la integración y pasan `''`, así que **no entregan**. No se pierde nada: en esos casos el post no existe y el cuerpo sería `[]` de todos modos.
 >
-> **Lo que sí es una trampa a futuro:** el día que se conecte una cuarta cuenta de Instagram, habrá que añadirla aquí a mano o sus avisos no llegarán, en silencio. Con «todas las integraciones» eso no pasa. Merece la pena cambiarlo si algún día se añade una cuenta.
+> **Lo que sí es una trampa a futuro:** hoy están marcadas las cuatro integraciones que existen, pero el día que se conecte una quinta habrá que añadirla aquí a mano o sus avisos no llegarán, **en silencio**. Con la opción «todas las integraciones» eso no pasa. Merece la pena cambiarlo la próxima vez que se conecte una cuenta.
+>
+> Que TikTok esté incluido es inocuo: el receptor busca en Notion una fila que reclame el post y, al no encontrarla, lo ignora sin escribir nada.
 
 > ### 🔑 No rotar la API key sin avisar a n8n
 > El botón *Rotate Key* de *Settings → Developers* invalida la clave que usa la credencial `h6bGMcfTHiZUD0dy`. Rompería **los cuatro workflows a la vez** y de forma silenciosa: no se notaría hasta la pasada de las 06:00. Si se rota, hay que actualizar la credencial de n8n el mismo día.
