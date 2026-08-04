@@ -1,5 +1,13 @@
 import { IUploadProvider } from './upload.interface';
-import { mkdirSync, unlink, writeFileSync } from 'fs';
+import {
+  createWriteStream,
+  mkdirSync,
+  unlink,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { parseDataUrl } from '@gitroom/nestjs-libraries/upload/data.url';
@@ -76,6 +84,37 @@ export class LocalStorage implements IUploadProvider {
     return process.env.FRONTEND_URL + '/uploads' + publicPath;
   }
 
+  /**
+   * Resolves where a new file goes: `<uploadDirectory>/YYYY/MM/DD/<32 hex>.<ext>`.
+   *
+   * Shared by the buffered and the streaming paths so the naming scheme can
+   * never drift between them — `removeFile()` and the cleanup job both parse
+   * this layout back out of the public URL.
+   */
+  private buildTarget(safeExt: string) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+
+    const innerPath = `/${year}/${month}/${day}`;
+    const dir = `${this.uploadDirectory}${innerPath}`;
+    mkdirSync(dir, { recursive: true });
+
+    const randomName = Array(32)
+      .fill(null)
+      .map(() => Math.round(Math.random() * 16).toString(16))
+      .join('');
+
+    const filename = `${randomName}${safeExt}`;
+
+    return {
+      filename,
+      filePath: `${dir}/${filename}`,
+      publicPath: `${innerPath}/${filename}`,
+    };
+  }
+
   async uploadFile(file: Express.Multer.File): Promise<any> {
     try {
       const detected = await fromBuffer(file.buffer);
@@ -85,35 +124,77 @@ export class LocalStorage implements IUploadProvider {
       const safeExt = `.${detected.ext}`;
       const safeMime = detected.mime;
 
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-
-      const innerPath = `/${year}/${month}/${day}`;
-      const dir = `${this.uploadDirectory}${innerPath}`;
-      mkdirSync(dir, { recursive: true });
-
-      const randomName = Array(32)
-        .fill(null)
-        .map(() => Math.round(Math.random() * 16).toString(16))
-        .join('');
-
-      const filePath = `${dir}/${randomName}${safeExt}`;
-      const publicPath = `${innerPath}/${randomName}${safeExt}`;
+      const { filename, filePath, publicPath } = this.buildTarget(safeExt);
 
       writeFileSync(filePath, file.buffer);
 
       return {
-        filename: `${randomName}${safeExt}`,
+        filename,
         path: process.env.FRONTEND_URL + '/uploads' + publicPath,
         mimetype: safeMime,
-        originalname: `${randomName}${safeExt}`,
+        originalname: filename,
       };
     } catch (err) {
       console.error('Error uploading file to Local Storage:', err);
       throw err;
     }
+  }
+
+  /**
+   * Streams a file to disk without ever holding it whole in memory.
+   *
+   * The buffered path needs RAM proportional to the file, which puts a hard
+   * ceiling on how big a video can be — and this process also runs the
+   * orchestrator, so an oversized upload takes scheduled posting down with it.
+   * Streaming makes memory use constant, so the only real limit becomes
+   * `maxBytes`.
+   *
+   * The type has already been sniffed and validated by the caller: this method
+   * only writes bytes.
+   */
+  async uploadStream(
+    stream: Readable,
+    ext: string,
+    mime: string,
+    maxBytes: number
+  ): Promise<any> {
+    const safeExt = `.${ext}`;
+    const { filename, filePath, publicPath } = this.buildTarget(safeExt);
+
+    let written = 0;
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        written += chunk.length;
+        if (written > maxBytes) {
+          // Aborts the pipeline, which tears down the download too — we stop
+          // pulling bytes instead of draining a huge file just to reject it.
+          callback(new Error('FILE_TOO_LARGE'));
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+
+    try {
+      await pipeline(stream, limiter, createWriteStream(filePath));
+    } catch (err) {
+      // A partial file left behind would be served as a corrupt media and
+      // would never be cleaned up: nothing references it.
+      try {
+        unlinkSync(filePath);
+      } catch {
+        /** the file may not exist yet */
+      }
+      throw err;
+    }
+
+    return {
+      filename,
+      path: process.env.FRONTEND_URL + '/uploads' + publicPath,
+      mimetype: mime,
+      originalname: filename,
+      size: written,
+    };
   }
 
   /**

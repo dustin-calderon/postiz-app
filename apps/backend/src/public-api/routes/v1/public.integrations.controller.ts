@@ -36,7 +36,7 @@ import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notification
 import { Readable } from 'stream';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer } = require('file-type');
+const { fromBuffer, stream: fileTypeStream } = require('file-type');
 
 const PUBLIC_API_ALLOWED_MIME = new Set<string>([
   'image/jpeg',
@@ -110,6 +110,54 @@ export class PublicIntegrationsController {
     if (!response.ok) {
       throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
     }
+
+    // Hard ceiling for the streaming path. It exists to stop a single bad URL
+    // from filling the disk, not to bound memory — memory is constant now.
+    const maxBytes =
+      Number(process.env.MAX_URL_UPLOAD_BYTES) || 2 * 1024 * 1024 * 1024;
+
+    // Preferred path: never hold the file in memory. Falls back to buffering
+    // for providers that cannot stream (R2 would need multipart uploads).
+    if (typeof this.storage.uploadStream === 'function' && response.body) {
+      const source = Readable.fromWeb(response.body as any);
+
+      // `fileType.stream()` sniffs the head and still replays every byte
+      // downstream, so the type is known before a single byte hits the disk.
+      const typed: any = await fileTypeStream(source);
+      const sniffed = typed.fileType;
+
+      if (!sniffed || !PUBLIC_API_ALLOWED_MIME.has(sniffed.mime)) {
+        source.destroy();
+        throw new HttpException({ msg: 'Unsupported file type.' }, 400);
+      }
+
+      let streamed;
+      try {
+        streamed = await this.storage.uploadStream(
+          typed,
+          sniffed.ext,
+          sniffed.mime,
+          maxBytes
+        );
+      } catch (err: any) {
+        if (err?.message === 'FILE_TOO_LARGE') {
+          throw new HttpException(
+            {
+              msg: `File exceeds the maximum allowed size of ${maxBytes} bytes.`,
+            },
+            400
+          );
+        }
+        throw err;
+      }
+
+      return this._mediaService.saveFile(
+        org.id,
+        streamed.originalname,
+        streamed.path
+      );
+    }
+
     const buffer = Buffer.from(await response.arrayBuffer());
     const detected = await fromBuffer(buffer);
     if (!detected || !PUBLIC_API_ALLOWED_MIME.has(detected.mime)) {
