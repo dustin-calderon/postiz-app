@@ -9,9 +9,58 @@
 
 ## Regla de Negocio
 
-**"Todo archivo de medios que haya sido usado en alguna publicación se elimina después de 30 días desde la fecha de publicación."**
+**"Todo archivo de medios que haya sido usado en alguna publicación se elimina después de `MEDIA_RETENTION_DAYS` días desde la fecha de publicación."**
 
-La retención es configurable vía env var `MEDIA_RETENTION_DAYS` (default: `30`).
+La retención es configurable vía env var `MEDIA_RETENTION_DAYS`. **El default del código es `30`; producción está en `3650`** desde el 2026-08-04. El porqué —y la trampa que hace que cambiar la variable no baste— están en la sección siguiente.
+
+---
+
+## ⚠️ Cambiar `MEDIA_RETENTION_DAYS` no es cambiar la variable
+
+**El workflow recibe la retención como argumento al arrancar; no la vuelve a leer nunca.** `infinite.workflow.register.ts:20-27` resuelve el número al iniciar el backend y lo pasa en `args`:
+
+```ts
+const retentionDays = Number(process.env.MEDIA_RETENTION_DAYS) || 30;
+await ...workflow?.start('mediaCleanupWorkflow', {
+  workflowId: 'media-cleanup-workflow',
+  taskQueue: 'main',
+  args: [retentionDays],
+});
+```
+
+Y `media.cleanup.workflow.ts:34-48` es un `while (true)` con `sleep('24 hours')` que arrastra **ese mismo** `retentionDays` durante toda su vida.
+
+No es un descuido: es una obligación de Temporal. El workflow corre en un sandbox determinista de V8 donde **`process.env` no existe** —lo dice el propio JSDoc del fichero—, así que el valor se lee fuera y viaja como argumento.
+
+> ### ⚠️ Editar el `.env` y reiniciar el contenedor NO cambia la retención
+> Al arrancar, `workflow.start` con un `workflowId` ya vivo lanza `WorkflowExecutionAlreadyStarted`, y el `catch (err) {}` de `:28-30` **se lo traga a propósito** («Workflow already running — expected on restart»). El arranque parece correcto, no hay error en los logs, y el workflow viejo sigue corriendo con su argumento antiguo hasta que alguien lo termine.
+>
+> Estas ejecuciones viven meses: la que corría hasta el 2026-08-04 arrancó el **2026-07-06** con `retentionDays = 30` y se ejecutaba a diario a las 12:38 UTC.
+
+**El procedimiento correcto:**
+
+1. Cambiar `MEDIA_RETENTION_DAYS` en `/opt/homeserver/postiz/postiz.env`.
+2. **Terminar** `media-cleanup-workflow` en Temporal.
+3. Reiniciar el contenedor `postiz` para que `InfiniteWorkflowRegister` lo relance.
+4. **Leer el argumento en el historial de la ejecución nueva.** El arranque sin error no prueba nada — es exactamente el síntoma del fallo silencioso.
+
+| Detalle operativo | Valor |
+|---|---|
+| WorkflowId | `media-cleanup-workflow` |
+| Contenedor de Temporal | `temporal` — **no** `postiz-temporal` |
+| Dirección para el CLI | `172.22.0.4:7233` — **no** `localhost:7233` |
+
+### Aplicado el 2026-08-04: de 30 a 3650 días
+
+`MEDIA_RETENTION_DAYS=3650` añadida a `/opt/homeserver/postiz/postiz.env` (copia previa: `postiz.env.bak-20260804-retention`). El workflow anterior se terminó y el nuevo arrancó con `retentionDays = ['3650']`, **verificado en el historial de Temporal**. La pasada inmediata no borró nada: 35 medios vivos y 54 ficheros en disco, antes y después.
+
+**Por qué se subió.** El argumento de que 30 días eran seguros descansa entero en que Notion guarda el máster ([CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7). Es cierto para lo que pasa por el pipeline y **falso para todo lo anterior**: los 18 posts publicados desde la UI de Postiz no tienen fila en Notion, así que la caché del Seagate era su única copia. Nueve ya habían perdido sus ficheros —todo junio—; los otros nueve conservaban **214,5 MB** que se habrían empezado a purgar el 2026-08-05.
+
+Lo anticipaba el propio documento del pipeline: *«Si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla»*. Lo que no vio es que ya lo era para el material antiguo.
+
+Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de bases de datos y configuración**, sin una sola mención a Postiz, y ningún cron ni timer de systemd toca `/mnt/seagate`. Ni los medios ni la base de datos de Postiz estaban respaldados.
+
+**3650 no es «desactivar la limpieza».** El workflow sigue vivo y las dos fases siguen corriendo; lo que deja de ocurrir es la purga automática por antigüedad. La Phase 2 —los blobs de lo que alguien borra a mano— es la que se usa a diario, y no depende de este número. Volver a bajarlo sólo tendrá sentido cuando exista una segunda copia real de cada fichero: es lo que persigue [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md).
 
 ---
 
@@ -52,7 +101,7 @@ Identifica y elimina archivos de medios que ya cumplieron su función:
 |------|-------------|
 | **Step 1** (Prisma) | Obtiene candidatos base: media no soft-deleted, no referenciada por FK (avatar, logo, icono), creada hace >retentionDays |
 | **Step 2** (Raw SQL) | Filtra positivamente: solo candidatos cuyo `path` aparece en algún `Post.image` con `state='PUBLISHED'` y `publishDate < (now - retentionDays)`. Posts soft-deleted **sí cuentan** como prueba de uso. |
-| **Step 3** (Raw SQL) | Excluye candidatos cuyo `path` aparece en posts **activos**: `QUEUE`, `DRAFT`, `ERROR`, `PUBLISHED` reciente (<30 días), o recurrentes (`intervalInDays IS NOT NULL`) |
+| **Step 3** (Raw SQL) | Excluye candidatos cuyo `path` aparece en posts **activos**: `QUEUE`, `DRAFT`, `ERROR`, `PUBLISHED` reciente (dentro de la retención vigente, no «30 días»), o recurrentes (`intervalInDays IS NOT NULL`) |
 | **Blob removal** | Elimina archivo físico de R2 o filesystem local |
 | **Soft-delete** | Marca `deletedAt = now()` en la DB |
 
@@ -94,7 +143,7 @@ Ambas fases procesan en **batches de 100** y **loopean hasta vaciar** los candid
 
 El filtro del **Step 2 es positivo**: sólo es candidato lo que aparece en un `Post` con `state='PUBLISHED'`. Eso protege bien contra falsos positivos, pero deja un hueco simétrico:
 
-> **Un fichero subido y nunca publicado no entra jamás en la Phase 1.** No es que tarde: es que no es candidato, ni a los 30 días ni a los tres años.
+> **Un fichero subido y nunca publicado no entra jamás en la Phase 1.** No es que tarde: es que no es candidato, ni con la retención en 30 ni con ella en 3650.
 
 **La Phase 2 sí lo limpiaría**, porque `findOrphanedSoftDeletedMedia()` selecciona por `deletedAt` sin mirar si se publicó. El problema no está en la limpieza, está en **quién marca ese `deletedAt`**: hoy sólo una persona, desde la UI.
 
@@ -117,6 +166,22 @@ Verificado con un fallo real: 30 medios vivos antes y después.
 | Subida parcial de un carrusel (asset 1 sube, asset 2 falla) | El primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
 | Media subida por un cliente de API que simplemente la abandona | Ya no es nuestro caso; y un barrido genérico por «sin referencia en ningún Post» es peligroso con los FK guards |
 
+### ⚠️ Corrección: los «11 huérfanos permanentes» no existían
+
+Un primer análisis del 2026-08-04 contó **11 ficheros huérfanos permanentes (20,8 MB)** y los dio por basura recuperable. **Era falso.** Al buscar cada `path` en un volcado completo de la base:
+
+| Ficheros | Qué eran de verdad |
+|---|---|
+| **10 de 11** | La **biblioteca de medios**, usada a propósito: carpetas `Citem/Audition Book - C1` … `C8`, con nombres originales `contact-sheet-c01.png` … `c08.png`. No aparecen en ningún post porque **nunca se pensaron para publicar** |
+| **1 de 11** | Fuga real: `1f48184ea92abff016b10dbc5e4fcc179.mp4` (original `0619 (1).mp4`, 19,6 MB), del post `cmqknnxh30005q07ql8anll8d` — estado `QUEUE`, borrado el 2026-06-19, nunca publicado |
+
+> ### ⚠️ «No aparece en ningún post» no significa «es basura»
+> Una limpieza automática basada en aquel diagnóstico **habría borrado la biblioteca de medios entera**. La biblioteca es una función del producto: existe precisamente para guardar ficheros que aún no están en ningún post. Es el mismo error simétrico contra el que se diseñaron las protecciones de arriba, cometido desde fuera del código.
+
+El mecanismo de fuga sí es estructural y sigue vigente —Phase 1 sólo recoge lo que aparece en un post **publicado**, Phase 2 sólo lo que tiene `deletedAt`, y un fichero subido y nunca publicado no cumple ninguna—, pero la **proporción real es 1 fichero en 7 semanas de uso**.
+
+**El pipeline comparte esa fuga en un caso concreto.** En el subflow, el camino de recreación ejecuta `Postiz: DELETE post anterior`, que borra **el post, no sus medios**; el único `DELETE media huérfano` está en la rama de error. Si se cambian los ficheros de una fila ya sincronizada, los antiguos quedan vivos para siempre.
+
 ---
 
 ## Ficheros clave
@@ -129,7 +194,7 @@ Verificado con un fallo real: 30 medios vivos antes y después.
 | `libraries/.../upload/cloudflare.storage.ts` | `removeFile()` — extrae key de URL, `DeleteObjectCommand` en R2 |
 | `apps/orchestrator/.../media.cleanup.activity.ts` | Temporal Activity wrapper con logging |
 | `apps/orchestrator/.../media.cleanup.workflow.ts` | `while(true) { cleanup(); sleep(24h); }` con try/catch resiliente |
-| `libraries/.../temporal/infinite.workflow.register.ts` | Registro del workflow al arrancar con `RUN_CRON=true` |
+| `libraries/.../temporal/infinite.workflow.register.ts` | Registro del workflow al arrancar con `RUN_CRON=true` — **y único sitio donde se lee `MEDIA_RETENTION_DAYS`** |
 
 ---
 
@@ -174,7 +239,7 @@ model Media {
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `RUN_CRON` | `false` | Debe ser `true` para que el workflow se registre en Temporal |
-| `MEDIA_RETENTION_DAYS` | `30` | Días desde publicación antes de que la media sea elegible |
+| `MEDIA_RETENTION_DAYS` | `30` | Días desde publicación antes de que la media sea elegible. **En producción: `3650`.** Cambiarla no basta — ver «Cambiar `MEDIA_RETENTION_DAYS`…» |
 | `STORAGE_PROVIDER` | `local` | `local` o `cloudflare` — determina cómo se borran blobs |
 
 ### Monitorización
@@ -184,9 +249,11 @@ model Media {
 docker logs postiz 2>&1 | grep -i 'MediaCleanup'
 
 # Logs típicos de un ciclo exitoso:
-# [MediaCleanupActivity] Starting media cleanup (retention: 30 days)...
+# [MediaCleanupActivity] Starting media cleanup (retention: 3650 days)...
 # [MediaCleanupActivity] Media cleanup pass — candidates: 42, removed: 40, orphans: 3, failed: 2
 ```
+
+> **Ese `retention:` del log es el argumento con el que arrancó la ejecución, no el valor del `.env`.** Es la forma más rápida de detectar que el workflow vivo se quedó con un número viejo.
 
 ### Temporal Workflow
 
@@ -200,6 +267,18 @@ docker logs postiz 2>&1 | grep -i 'MediaCleanup'
 ---
 
 ## Historial de Auditorías
+
+### Auditoría v4 (2026-08-04) — retención a 3650 y un diagnóstico corregido
+
+| Hallazgo | Desenlace |
+|---|---|
+| La retención viaja como **argumento de workflow**, no como variable leída en cada ciclo | Documentado arriba. Es el conocimiento más caro de la revisión: cambiar el `.env` y reiniciar **no hacía nada** |
+| El workflow vivo llevaba desde el **2026-07-06** con `retentionDays = 30` | Terminado y relanzado. `retentionDays = ['3650']` verificado en el historial de Temporal |
+| Los 18 posts publicados desde la UI **no tienen fila en Notion** | La caché era su única copia. 9 ya sin ficheros; 9 con 214,5 MB a punto de purgarse el 2026-08-05 |
+| **No existe ninguna copia de seguridad** de los medios ni de la base de Postiz | `backup-daily.sh` sólo vuelca bases de datos y configuración. Nada toca `/mnt/seagate` |
+| Los «11 huérfanos permanentes (20,8 MB)» del análisis previo | **Falso.** 10 eran la biblioteca de medios; 1 era fuga real. Ver «Corrección» |
+
+Sin bugs en el código: las dos fases siguen haciendo lo que este documento dice.
 
 ### Auditoría v1 (2026-07-06) — 5 bugs corregidos
 

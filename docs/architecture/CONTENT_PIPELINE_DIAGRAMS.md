@@ -183,9 +183,9 @@ flowchart TD
 reanudable: si algo falla después, el reintento **no vuelve a mover el fichero**.
 
 **Por qué se borra el media al fallar.** La limpieza automática sólo hace candidato lo que
-aparece en un post _publicado_. Un fichero subido y nunca publicado no lo recoge nadie —
-ni a los 30 días ni nunca. Se borra **sólo si se subió en esa misma pasada**: si venía
-reutilizado, borrarlo dejaría `❌ postiz_media` apuntando a la nada.
+aparece en un post _publicado_. Un fichero subido y nunca publicado no lo recoge nadie,
+valga lo que valga `MEDIA_RETENTION_DAYS`. Se borra **sólo si se subió en esa misma
+pasada**: si venía reutilizado, borrarlo dejaría `❌ postiz_media` apuntando a la nada.
 
 ---
 

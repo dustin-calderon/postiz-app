@@ -9,7 +9,7 @@
 >
 > Este documento explica **por qué** cada decisión es como es. Aquél enseña **cómo funciona**. Si sólo vas a leer uno y quieres operar el sistema, empieza por los diagramas.
 >
-> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md)
+> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md)
 
 ---
 
@@ -218,19 +218,26 @@ Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `r
 
 `posts.service.ts:927` → `[{ postId, integration }]`. De ahí la regla **una fila = un post**.
 
-### 4.7 La limpieza de medios juega a favor
+### 4.7 La limpieza de medios, y por qué su retención dejó de ser 30
 
 Según [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md):
 
-- `MEDIA_RETENTION_DAYS` (default **30**)
+- `MEDIA_RETENTION_DAYS` — default del código **30**; **en producción, `3650` desde el 2026-08-04**
 - El filtro es **positivo**: sólo son candidatos los medias cuyo `path` aparece en un `Post` con `state='PUBLISHED'` y `publishDate` anterior a la retención
 - Hard-delete **7 días** después del soft-delete
 
-**Un asset subido hoy y programado para dentro de tres semanas no corre ningún riesgo**: no ha sido publicado, luego no es candidato. Y una vez publicado, la copia en Postiz se autolimpia a los ~37 días — que es exactamente lo que queremos, porque el original vive en Notion.
+**Un asset subido hoy y programado para dentro de tres semanas no corre ningún riesgo**: no ha sido publicado, luego no es candidato. Eso no depende del número de días.
 
-**No hay que tocar `MEDIA_RETENTION_DAYS`.** El default de 30 es correcto en esta arquitectura.
+> ### ⚠️ La retención se subió a 3650. El razonamiento de los 30 días era cierto a medias
+> Este documento sostenía que 30 días eran correctos **porque el original vive en Notion** — y avisaba: *«si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla»*.
+>
+> **Ya lo era, y no para el futuro sino para el pasado.** Los **18 posts publicados desde la UI de Postiz no tienen fila en Notion**: para ellos la caché del Seagate no era una copia derivada, era la única. Nueve ya habían perdido sus ficheros (todo junio) cuando se miró; los otros nueve conservaban 214,5 MB que se habrían empezado a purgar el 2026-08-05.
+>
+> Tampoco había red debajo: **ninguna copia de seguridad del servidor toca Postiz** — `backup-daily.sh` sólo vuelca bases de datos y configuración, y ningún cron ni timer roza `/mnt/seagate`.
+>
+> **Aplicado: `MEDIA_RETENTION_DAYS = 3650`** (§14.4). El procedimiento no es obvio —el workflow lleva la retención como argumento y hay que terminarlo y relanzarlo en Temporal, no basta con reiniciar el contenedor—: está en [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md).
 
-> Esto sólo es cierto porque Notion guarda el máster. Si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla.
+La afirmación que sí se sostiene, acotada: **para el material que pasa por el pipeline**, la copia de Postiz es derivada y reconstruible desde Notion. Para todo lo anterior a agosto de 2026, no. La retención larga es el parche que compra tiempo; la solución de raíz es el archivo en Drive ([PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md)), que da una segunda copia navegable a lo publicado, venga de Notion o no.
 
 ---
 
@@ -665,7 +672,7 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 ```
 
 > ### Por qué el worker borra su propio media al fallar
-> La limpieza automática sólo hace candidato lo que aparece en un post **publicado**. Un fichero subido y nunca publicado **no lo recoge nadie**, ni a los 30 días ni nunca. Sin este paso, cada fila abandonada tras un fallo dejaría un reel de 150 MB en el Seagate para siempre.
+> La limpieza automática sólo hace candidato lo que aparece en un post **publicado**. Un fichero subido y nunca publicado **no lo recoge nadie**, valga lo que valga `MEDIA_RETENTION_DAYS`. Sin este paso, cada fila abandonada tras un fallo dejaría un reel de 150 MB en el Seagate para siempre.
 >
 > **Sólo se borra lo subido en esa misma pasada.** Si el media venía reutilizado de un intento anterior (§8.1), borrarlo dejaría `❌ postiz_media` apuntando a la nada. Y cuando se borra, se vacía también `❌ postiz_media`, para que el reintento vuelva a subir.
 >
@@ -947,6 +954,10 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 
 > **No necesita que se construya nada antes**, y es la única razón por la que el resto merece la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
 
+### 10.3 El archivo en Drive, a medias
+
+Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes están decididos y verificados contra Drive. Falta lo que escribe de verdad —el espejo nocturno y el archivador curado con su enlace de vuelta a Notion—. Todo el detalle en [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md); aquí sólo importa que **no toca el camino de publicación** y que hasta que exista, la única red del material publicado es la retención larga de §4.7.
+
 ---
 
 ## 11. Decisiones abiertas
@@ -975,7 +986,8 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `Status`, única — antes eran dos y se fusionaron (§7.2) |
 | Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
-| Archivo en Drive | **Después**, cuando el pipeline funcione. Trabajo aparte, fuera del camino de publicación |
+| Archivo en Drive | **En marcha.** Ya no es «para después»: destino, cuenta y origen de los bytes están decididos y verificados; falta el script del espejo y el archivador curado. Sigue fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
+| Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Margen de seguridad | **2 h** (§9.3) |
 | Ventana | **15 días** (§9.9) |
@@ -1029,7 +1041,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | Normalización con ffmpeg / ImageMagick | Se sustituye por una convención de exportación. Una convención sale gratis; un script hay que mantenerlo. Se añadirá el día que Instagram rechace algo de verdad. |
 | Archivo de material en bruto (raw) | Es un proyecto legítimo, pero **es otro proyecto**. Archivar no tiene nada que ver con publicar; mezclarlos hace que ninguno arranque. |
 | Estructura de tres niveles (raw / master / delivery) | Consecuencia del anterior. |
-| Subir `MEDIA_RETENTION_DAYS` | Innecesario: con Notion como SSoT, la limpieza a los ~37 días es una función, no un riesgo (§4.7). |
+| ~~Subir `MEDIA_RETENTION_DAYS`~~ | **Revertido.** Se dio por innecesario asumiendo que todo lo publicado tenía máster en Notion; los 18 posts anteriores al pipeline no lo tienen, y su única copia se estaba purgando. Subida a **3650** el 2026-08-04 (§4.7). |
 | MinIO o cualquier S3 propio | Imposible: el endpoint de R2 está hardcodeado (§4.2). |
 | ~~Evitar `upload-from-url`~~ | **Revertido.** Se usaba multipart "por decisión de arquitectura"; esa decisión era errónea. El multipart choca con el límite de 100 MB del Cloudflare Tunnel y ningún reel real pasa (§9.2). `upload-from-url` es ahora el camino: menos viajes, sin tope de túnel y sin bytes por n8n. |
 | **Modelo de cola** (procesar una vez y congelar) | Sustituido por reconciliación (§9). La cola no propagaba las ediciones: se editaba el copy en Notion y no pasaba nada. |
@@ -1155,6 +1167,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 | `/opt/homeserver/.env` | **`N8N_POSTIZ_WEBHOOK_PATH`** añadido — ruta secreta del receptor (§14.3) |
 | `/opt/homeserver/.env` | **`N8N_SYNC_IG_BUTTON_PATH`** añadido — ruta secreta del botón de Notion |
 | `/opt/homeserver/postiz/postiz.env` | **`MAX_URL_UPLOAD_BYTES=1073741824`** añadido — 1 GiB (§9.2) |
+| `/opt/homeserver/postiz/postiz.env` | **`MEDIA_RETENTION_DAYS=3650`** añadido (§4.7). Copia: `postiz.env.bak-20260804-retention`. **No basta con reiniciar el contenedor**: hubo que terminar y relanzar el workflow en Temporal — ver [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) |
+| Google Drive | Remoto rclone **`gdrive-work`** (cuenta de Workspace) + dos carpetas destino, verificadas con escritura real → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
 
 Todos verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vacío y `CLOUDFLARE_BUCKET_URL` sin barra final, también.
 
