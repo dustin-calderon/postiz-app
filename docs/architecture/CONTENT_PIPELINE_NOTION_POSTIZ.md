@@ -576,12 +576,16 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 >
 > **Cómo se configura el botón.** Es una propiedad de tipo **Botón** en el calendario, con la acción *Enviar webhook*. Hay dos URLs válidas y ambas desembocan en el mismo nodo:
 
-| URL | Auth |
-|---|---|
-| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` — **preferida** |
-| `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta |
+| URL | Auth | |
+|---|---|---|
+| `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **← la que usa el botón** |
+| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | para scripts y `curl` |
 
-Se prefiere la de cabecera: un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no. El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo.
+El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, relee el calendario por su cuenta.
+
+> La variante con cabecera sería algo mejor —un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no— y la UI de Notion **sí** admite encabezados personalizados. Cambiarlo es editar la automatización del botón; no urge, porque la ruta viaja cifrada bajo HTTPS.
+
+**Cómo se distingue una pulsación del botón en n8n:** la petición llega con `user-agent: NotionAutomation` y un cuerpo `{"source":{"type":"automation","automation_id":…}}`. El cron, en cambio, no pasa por ningún nodo webhook.
 
 > **La propiedad botón no se puede crear por API.** Las dos versiones (`2022-06-28` y `2025-09-03`) rechazan el tipo `button`; los 23 tipos que aceptan no lo incluyen. Es UI o nada, y tiene que ser una propiedad de tipo Botón, no un sucedáneo.
 
@@ -1058,7 +1062,7 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 | Ruta | Auth | Para qué |
 |---|---|---|
 | `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | Sync a demanda (scripts, curl) |
-| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | Botón de Notion, si la UI no admite cabeceras (§9.1) |
+| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | El botón `Sync now` de Notion (§9.1) |
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | Retirada/recuperación a demanda |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | Destino del webhook de Postiz |
 
