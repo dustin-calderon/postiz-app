@@ -1024,9 +1024,20 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 > **Todas con descripción menos una:** `colaboradores` la tiene **vacía**, porque el `ALTER` que sembró sus opciones la borró. Reponerla a mano si molesta.
 
-**2 vistas:** `IG · Publicación` (filtrada por Instagram) y `⚠️ Averías` (filtrada por `publicación = Error`). *No verificables por la API pública de Notion, que no expone las vistas de una data source: se dan por buenas según quien las creó.*
+**1 propiedad de tipo botón:** `Sync now` → *Enviar webhook* (§9.1). Sólo se puede crear desde la UI.
 
-**1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas** — confirmado (`time_format: "H:mm"`).
+**2 vistas nuevas**, sobre las 5 que el calendario ya tenía:
+
+| Vista | Tipo | Filtro | Orden |
+|---|---|---|---|
+| `IG · Publicación` | tabla | `Plataforma` contiene `Instagram` | `Fecha` ascendente |
+| `⚠️ Averías` | tabla | `publicación` es `Error` | `Fecha` ascendente |
+
+`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `publicación`, `modo`, `content`, `assets`, `colaboradores`, `first_comment`, `error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `error_log` y `postiz_post_id`.
+
+**1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas** (`time_format: "H:mm"`).
+
+> Todo lo de esta sección está verificado contra Notion. Las vistas y el botón no los expone la API REST, pero sí el conector de Notion —`fetch` sobre la base devuelve `<views>` y el esquema con `"Sync now": {"type": "button"}`—, así que aquí no queda nada dado por bueno de palabra.
 
 ### 14.3 En n8n · `auto.dustincalderon.com`
 
