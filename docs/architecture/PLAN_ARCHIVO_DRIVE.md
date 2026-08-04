@@ -263,12 +263,23 @@ después que se pueda encontrar—.
 | `/opt/homeserver/scripts/postiz-respaldo-drive.sh` | El espejo. `rclone copy` del disco entero |
 | `/opt/homeserver/scripts/postiz-archivo-drive.py` | El archivador curado. Admite `--seco` |
 | `/opt/homeserver/scripts/.postiz-archivo-web.json` | Registro de los posts sin fila en Notion |
-| `/var/log/postiz-archivo.log` | Log común de los dos |
+| `/var/log/postiz-archivo.log` | Log común de los dos, con rotación semanal |
+
+**Los dos scripts están versionados en [`scripts/`](./scripts/)**, al lado de este
+documento. A diferencia de los workflows de n8n, **no llevan ningún secreto dentro** —
+leen `NOTION_API_KEY` del entorno—, así que sí pueden vivir en el repositorio. Y deben:
+`/opt/homeserver/scripts/` no entra en ningún backup, así que una copia en ese mismo
+disco no habría servido de nada. Al tocarlos, actualizar las dos copias.
 
 ```
 40 2 * * *  postiz-respaldo-drive.sh
-55 2 * * *  postiz-archivo-drive.py
+55 2 * * *  postiz-archivo-drive.py   >/dev/null 2>>/var/log/postiz-archivo.log
 ```
+
+> **El `>/dev/null` no es descuido.** El script ya escribe él mismo en el log; si además
+> se redirige su salida estándar al mismo fichero, **cada línea aparece dos veces**. Lo
+> destapó la prueba real con cron. El `stderr` sí se conserva, para que un fallo
+> inesperado deje rastro.
 
 Elegidas a las 02:40 y 02:55 para no solaparse con nada: el backup de CastRadar va a
 las 03:30, el `backup-daily.sh` a las 04:00 y el sync de Notion a las 06:00.
@@ -294,6 +305,38 @@ las que no tienen fila. La siguiente pasada la rehace.
 > está en la cabecera del script y es el mismo que usa el nodo `Planificar`. Una
 > integración que no esté en el mapa se archiva igual, con el nombre recortado, y **deja
 > un aviso en el log** para que se añada.
+
+## 7.2 Lo que está probado, y lo que no
+
+Distinguirlo importa: lo de la izquierda tiene evidencia; lo de la derecha es confianza
+razonada.
+
+| Probado contra la realidad | Cómo |
+|---|---|
+| El espejo copia íntegro | `rclone check`: **54/54 por hash, 0 diferencias** |
+| El archivo respeta el orden del carrusel | Los 5 de `kinda chic`, **md5 idéntico** al disco, uno a uno |
+| El enlace de Notion funciona | Petición HTTP real → **200** |
+| No duplica al repetirse | Segunda pasada: *«0 archivados · 19 ya estaban»* |
+| **Cron los ejecuta de verdad** | Entradas temporales a dos minutos vista, confirmadas en `syslog` y en el log |
+| El cerrojo impide el solape | Cogido desde otro proceso: la pasada sale limpia sin tocar nada |
+| La rotación del log es válida | `logrotate -d` sin errores |
+| El `PATCH` de Notion no rompió nada | Las 10 descripciones existentes, intactas |
+
+| Sin probar | Riesgo |
+|---|---|
+| **La paginación de Notion** | Escrita, pero con una sola fila el bucle nunca da la segunda vuelta. Se ejercitará sola al pasar de 100 |
+| **Los caminos de fallo** (Drive caído, Notion caído) | Por diseño: la pieza se anota como fallo y se reintenta a la noche siguiente. No reproducido |
+| **Una pieza nueva de punta a punta** | El camino es el mismo que recorrió `kinda chic`. Se verá en la próxima publicación real |
+
+> ### ⚠️ Dos veces di por bueno un resultado que no lo era
+> Al probar el cron, el bucle de espera dejó de mirar en cuanto vio arrancar el trabajo,
+> y concluí que el espejo no había corrido. Había corrido: **tarda 35 s en escribir su
+> primera línea** porque antes comprueba el remoto y cuenta el destino. La misma
+> impaciencia hizo que la primera prueba del cerrojo no probara nada, porque la pasada
+> terminaba antes de que la segunda arrancara.
+>
+> Esperar al **final** de la operación, nunca al principio. Y si una prueba de
+> concurrencia no llega a solaparse, no ha probado nada.
 
 ## 8. Lo que este plan **no** hace
 
