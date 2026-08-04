@@ -1,9 +1,7 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
-> **Estado:** Fases 0, 2, 3a y **3b cerradas**. El sync escribe, retira y recupera; probado de punta a punta con un reel real de 150 MB, y el webhook de Postiz entrega en n8n con contenido (§14.7).
-> **Sin publicar nada en Instagram todavía**, a propósito.
-> **Inventario completo de lo implementado y lo no verificado: §14.**
-> **Fecha:** agosto 2026 · última verificación 2026-08-04
+> **Qué es esto:** la arquitectura del pipeline que publica en Instagram desde Notion —qué hace cada pieza y **por qué** es así—, más las restricciones del fork de Postiz que la condicionan.
+> **Estado:** operativo. Lo construido y dónde vive: §14. Lo que no cubre: §14.5. Lo que queda por delante: §10.
 > **Ámbito:** Instagram — **3 cuentas** (`instagram-standalone`, §4.9). Una sola tabla de Notion; ver la deuda conocida en §7.1
 >
 > ### 🗺️ ¿Buscas cómo encaja todo, no por qué?
@@ -40,7 +38,7 @@ Postiz está degradado a propósito. Hoy es la herramienta principal; aquí es e
 
 **Nextcloud queda fuera del pipeline.** Sigue existiendo para lo que ya hace (llevar ficheros del móvil a algún sitio). Nada automático depende de él.
 
-**El Seagate no queda fuera: es donde Postiz guarda los medios.** `/uploads` es un bind mount a `/mnt/seagate/postiz-media` (§10, Fase 0). Lo que se descartó fue montar una **biblioteca paralela** en `/srv/media` con watchers y ffmpeg (§13) — no el disco.
+**El Seagate no queda fuera: es donde Postiz guarda los medios.** `/uploads` es un bind mount a `/mnt/seagate/postiz-media` . Lo que se descartó fue montar una **biblioteca paralela** en `/srv/media` con watchers y ffmpeg (§13) — no el disco.
 
 | | Antes de este pipeline | Después |
 |---|---|---|
@@ -93,11 +91,18 @@ Todo lo de esta sección está comprobado contra el código de `custom/postiz-dc
 
 Meta hace **fetch** de esa URL desde sus servidores. Si no es alcanzable desde internet, falla siempre — aunque subir a mano desde la UI funcione.
 
+Con `STORAGE_PROVIDER=local` esa URL es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts:84,133,193`), y Meta la alcanza: `facebookexternalhit/1.1` recibe **200**.
+
+> ### ⚠️ Este dominio devuelve 403 a los agentes de IA
+> El `robots.txt` sirve la política de Content Signals de Cloudflare, que **bloquea crawlers de IA**. Desde una misma IP y un mismo path: UA vacío → 200, `python-requests` → 200, `facebookexternalhit/1.1` → 200, `ClaudeBot/1.0` → **403**.
+>
+> No afecta a la publicación, pero sí a cómo se comprueba: **el alcance de una URL de este dominio no se puede verificar con un agente de IA** — siempre dará 403 y parecerá una avería de infraestructura que no existe. Se comprueba con `curl` desde el Beelink variando el UA, o desde un móvil con datos.
+
 ### 4.2 Storage: sólo `local` o `cloudflare`
 
 `upload.factory.ts` no admite nada más, y `cloudflare.storage.ts:45` **hardcodea** el endpoint `https://${accountID}.r2.cloudflarestorage.com`. No hay hueco para MinIO ni para otro S3 compatible: no es que falte soporte, es que no hay dónde ponerlo.
 
-**Decisión: `local`.** Verificado que Meta alcanza las URLs del dominio (§10, Fase 0). Los medios viven en el Seagate vía bind mount, no hace falta almacenamiento externo.
+**Decisión: `local`.** Verificado que Meta alcanza las URLs del dominio . Los medios viven en el Seagate vía bind mount, no hace falta almacenamiento externo.
 
 > Hay un bucket de R2 configurado y con credenciales válidas en `postiz.env`, **inactivo**. Queda como salida disponible si algún día el uplink de casa se convierte en el cuello de botella al servir reels a Meta — cambiar `STORAGE_PROVIDER` sería suficiente.
 
@@ -115,7 +120,7 @@ Consecuencias:
 
 - **Los uploads no están limitados.** No existe ninguna cuota de "30 uploads/hora".
 - El único límite es sobre **creaciones de post**, contado **por organización**, no por IP. La clave exacta de `getTracker` (`throttler.provider.ts:18-24`) es `req.org.id + '_' + (url contiene '/posts' ? 'posts' : 'other')`, no el id de organización a secas.
-- El default del código es 90. En producción estaba en **30**; se subió a **300** el 2026-08-03 (§10, Fase 0).
+- El default del código es 90. En producción está en **300** (§14.4).
 
 > ### Por qué se subió a 300
 >
@@ -143,7 +148,7 @@ Hay **tres** `return false` en el bucle de `post.workflow.v1.0.5.ts`, y **no tod
 
 El tercero es alcanzable con el post **todavía en `QUEUE`**: si en las cinco iteraciones el error es siempre `refresh_token` y el refresh funciona, se ejecuta `continue` (`:236`) sin tocar el estado, y al agotarse el bucle se sale por `:267`.
 
-> **Impacto en la Fase 3a:** añadir `sendWebhooks` "en los `return false`" dando por hecho que el estado ya es `ERROR` **no se sostiene en ese camino**. El cambio tiene que poner `changeState('ERROR')` también ahí, o el webhook saldrá diciendo `QUEUE`.
+> **Impacto:** añadir `sendWebhooks` "en los `return false`" dando por hecho que el estado ya es `ERROR` **no se sostiene en ese camino**. El cambio tiene que poner `changeState('ERROR')` también ahí, o el webhook saldrá diciendo `QUEUE`.
 >
 > Además hay fallos **anteriores al bucle** (`:86`, `:91`, `:108`, `:123`, `:143`) que tampoco están cubiertos por ese rango.
 
@@ -151,15 +156,6 @@ El tercero es alcanzable con el post **todavía en `QUEUE`**: si en las cinco it
 
 El invariante "**todo camino terminal emite webhook**" es más fácil de sostener en el tiempo que "algunos sí y otros no", que es lo que obliga a releer el fichero entero en cada cambio.
 
-Verificado ejecutando el workflow contra un post borrado (camino `:86`), sin tocar Instagram:
-
-```
-temporal workflow show --workflow-id zzaudit-webhookpath-1
-  5  getPost
- 11  changeState
- 17  sendWebhooks     ← se ejecuta
-Status  COMPLETED
-```
 
 ### 4.4.1 ⚠️ El webhook se dispara hoy con el cuerpo vacío
 
@@ -169,7 +165,7 @@ Pero `getPostByForWebhookId` (`posts.repository.ts:869-875`) busca por `where: {
 
 **Resultado: el webhook llega con `[]` como cuerpo.** Se dispara, pero no dice de qué post habla ni en qué estado quedó.
 
-> Todo el cierre reactivo del §9.4 depende de que ese payload traiga el post. **Sin arreglarlo, el diseño no funciona.** Corregido en la `v1.0.6` (§10, Fase 3a).
+> Todo el cierre reactivo del §9.4 depende de que ese payload traiga el post. **Sin arreglarlo, el diseño no funciona.** Corregido en la `v1.0.6`.
 
 **✅ Diagnóstico confirmado contra la base de producción**, sin publicar nada. Los dos espacios de identificadores son disjuntos:
 
@@ -356,7 +352,7 @@ Y tres cosas que **no** son propiedades nuevas:
 - **`publish_at`** es `Fecha`, con hora (§7.5).
 - **`release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
 
-> **El aviso de error irá al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n puede resolverlo a email, con una dirección general de reserva. **Diseño decidido, implementación pendiente** (§10, Fase 3b, punto 17): hoy los fallos se ven en la vista *⚠️ Averías*.
+> **El aviso de error irá al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n puede resolverlo a email, con una dirección general de reserva. **Diseño decidido, implementación pendiente** (§11): hoy los fallos se ven en la vista *⚠️ Averías*.
 
 Los tres campos de n8n (`postiz_post_id`, `postiz_media`, `error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
@@ -414,7 +410,7 @@ Va directo al campo `type` de `POST /public/v1/posts`:
 
 Por defecto, `programar`.
 
-`borrador` sirve para dos cosas: el **dry-run** de las dos primeras semanas (§10, Fase 3b) y para revisar una pieza en la vista real de Postiz antes de soltarla. Cambiar de `borrador` a `programar` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
+`borrador` sirve para dos cosas: el **dry-run** editorial y para revisar una pieza en la vista real de Postiz antes de soltarla. Cambiar de `borrador` a `programar` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
 
 > **No contradice "nunca se aprueba en Postiz" (§6).** La aprobación sigue siendo `publicación = Listo` en Notion. `modo` sólo decide qué hace Postiz con algo ya aprobado. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
@@ -578,7 +574,16 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 >
 > Es más fiel a la regla de arriba que lo planeado: no hay un camino "de una fila" que pueda divergir del camino "de N filas", porque sólo hay uno. Cuesta una consulta a Notion de más por pulsación, que es gratis.
 >
-> El botón usa la acción **"Send webhook"** de Notion (sólo POST) y debe mandar la cabecera `X-Sync-Token`.
+> **Cómo se configura el botón.** Es una propiedad de tipo **Botón** en el calendario, con la acción *Enviar webhook*. Hay dos URLs válidas y ambas desembocan en el mismo nodo:
+
+| URL | Auth |
+|---|---|
+| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` — **preferida** |
+| `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta |
+
+Se prefiere la de cabecera: un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no. El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo.
+
+> **La propiedad botón no se puede crear por API.** Las dos versiones (`2022-06-28` y `2025-09-03`) rechazan el tipo `button`; los 23 tipos que aceptan no lo incluyen. Es UI o nada, y tiene que ser una propiedad de tipo Botón, no un sucedáneo.
 
 ### 9.2 Qué hace el subflow con una fila
 
@@ -591,13 +596,13 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 | `postiz_post_id` vacío | Crear |
 | Tiene `postiz_post_id`, aún no publicado | **Borrar y recrear** |
 | `postiz_media` con valor | No re-subir los assets |
-| `Fecha` sin hora | `Error` — nunca se adivina la hora (§10, Fase 2) |
+| `Fecha` sin hora | `Error` — nunca se adivina la hora |
 | `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
 
 > ⚠️ La segunda fila **no es "ignorar y seguir"**. Si sólo se implementa esta tabla y no §9.7, vaciar `publicación` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
 
 > ### ⚠️ El orden de las puertas importa: primero la hora, después la ventana
-> Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen de 2 h se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla obligatoria de §10, Fase 2.
+> Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen de 2 h se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
 >
 > El orden implementado es: **validaciones estructurales** (hora, offset, cuenta, content, assets, colaboradores) → y sólo con una fecha válida, **ventana → pasado → margen**.
 >
@@ -699,7 +704,7 @@ Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay q
 
 ### 9.4 Cierre del bucle: reactivo
 
-Con el webhook de fallo añadido (§4.4, §10 Fase 3a), **publicado y fallido llegan por el mismo canal**:
+Con el webhook de fallo añadido (§4.4), **publicado y fallido llegan por el mismo canal**:
 
 ```
 Postiz publica (o falla) ──webhook──► n8n ──► publicación = Publicado | Error
@@ -739,7 +744,7 @@ Crear sólo si `postiz_post_id` está vacío.
 
 Escenario: n8n crea el post y justo antes del write-back se cae el contenedor. La fila queda sin ID. La siguiente pasada la vuelve a crear → **post duplicado en producción**.
 
-El candado actual lo hace improbable, no imposible. La solución definitiva es `externalId` en Postiz (§10, Fase 3a): con un índice único por organización, el duplicado pasa a ser **imposible por construcción** y n8n deja de tener que acordarse de nada.
+El candado actual lo hace improbable, no imposible. La solución definitiva es `externalId` en Postiz (§11, decisión #10): con un índice único por organización, el duplicado pasa a ser **imposible por construcción** y n8n deja de tener que acordarse de nada.
 
 ### 9.7 La pasada de retirada — sin ella el sync sólo sabe añadir
 
@@ -770,7 +775,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 > ### 🔴 Sin filtrar por `creationMethod`, la retirada borra el trabajo hecho a mano
 > Un post creado desde la UI de Postiz **no tiene fila en Notion**, así que "todo lo que no tenga una fila viva detrás" lo incluye. La primera pasada del cron se lo habría llevado.
 >
-> No es hipotético: al auditar había un post real programado para el **14 de agosto** (`cmrah83mf…`, cuenta AMORISMO) creado a mano. `GET /posts` expone `creationMethod`, y los valores separan limpiamente los dos orígenes:
+> No es hipotético: en el calendario hay posts creados a mano desde la UI. `GET /posts` expone `creationMethod`, y los valores separan limpiamente los dos orígenes:
 >
 > | Origen | `creationMethod` |
 > |---|---|
@@ -784,13 +789,13 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 >
 > Si la retirada borrase todo lo que no reconoce, **borraría posts ya publicados**. El filtro por estado lo tiene que hacer n8n.
 
-El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cuanto exista (Fase 3a), es directo y no depende de que Notion conserve el ID.
+El emparejamiento es por `postiz_post_id` mientras no exista `externalId`; en cuanto exista, es directo y no depende de que Notion conserve el ID.
 
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de las próximas 2 horas se retira automáticamente.
 
 ### 9.8 El cuerpo exacto de `POST /public/v1/posts`
 
-**✅ Ejecutado de punta a punta el 2026-08-03**, no sólo derivado de los DTOs. Se subió un fichero, se creó un post programado para 2027 y se borró. Resultados abajo.
+**Contrastado contra la API real**, no sólo derivado de los DTOs.
 
 Ejemplo de la forma exacta del cuerpo, para una de las tres cuentas. *(La fecha aquí es ilustrativa; la del ensayo de punta a punta fue `2027-01-15T10:00:00+01:00`, más abajo.)*
 
@@ -869,294 +874,30 @@ El equipo debe saberlo para que nadie se alarme al no encontrar en Postiz algo q
 
 ---
 
-## 10. Plan por fases
+## 10. Qué queda por delante
 
-### Fase 0 — Desbloquear · **EJECUTADA Y VERDE**
+Lo construido, y dónde vive cada pieza, está en §14. Aquí sólo lo que **todavía no se ha hecho**.
 
-Estado real del contenedor `postiz` en el Beelink:
+### 10.1 El filtro que sigue sin pasarse: ¿aguanta la cola?
 
-```
-STORAGE_PROVIDER=local
-UPLOAD_DIRECTORY=/uploads
-MAIN_URL=FRONTEND_URL=https://postiz.dustincalderon.com
-CLOUDFLARE_BUCKET_URL=…r2.dev/      ← ANTES; se le quitó la barra final. Inactivo
-API_LIMIT=30                        ← ANTES del cambio; hoy 300 (ver más abajo)
-```
+El plan original ponía una condición antes de automatizar nada: **llenar la cola a mano durante dos semanas**, publicando desde Postiz, sin n8n. No para probar Notion —el calendario lleva tiempo en uso— sino para probar **la disciplina que exige la cola**: una fila por post, hora obligatoria, elegir `cuenta` y `colaboradores`, marcar `Listo`.
 
-Con `local`, la URL pública es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts:84,133,193`).
+**Ese filtro se saltó.** El esquema y el worker se montaron sin esperar, porque montarlos destapaba defectos del fork que había que arreglar igualmente. La consecuencia es que el sistema está listo pero la pregunta sigue abierta.
 
-**Prueba de alcance externo — y el falso positivo que generó:**
+Lo que revelarían esas dos semanas, y sigue sin saberse:
 
-La primera medición dio 403 al pedir `/uploads/…` desde fuera, y de ahí se concluyó que el WAF bloqueaba IPs de datacenter (la clase de origen desde la que hace fetch Meta). **Esa conclusión era falsa.** El control correcto es variar el user-agent desde una IP fija:
-
-| Desde el Beelink · misma IP · mismo path | Resultado |
-|---|---|
-| UA vacío | **200** |
-| `python-requests/2.31` | **200** |
-| `facebookexternalhit/1.1` | **200** |
-| `ClaudeBot/1.0` | **403** |
-
-El discriminante es **el user-agent, no la IP**. El `robots.txt` del dominio sirve la política de Content Signals de Cloudflare: **bloquea crawlers de IA**. El 403 original era el bloqueo del propio agente que hacía la comprobación, no una limitación de la infraestructura.
-
-> ### ⚠️ Lección metodológica
-> Una sola medición variaba **dos** cosas a la vez (origen y user-agent) y se atribuyó el efecto a la equivocada. Toda comprobación de alcance debe fijar una variable y mover la otra.
->
-> **Consecuencia operativa permanente:** las URLs de este dominio **no se pueden verificar con un agente de IA** — siempre darán 403. Las comprobaciones de alcance se hacen con `curl` desde el Beelink variando el UA, o desde un móvil con datos.
-
-**Conclusión: `local` es viable.** Meta obtiene 200. El cambio a R2 **no era necesario** por alcance.
-
-### Estado final aplicado (2026-08-03)
-
-Copia de seguridad en `/opt/homeserver/postiz/postiz.env.bak-20260803`.
-
-| Variable | Valor | Cambiado |
-|---|---|---|
-| `STORAGE_PROVIDER` | **`local`** | No — se probó `cloudflare` y se revirtió |
-| `UPLOAD_DIRECTORY` | `/uploads` → bind mount a `/mnt/seagate/postiz-media` | No |
-| `API_LIMIT` | `30` → **`300`** | **Sí** (§4.3) |
-| `CLOUDFLARE_BUCKET_URL` | sin barra final | **Sí** (inactivo, pero correcto si algún día se usa) |
-
-Verificado tras recrear: contenedor `healthy`, tres procesos online con **0 reinicios**, `/uploads` intacto (214 MB, 33 ficheros), y `facebookexternalhit/1.1` → **200**.
-
-**Los medios se almacenan en el propio Postiz**, sobre el Seagate. No hace falta R2 ni ningún almacenamiento externo.
-
-> ### ⚠️ El Seagate es USB y `/uploads` es un bind mount
-> Si `/mnt/seagate` se desmonta, Docker sirve el bind desde un directorio vacío del disco de sistema: **toda la biblioteca de medios desaparece en caliente** (404 en cada imagen) y las subidas nuevas llenan el disco del Beelink en silencio.
->
-> Es el mismo riesgo que en su día justificó descartar los watchers (§13), sólo que aquí ya existe y no lo introduce este proyecto. Merece una comprobación de montaje en el arranque, pero es trabajo de infraestructura, no de este pipeline.
-
-### Fase 1 — La cola a mano, dos semanas · coste cero
-
-> **La pregunta "¿hace falta Notion?" ya está respondida.** El calendario de §7.1 lleva tiempo en uso, con cuatro marcas, series de contenido y proyectos relacionados. No hay nada que probar ahí.
->
-> Lo que sí está sin probar es **la disciplina que exige la cola**: una fila por post, hora obligatoria, elegir `cuenta` y `colaboradores`, marcar `Listo`. Si el equipo no la llena, el sync automatizaría una tabla vacía.
-
-**Crear la cola (§7.2) y llenarla a mano durante dos semanas, publicando también a mano desde Postiz.** Sin n8n, sin webhooks, sin nada automático.
-
-Lo que se aprende, y sale gratis:
-
-- Si el modelo de colaboradores encaja con cómo publicáis de verdad, o si acabáis desdoblando filas más de lo previsto.
+- Si el modelo de colaboradores encaja con cómo se publica de verdad, o si acaban desdoblándose filas más de lo previsto.
 - Cuántos carruseles y stories compartidos hay — son los que **no** admiten colaboradores (§7.2.4) y obligan a filas separadas.
-- Qué campos sobran y cuáles faltan — **antes** de que haya un worker acoplado al esquema.
-- La convención de zona horaria, publicando de verdad.
+- Qué campos sobran y cuáles faltan, antes de que el worker se acople más al esquema.
 
-Si a las dos semanas la cola está llena y al día, el sync merece la pena. Si está a medias, el problema no es de automatización y automatizarlo lo empeora.
+> Si a las dos semanas de uso real la cola está a medias, **el problema no lo arregla el sync**. Automatizar una tabla que nadie llena sólo añade una pieza que mantener.
 
-> ### ⚠️ Esta fase se saltó, y conviene saberlo
-> Las fases 2, 3a y 3b se construyeron **sin esperar** las dos semanas de cola a mano. La razón fue práctica: el esquema de Notion y el worker se podían montar mientras tanto, y montarlos destapó defectos del fork que había que arreglar de todos modos.
->
-> **Pero el filtro que plantea esta fase sigue sin pasarse.** El sistema está listo; lo que no está demostrado es que el equipo llene la cola con la disciplina que exige —una fila por post, hora obligatoria, `cuenta` y `colaboradores` elegidos—. Si a las dos semanas de uso real la cola está a medias, el problema no lo arregla el sync, y esta sección explica por qué.
+### 10.2 La capa creativa — el motivo de todo esto
 
-### Fase 2 — Notion · **PROPIEDADES CREADAS (2026-08-03)**
+- Redacción de borradores con Claude vía **Notion MCP**, creando filas con el copy ya escrito y `publicación` vacío, listas para revisar.
+- Sistema de captura de materia prima: ideas, objeciones reales de clientes, ángulos.
 
-**4. ✅ Hecho.** Las 10 propiedades de §7.2 están creadas en `collection://186a2405-a123-81dc-832f-000b82a65c0c`, con descripción en cada una y las opciones de `cuenta`, `modo` y `publicación` ya pobladas. No se creó ninguna tabla.
-
-**5. ✅ Resuelto — la hora en `Fecha` está activada.**
-
-El `time_format: " "` que devolvía el esquema era la opción **«Oculto»** del desplegable *Formato de hora* de la propiedad. Cambiado a **24 horas** el 2026-08-03.
-
-Es un **ajuste de propiedad**, no un interruptor por valor: al quitarlo de «Oculto», toda la columna admite y muestra hora.
-
-Verificado sobre la base real: la fila «Tres cosas básicas…» guarda `2026-08-01T09:00:00.000+02:00`, con offset de Madrid correcto.
-
-> ### ⚠️ Las 99 filas anteriores siguen sin hora
-> Medido antes del cambio: sólo 1 de 100 filas con fecha incluía hora. Las históricas se quedan a día seco, y ninguna fila nueva nace con hora por defecto — hay que escribirla.
->
-> **Regla obligatoria del worker:** si `Fecha` no trae hora, la fila va a `Error` con el motivo, **nunca se adivina**. Asumir medianoche publicaría a las 00:00 sin que nadie lo pidiera.
->
-> Se mitiga poniendo una hora por defecto en la **plantilla de página** de la base.
-
-El esquema devuelve `"Fecha": { "time_format": " " }` — el campo **no muestra hora**. Notion sí puede guardar `datetime` (existe `date:Fecha:is_datetime`), pero mientras el formato no incluya hora, quien rellene la fila **verá sólo el día** y no podrá elegir la hora.
-
-Sin hora, `publish_at` no existe y el worker no sabe cuándo publicar. Era **bloqueante para la Fase 3b**; resuelto arriba. Lo que sigue vigente es la regla del worker: una fila sin hora va a `Error`, nunca se adivina.
-
-> En Notion: abrir la propiedad `Fecha` → *Formato de fecha* → activar **Incluir hora**. El DDL de la API no permite cambiar el formato de visualización.
-
-**6. ✅ Hecho — las dos vistas.**
-
-| Vista | Filtro | Para qué |
-|---|---|---|
-| **IG · Publicación** | `Plataforma` contiene Instagram, orden por `Fecha` | Donde trabaja el equipo |
-| **⚠️ Averías** | `publicación = Error` | Panel de fallos: cuenta, motivo e id |
-
-**7. ✅ Hecho — opciones de `colaboradores`.** Sembradas con los usernames reales de Instagram, sacados del campo `profile` de `GET /public/v1/integrations`: `thedustincalderon`, `citem.teatromusical`, `amorismoelmusical`.
-
-> Nota menor: el `ALTER` que puso las opciones **borró la descripción** de esa propiedad. Reponerla a mano si molesta.
-
-**8. ✅ Resuelto — la integración de Notion ya existe.** El token de `#ARCHIVE/Motion_to_Notion/.env` ya tiene acceso al calendario por herencia. Ver Fase 3b.
-> **El botón no se crea aquí**, sino en la Fase 3b: necesitaba la URL del webhook de n8n. Ya existe — `https://auto.dustincalderon.com/webhook/postiz-sync-ig`, con la cabecera `X-Sync-Token` (§10, Fase 3b, punto 14).
-
-### Fase 3a — Los dos cambios en el fork · 2-3 h
-
-Criterio para tocar el fork: **sólo donde la alternativa es imposible o frágil, nunca donde es sólo incómoda.** Y siempre **aditivo** — ficheros nuevos, columnas nuevas, env vars nuevos. Editar el interior de servicios compartidos (`posts.service.ts`, `instagram.provider.ts`) es donde nacen los conflictos con upstream.
-
-**9. ✅ HECHO — `post.workflow.v1.0.6.ts`.** Tres arreglos, ninguno toca la `v1.0.5`:
-
-| # | Arreglo | Por qué |
-|---|---|---|
-| 1 | `sendWebhooks(postsList[0].id, …)` en vez de `postsResults[0].postId` | El payload llegaba **vacío** (§4.4.1) |
-| 2 | `notifyFailure()` en los tres `return false` | El webhook sólo salía en éxito (§4.4) |
-| 3 | `changeState('ERROR')` en el camino de reintentos agotados | Ese camino salía con el post en `QUEUE` (§4.4) |
-
-Cambios asociados: `workflows/index.ts` exporta la nueva versión, `posts.service.ts:729` arranca `postWorkflowV106`, y la llamada recursiva de `repeat-post` (`:462`) apunta a sí misma.
-
-Verificado: `tsc --noEmit` sin errores en los ficheros tocados, y `post.workflow.v1.0.5.ts` sin cambios.
-
-> ⚠️ **No se edita `v1.0.5` a propósito.** Los workflows de Temporal deben ser deterministas en el replay: cambiar una definición con ejecuciones en vuelo las rompe. Por eso el repo tiene un fichero por versión. Las ejecuciones antiguas siguen resolviendo contra la suya.
-
-**✅ DESPLEGADO el 2026-08-03** (commit `2facd00f`). Evidencia de que entró de verdad:
-
-| Comprobación | Resultado |
-|---|---|
-| Bundle de workflows de Temporal | **14 → 15 módulos** (60.9 → 72 KiB) |
-| Fichero compilado | `dist/…/post.workflow.v1.0.6.js` presente |
-| Contenedor | `healthy`, 3 procesos, **0 reinicios** |
-| `backend-error.log` | vacío |
-
-Ventana elegida: sólo había **1 post en cola** (`cmrah83mf…`, AMORISMO, creado a mano). Su workflow arrancó entonces como `V105`, que sigue exportada. *Después se editó desde la UI y volvió a arrancar como `V106` — ver §14.1.*
-
-> ### ✅ Verificado — sin publicar en Instagram
-> - El **diagnóstico** de §4.4.1 se confirmó contra la base de producción: `Post.id` y `releaseId` son espacios disjuntos (0 coincidencias), así que la `v1.0.5` nunca pudo encontrar el post.
-> - La **consulta corregida** devuelve la fila con `content` y `state`.
-> - El **camino de fallo** se ejecutó de verdad (`getPost → changeState → sendWebhooks`, `COMPLETED`).
->
-> Y el **destino** ya está dado de alta, con la entrega comprobada contra producción (§14.7).
-
-**10. `externalId` — ⏸️ NO se hizo, a propósito.** Columna nullable en `Post` + índice único `[organizationId, externalId]` + comprobación en `createPost` que devuelva el post existente en vez de crear otro.
-
-Da idempotencia al worker, pero **sin worker no tenía consumidor**: sería una migración sobre la base de producción para un llamante que aún no existía.
-
-> **Ahora el worker existe, así que toca revisitarlo — y la respuesta sigue siendo "todavía no".** El candado de §9.6 (crear sólo si `postiz_post_id` está vacío) cubre el caso normal; la ventana de duplicado es el segundo exacto entre el `POST /posts` y el write-back a Notion. Con una pasada al día y una pulsación ocasional, es un riesgo diminuto frente a una migración sobre producción.
->
-> **El disparador para hacerlo** es que aparezca un duplicado real, o que el sync pase a correr con frecuencia. Entonces `externalId` lo vuelve imposible por construcción y n8n deja de tener que acordarse de nada.
-
-### Fase 3b — El sync en n8n · **CERRADA**
-
-> **Resumen:** los cuatro workflows de §14.3 están montados, activos y probados de punta a punta con un reel real de 150 MB, sin publicar nada en Instagram. Lo que sigue es el registro de cómo se llegó ahí.
->
-> **Tres cosas salieron distintas de lo planeado**, y las tres están explicadas donde corresponde:
-> 1. Los bytes ya **no pasan por n8n** (§9.2) — el multipart chocaba con el túnel de Cloudflare.
-> 2. La retirada **filtra por `creationMethod`** (§9.7) — si no, borra los posts hechos a mano.
-> 3. El cierre del bucle mira **`releaseURL`, no `state`** (§4.4.3) — si no, republica.
->
-> **El botón de Notion no manda una fila, dispara la pasada entera.** §9.1 lo describía al revés. Es mejor así: una sola implementación de verdad, en vez de dos caminos que divergen. El guardarraíl de las 2 h (§9.3) sigue haciendo falta exactamente por lo mismo — el botón se pulsa a cualquier hora.
-
-#### Cómo se llegó (histórico)
-
-**Credenciales creadas en n8n** (esto además retira el token de Notion del repo archivado):
-
-| Credencial | Tipo | ID |
-|---|---|---|
-| `Postiz API (CITEM org)` | `httpHeaderAuth` → `Authorization` | `h6bGMcfTHiZUD0dy` |
-| `Notion — Calendario Social Media` | `httpHeaderAuth` → `Authorization: Bearer` | `5rCv9a6s5FyI0swq` |
-
-**Workflow `k3QqOu4nQJGJMXuO` — «(PLANIFICADOR)» · ⚰️ borrado, lo sustituye `eKxZPM4zjwhNb3vf`**
-
-Cron 06:00 + webhook → lee el calendario → **decidía qué haría, sin escribir nada**.
-
-> **Cubría menos de lo que decía.** Se afirmó que implementaba «todas las puertas de §9.2 y las validaciones de §7.4»; en realidad le faltaban **el tope de tamaño** —que es la que más falta hacía— y la regla del *trial reel*. Y evaluaba el margen de 2 h **antes** que la comprobación de hora, con lo que una fila sin hora salía como «saltar» en vez de `Error` (§9.2).
->
-> Ambas cosas están corregidas en el workflow que lo sustituye.
-
-**Ejecutado contra los datos reales (2026-08-03):**
-
-```
-filas de Instagram evaluadas: 99
-  99  ignorar   (publicación vacía en todas)
-acciones que se ejecutarían: 0
-```
-
-Correcto: **el pipeline está inerte hasta que alguien marque `Listo`.** Nada que arreglar en los datos existentes.
-
-**🔒 Webhook protegido.** Se detectó que al activar el workflow, n8n exponía `POST /webhook/postiz-sync-ig` **sin autenticación**, y la respuesta del planificador incluye contenido de filas de Notion.
-
-Corregido: el nodo Webhook exige la cabecera **`X-Sync-Token`** (credencial `4jg5NXem2BvjFtFO`). ✅ El valor vive en `/opt/homeserver/.env` como `N8N_SYNC_IG_TOKEN`, y **la copia de `/tmp/wf/token.txt` ya se borró** — era el secreto vivo con permisos `664` (§14.5).
-
-Ese mismo token es el que tendrá que enviar el botón de Notion (§9.1).
-
-**✅ La mitad que escribe ya existe** — §14.3. El planificador se borró porque el workflow nuevo hace lo mismo y además escribe.
-
----
-
-#### Referencia para completarlo
-
-**Lo que ya está resuelto para montarlo:**
-
-| Dato | Valor |
-|---|---|
-| n8n | `auto.dustincalderon.com` · API pública operativa · clave en `/opt/homeserver/.env` (`N8N_API_KEY`) |
-| API de Postiz | `https://postiz.dustincalderon.com/api/public/v1` |
-| Auth de Postiz | Cabecera `Authorization: <apiKey>` de la organización **`30c506a6-0a2c-4661-95bb-abec2e14b3f2`** — la única con integraciones |
-| Cuentas | Los 3 `integration.id` de §7.2.1 |
-| Cuerpo del POST | §9.8, con los cinco campos que dan 400 |
-
-> **Ningún workflow actual de n8n usa el nodo de Notion** — todos van por `httpRequest`. Conviene seguir ese patrón: llamar a la API de Notion directamente en vez de introducir un nodo nuevo.
-
-**Token de Notion: ✅ ya existe y ya tiene acceso.**
-
-Vive en `D:\Code Projects\#ARCHIVE\Motion_to_Notion\.env` como `NOTION_API_KEY` (prefijo `ntn_`). Se creó para el sync Motion→Notion, pero **hereda acceso al calendario** porque su `NOTION_AREAS_DB_ID` (`852bcd83…`) es un ancestro suyo en el árbol, y los permisos de Notion bajan por la jerarquía.
-
-Verificado contra la API real:
-
-| Llamada | Resultado |
-|---|---|
-| `GET /v1/databases/186a2405…` | **200** — devuelve "Calendario Social Media" |
-| `POST /v1/databases/186a2405…/query` | **200** — devuelve filas |
-
-> ### ✅ Saldada la deuda del token en un repo archivado
-> Ya vive en los dos sitios durables: credencial cifrada de n8n `5rCv9a6s5FyI0swq` y `/opt/homeserver/.env`. **Se puede borrar `#ARCHIVE/Motion_to_Notion` sin perder nada.**
->
-> La integración se llama `Motion_to_Notio` en el workspace `DC Brand`, y su límite de subida es de **5 GiB** por fichero — el mismo dato de §5, ahora confirmado contra `GET /v1/users/me`.
-
-11. ✅ **Zona horaria fijada y probada** (§7.5): `10:00+02:00` enviado → `08:00` UTC almacenado, con un post real.
-12. ✅ **Subflow de sync** (§9.2) con el margen de seguridad (§9.3) — `A0XMq6dLdAWvwMPv`.
-13. ✅ **Cron 06:00 Europe/Madrid** sobre la ventana de 15 días (`eKxZPM4zjwhNb3vf`) **+ retirada y recuperación a las 06:20** (`rxVcGlxSZjzzI5ez`, §14.3). Confirmado que la zona del cron es Madrid de verdad: el contenedor de n8n corre con `TZ` y `GENERIC_TIMEZONE` = `Europe/Madrid`.
-14. ✅ **Hecho a mano en la UI de Notion** (la API no lo permite, ver aviso). Propiedad Botón `Sync now` → acción *Enviar webhook*, apuntando a la ruta secreta. Hay **dos URLs válidas** y se usó la segunda:
-
-    | Si la UI deja añadir cabeceras | Si no |
-    |---|---|
-    | `…/webhook/postiz-sync-ig` + cabecera `X-Sync-Token` | `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` |
-
-    Opcionalmente, automatización `publicación → Listo` → el mismo webhook.
-
-    > **Comprobado en la UI (2026-08-04):** la propiedad botón sí ofrece *Enviar webhook*, y sí admite **encabezados personalizados** — así que las dos variantes de arriba son viables. Se prefiere la de cabecera: un secreto en la ruta acaba en los logs de ejecución de n8n y en los del túnel; en una cabecera, no.
-    >
-    > **El apartado «Contenido» se deja vacío.** El workflow no lee el cuerpo —relee el calendario por su cuenta—, así que marcar propiedades sólo mandaría datos que nadie consume.
-
-> ### Por qué hay dos entradas y no una
-> **Confirmado ejecutándolo: la API de Notion no puede crear una propiedad de tipo botón.** Las dos versiones (`2022-06-28` y `2025-09-03`) devuelven `validation_error`, y los 23 tipos que enumeran como válidos son:
->
-> ```
-> checkbox · created_by · created_time · date · email · files · formula ·
-> last_edited_by · last_edited_time · multi_select · name · number · people ·
-> phone_number · place · relation · rich_text · rollup · select · status ·
-> title · unique_id · url
-> ```
->
-> No está `button`. Es UI o nada — **y tiene que ser una propiedad de tipo Botón**, no un sucedáneo.
->
-> Y de ahí el problema: el botón tiene que autenticarse, pero **no se puede verificar desde fuera si la UI de Notion admite cabeceras personalizadas** en la acción *Enviar webhook*. Dejar el pipeline dependiendo de eso es apostar.
->
-> La salida es quitar la apuesta: se añadió una segunda entrada con **el secreto en la ruta**, igual que el receptor (§14.3), que funciona lleve cabeceras o no. Las dos desembocan en el mismo nodo, así que no hay dos implementaciones que puedan divergir.
->
-> Probadas las cinco combinaciones: cabecera correcta → `200`; sin cabecera y con cabecera errónea → **`403`**; ruta secreta con un payload real de botón → `200`; ruta secreta equivocada → **`404`**.
-15. ✅ **Receptor del webhook de Postiz** — `VMezjZaMTIU5dIUz`, probado con los cuatro payloads, **dado de alta en Postiz y con la entrega verificada** (§14.7).
-16. ✅ **Dry-run hecho — programando de verdad, no con `modo = borrador`.** Se creó un post con fecha dentro de ventana, se comprobó en Postiz y se retiró con la propia pasada de retirada. Cero publicaciones en Instagram.
-
-> ### ⚠️ Los drafts se saltan la validación entera
-> `public.integrations.controller.ts:267` → `if (body.type !== 'draft')`. Todo el bloque que lanza `PostValidationException` (`:268-278`, via el helper `fail()` de `:250-256`) **no se ejecuta para drafts**. Sólo se comprueba `emptyContent`.
->
-> Un post que fallaría en `programar` **se crea sin una queja en `borrador`**. Usar drafts como dry-run no valida nada de lo que se quiere validar: da una falsa sensación de que todo está bien.
->
-> **El dry-run real es programar de verdad con fechas lejanas** y revisarlas en la UI de Postiz antes de que lleguen, o publicar en una cuenta de prueba. `modo = borrador` se queda como aparcadero editorial, no como red de seguridad.
-17. Alerta por **email al creador de la fila** (`created_by` de Notion) cuando pase a `Error`, con dirección general de reserva. **⏸️ Pendiente, y a propósito:** hace falta decidir el remitente. Las credenciales SMTP que hay en n8n son de otras marcas (`Amazon SES — Los Repertoristas`, `— Radar TM`) y usar una de ellas para esto sería un préstamo que confunde. Mientras tanto, la vista **⚠️ Averías** (§10, Fase 2) lista todos los fallos con cuenta, motivo e id.
-
-### Fase 4 — La capa creativa · el motivo de todo esto
-
-18. Redacción de borradores con Claude vía **Notion MCP**, creando filas con el copy ya escrito y `publicación` vacío, listas para revisar.
-19. Sistema de captura de materia prima: ideas, objeciones reales de clientes, ángulos.
-
-> **Esta fase no necesita que se construya nada antes.** Está disponible desde el primer día, y es la única razón por la que las fases 2 y 3 merecen la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
+> **No necesita que se construya nada antes**, y es la única razón por la que el resto merece la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
 
 ---
 
@@ -1196,11 +937,17 @@ Verificado contra la API real:
 
 ## 12. Riesgos
 
-**~~Los bytes pasan por la memoria de n8n.~~ Ya no.** Era el riesgo operativo número uno y **ha desaparecido por cambio de arquitectura**, no por mitigación: con `upload-from-url` los bytes van de Notion a Postiz directamente y n8n sólo manda una URL (§9.2). Medido con un reel de 150 MB: **9 s**, `md5` idéntico, memoria de n8n irrelevante.
+### El tamaño de los ficheros ya no es un riesgo
 
-**Y el riesgo de memoria de _Postiz_ también se cerró de raíz.** `upload-from-url` ya no bufferiza: streamea a disco, con memoria constante (§9.2). Lo único que queda es `MAX_URL_UPLOAD_BYTES` = **1 GiB**, y su motivo es el disco, no la RAM: Notion admite ficheros de hasta 5 GiB y no queremos que uno llene el Seagate por error.
+Lo fue, y se cerró por cambio de arquitectura en vez de por mitigación: con `upload-from-url` los bytes van de Notion a Postiz directamente —n8n sólo manda una URL— y Postiz los **streamea a disco** con memoria constante (§9.2).
 
-> A escala real esto sobra de largo: los reels pesan 150-250 MB y ya se probó uno de **672 MB** sin despeinarse. El tope está por higiene, no por estrechez.
+Lo único que queda es `MAX_URL_UPLOAD_BYTES` = **1 GiB**, y su motivo es el **disco, no la RAM**: Notion admite ficheros de hasta 5 GiB y no queremos que uno llene el Seagate por error. A escala real sobra de largo — los reels pesan 150-250 MB.
+
+### ⚠️ El Seagate es USB y `/uploads` es un bind mount
+
+Si `/mnt/seagate` se desmonta, Docker sirve el bind desde un directorio vacío del disco de sistema: **toda la biblioteca de medios desaparece en caliente** —404 en cada imagen— y las subidas nuevas llenan el disco del Beelink en silencio.
+
+Es el mismo riesgo que en su día justificó descartar los watchers (§13), sólo que aquí ya existe y no lo introduce este proyecto. Merece una comprobación de montaje en el arranque, pero es trabajo de infraestructura, no de este pipeline.
 
 **Notion es ahora un punto único de fallo.** Es la contrapartida de que sea SSoT de verdad. Mitigación razonable: exportación periódica del workspace. No es urgente, pero conviene no ignorarlo.
 
@@ -1242,12 +989,12 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `type: 'update'` de Postiz | Delete+create tiene semántica inequívoca y es seguro (§4.8). No hace falta averiguar qué actualiza exactamente un `update`. |
 | Añadir aprobación o campañas **a Postiz** | Es reconstruir Notion, peor y con código. Rompería además la regla de que Postiz sea sustituible (§2). |
 | Hacer configurable el endpoint de S3 | `local` funciona y R2 queda como salida de emergencia. Hoy sería código sin usuario. |
-| **Mover los medios a R2** | Se probó y se revirtió: el 403 que lo motivaba era el bloqueo de crawlers de IA de Cloudflare, no una limitación real. Meta obtiene 200 desde `local` (§10, Fase 0). |
+| **Mover los medios a R2** | Se probó y se revirtió: el 403 que lo motivaba era el bloqueo de crawlers de IA de Cloudflare, no una limitación real. Meta obtiene 200 desde `local` . |
 | Derivar el margen de seguridad del horario del cron | Falso sentido de seguridad: el botón dispara a cualquier hora (§9.3). |
 
 ## 14. Inventario de lo implementado
 
-> Estado a 2026-08-04. **Tres cuartas partes de esto no viven en git** — conviene saber dónde mirar antes de auditar.
+> **Tres cuartas partes de esto no viven en git** — conviene saber dónde mirar antes de auditar.
 
 ### 14.1 En el repositorio · `custom/postiz-dc`
 
@@ -1262,20 +1009,20 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **`upload-from-url` por streaming** | `public.integrations.controller.ts` + `local.storage.ts` (`uploadStream`) + `upload.interface.ts` |
 | Este documento | `docs/architecture/` |
 
-**Desplegado.** Verificado tras cada recreación: contenedor `healthy`, tres procesos con **0 reinicios**, `backend-error.log` vacío, y los workflows en vuelo intactos (Temporal conserva el estado entre reinicios).
+**Cómo se despliega:** commit y push a `origin/custom/postiz-dc`, `git pull` en `/opt/repos/postiz-fork`, `bash /opt/homeserver/postiz/build.sh` y `docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d postiz`.
 
-> ### La primera publicación real con la `v1.0.6` será el 28 de agosto
-> Se dijo aquí que el único post en cola arrancó como `V105` y que por tanto la próxima publicación real **no** ejercitaría el código nuevo. **Ya no es cierto:** al editarlo desde la UI (se movió del 14 al 28), `posts.service.ts:729` reinició su workflow, y arranca `postWorkflowV106`. Confirmado en Temporal.
+> ### ⚠️ Tocar un `post.workflow.vX` con ejecuciones en vuelo rompe los replays
+> Temporal reproduce el historial de una ejecución contra la definición actual del workflow. Por eso la convención del proyecto es **un fichero por versión**, y por eso `V105` sigue exportada aunque ya no se arranque.
 >
-> Y es un buen caso de prueba, porque es un post `WEB` que **ninguna fila de Notion reclama**: el webhook saldrá, el receptor no encontrará fila y responderá «ignorar» sin escribir. Es justo el escenario que rompía el fallo del *spread* (§14.7), así que sirve de validación en vivo.
-
-> Editar la `v1.0.6` en vez de crear una `v1.0.7` fue deliberado, y sólo es seguro porque se comprobó antes que **no había ninguna ejecución suya en vuelo** (la única existente estaba `Terminated`). La regla de "un fichero por versión" existe para no romper replays; sin replays que romper, una versión nueva sólo habría añadido ruido.
+> Editar una versión existente **sólo es seguro si no hay ninguna ejecución suya corriendo** — se comprueba en Temporal antes de tocarla. Un post programado mantiene su workflow vivo desde que se crea hasta que publica, así que puede haber ejecuciones en vuelo durante semanas.
+>
+> Editar un post desde la UI reinicia su workflow (`posts.service.ts:729`), y entonces pasa a arrancar con la versión actual.
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
 **11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `content`, `assets`, `first_comment`, `modo`, `publicación`, `postiz_post_id`, `postiz_media`, `error_log`, `release_url`. Tipos y opciones correctos.
 
-> **Todas con descripción menos una:** `colaboradores` la tiene **vacía**, porque el `ALTER` que sembró sus opciones la borró (§10, Fase 2). Reponerla a mano si molesta.
+> **Todas con descripción menos una:** `colaboradores` la tiene **vacía**, porque el `ALTER` que sembró sus opciones la borró. Reponerla a mano si molesta.
 
 **2 vistas:** `IG · Publicación` (filtrada por Instagram) y `⚠️ Averías` (filtrada por `publicación = Error`). *No verificables por la API pública de Notion, que no expone las vistas de una data source: se dan por buenas según quien las creó.*
 
@@ -1300,7 +1047,7 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 | Ruta | Auth | Para qué |
 |---|---|---|
 | `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | Sync a demanda (scripts, curl) |
-| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | Botón de Notion, si la UI no admite cabeceras (§10, Fase 3b, punto 14) |
+| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | Botón de Notion, si la UI no admite cabeceras (§9.1) |
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | Retirada/recuperación a demanda |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | Destino del webhook de Postiz |
 
@@ -1310,6 +1057,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > `post.activity.ts:329-335` manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
 
 **Copia durable:** los cuatro workflows están exportados en `/opt/homeserver/n8n-workflows/postiz-<id>.json` (modo `600`). **No van a este repositorio**: el receptor lleva su ruta secreta dentro, y esto es un fork de un proyecto público (§14.4).
+
+> **Convención: todo va por `httpRequest`, no por nodos de integración.** Ningún workflow de esta instancia usa el nodo de Notion; se llama a la API directamente. Conviene mantenerlo — un nodo de tercero añade una dependencia que se actualiza sola y puede cambiar de comportamiento bajo los pies.
 
 **Por qué la retirada es un workflow aparte y va 20 minutos después.** Es la parte destructiva. Encadenarla al sync obliga a razonar sobre qué pasa cuando no hay filas que crear (los nodos sin items no se ejecutan, y la retirada no correría nunca justo el día que más falta hace). Separada, siempre corre, y el desfase garantiza que el sync ya ha escrito los `postiz_post_id` que ella va a leer.
 
@@ -1336,121 +1085,44 @@ Todos verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vac
 >
 > **Nunca en este repositorio.** Es un fork de un proyecto público: basta un push al remoto equivocado para filtrar el token. Los secretos van al `.env` del servidor o al gestor de credenciales de la herramienta que los usa — jamás a git, ni siquiera en un repo privado.
 
-### 14.5 Residuos de las pruebas — qué se dejó y qué se limpió
+### 14.5 Límites conocidos
 
-Durante la verificación se crearon objetos en producción. Registro honesto de todos:
+Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpresa:
 
-| Artefacto | Estado |
+| Límite | Consecuencia |
 |---|---|
-| Fila de Notion «__TEST hora (borrar)» | ✅ Archivada |
-| Post de Postiz `cmsduippv0000ns71oty7cibs` + su comentario | ✅ Soft-deleted vía API |
-| Media `6ef7cac0-b740-498c-8999-878c8c9325cc` | ✅ Soft-deleted **a mano** — ver aviso |
-| `/tmp/test-pipeline.jpg` y los JSON de `/tmp/wf/` | ✅ Borrados |
-| `/tmp/wf/planner.js` y `token.txt` | ✅ **Borrados** — ver aviso |
-| Ejecución `203001` de n8n | ⏸️ Queda en el historial |
-| Fila de Notion «__ZZ AUDIT pipeline (borrar)» | ✅ Archivada |
-| Posts de prueba en Postiz (2027 y 18-ago) + comentarios | ✅ Soft-deleted (por la propia retirada) |
-| Workflows de Temporal `zzaudit-webhookpath-1`, `zzaudit-entrega-1/2` | ⏸️ Completados, quedan en el historial |
-| Borrador de prueba de la entrega (`cmsegdkbi…`) | ✅ Borrado vía API |
-| 4 media de prueba (~470 MB) | ✅ Soft-deleted — el blob lo borra la limpieza a los 7 días |
+| **Nunca se ha publicado de verdad** | Todo se probó por el camino de fallo o con fechas que se retiraron. La primera publicación real será la primera vez que el camino completo llegue a Instagram |
+| **Colaboradores en `graph.instagram.com`** | Se envían, pero no está comprobado que Meta los acepte en la API de Instagram Login. Deuda aceptada (§11, decisión #7) |
+| **Más de 100 filas accionables** | Ninguna de las dos consultas a Notion pagina. **Fallan a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Con el filtro por estados vivos, hoy el margen es enorme |
+| **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
+| **Notion caído a la hora del cron** | No hay reintento ni alerta distinta. Decisión abierta (§11) |
 
-> ### 🔑 El token del webhook estaba en `/tmp` y era legible por cualquiera
-> `/tmp/wf/token.txt` no era "una referencia": su contenido **coincidía exactamente** con el `N8N_SYNC_IG_TOKEN` vivo, con permisos `664` (lectura para todo el mundo) en un directorio que cualquier usuario del host puede listar.
->
-> Borrado. El valor sigue donde debe: en `/opt/homeserver/.env` y en la credencial cifrada de n8n.
+> **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en el caso parcial de arriba.
 
-> ### ⚠️ Un fichero subido y no publicado no lo recoge nadie
-> El Step 2 de la limpieza (§4.7) sólo hace candidatos a los medias que aparecen en un post `PUBLISHED`: **si nunca se publicó, la fase 1 no lo ve jamás**.
->
-> La salida es soft-borrarlo a mano. **Verificado que eso basta:** la fase 2 (`findOrphanedSoftDeletedMedia`) selecciona cualquier media con `deletedAt` de más de 7 días, sin mirar si se publicó. Es decir, el agujero está en *quién marca el `deletedAt`*, no en la limpieza.
->
-> **✅ Cerrado para el caso que lo generaba** (decisión #6 de §11): se añadió `DELETE /public/v1/media/:id` y el subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2). Verificado con un fallo real: 30 medios vivos antes y después.
->
-> **Lo que sigue sin cubrir** es la subida parcial de un carrusel —si el asset 1 sube y el 2 falla, el primero queda huérfano— y cualquier fila que se abandone sin corregir. A este volumen no compensa; está desarrollado en [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md).
 
-### 14.6 Qué se verificó ejecutándolo, y qué no
+### 14.6 El webhook de Postiz — cómo está configurado
 
-**Verificado ejecutando, no leyendo:**
-
-| Qué | Evidencia |
-|---|---|
-| Sync completo de una fila real | Notion `Listo` → `Programado`, con `postiz_post_id` y `postiz_media` escritos, y post + comentario en Postiz |
-| **Reel de 150 MB de Notion a Postiz** | 9 s, `md5` idéntico, `206` para `facebookexternalhit/1.1` |
-| Zona horaria | `10:00+02:00` enviado → `08:00` UTC almacenado |
-| Primer comentario (hashtags) | Crea un `Post` hijo con la misma `publishDate` |
-| Recrear reutilizando media | 2ª pasada en 1,7 s (vs 13,5 s), sin volver a subir, post anterior borrado |
-| Retirada — seguridad | Con todo reclamado: «nada que hacer»; el post `WEB` intacto |
-| Retirada — función | Al vaciar `publicación`: borra el post de la API **y su comentario**, y sigue sin tocar el `WEB` |
-| Receptor de webhook | 4 payloads: publicado · error · **error con `releaseURL`** · `[]` vacío |
-| Camino de fallo previo al bucle | `getPost → changeState → sendWebhooks`, workflow `COMPLETED` |
-| **Entrega real Postiz → n8n** | Webhook recibido **con contenido**, incluidos `error` y `releaseId` (§14.7) |
-| Post sin fila en Notion | El receptor lo ignora y **no** intenta escribir (§14.7, aviso del spread) |
-| **Fallo tras subir el asset** | Copy de 2593 caracteres → `400`. La fila queda en `Error` con el motivo real, `postiz_media` vacío, y **el media borrado**: 30 vivos antes y después |
-| **Subida de 672 MB por streaming** | 8 s, `md5` idéntico, memoria 2130 → 2132 MB |
-| **Tope de tamaño** | 1,4 GB con tope de 1 GiB → `400` legible y **sin fichero parcial** en disco |
-| Entradas del botón de Notion | Cabecera correcta → 200 · sin cabecera → **403** · cabecera errónea → **403** · ruta secreta con payload de botón → 200 · ruta secreta errónea → **404** |
-| Límite de Cloudflare | 90 MB pasa · 100 MB y 150 MB dan `413` del edge |
-| Diagnóstico de §4.4.1 | `Post.id` y `releaseId` disjuntos en producción (0 coincidencias) |
-
-**Lo que sigue sin verificarse funcionando:**
-
-1. **Una publicación real en Instagram.** A propósito: no se ha publicado nada en las cuentas de producción. Todo se probó por el camino de fallo o con fechas dentro de ventana que se retiraron después.
-3. **Colaboradores en `graph.instagram.com`** — deuda técnica por decisión, no se probará.
-4. **Más de 100 filas accionables.** Ninguna de las dos consultas a Notion pagina: **fallan a las claras** con un error si `has_more` es `true`, en vez de sincronizar media cola en silencio. Con el filtro por `publicación` (sólo estados vivos) hoy hay **0**, así que el margen es enorme.
-
-Y una decisión abierta: qué hacer si el sync entero falla (Notion caído a las 06:00).
-
-### 14.7 El webhook, dado de alta · ✅ y el bucle cerrado de verdad
-
-**Dado de alta a mano en la UI**, que es la única vía: `POST /webhooks` vive en la API con sesión (`webhooks.controller.ts`), no en la pública, y con la API key devuelve `401`.
+**Se da de alta a mano en la UI de Postiz**, que es la única vía: `POST /webhooks` vive en la API con sesión (`webhooks.controller.ts`), no en la pública, y con la API key devuelve `401`.
 
 | Campo | Valor |
 |---|---|
 | Nombre | `n8n sync Instagram` |
 | URL | `https://auto.dustincalderon.com/webhook/` + `N8N_POSTIZ_WEBHOOK_PATH` |
-| Integraciones | **las 4 conectadas**: las 3 de Instagram y el TikTok (no la opción «todas») |
+| Integraciones | las 4 conectadas: las 3 de Instagram y el TikTok |
 
-**✅ Entrega verificada de punta a punta en producción**, sin publicar nada: se creó un **borrador** (que nunca arranca workflow ni publica) y se lanzó su workflow a mano, cayendo por el camino `Already posted`. El cuerpo llegó **completo**:
-
-```json
-[{ "id": "cmsegdkbi…", "content": "…", "releaseURL": null, "releaseId": null,
-   "error": "Already posted", "state": "ERROR",
-   "integration": { "id": "cmqjq77hg…", "providerIdentifier": "instagram-standalone" } }]
-```
-
-Es exactamente lo que §4.4.1 decía que **no** llegaba, más los dos campos que se añadieron al fork (`releaseId`, `error`). El defecto original está cerrado.
-
-> ### ⚠️ El orden del spread — un fallo que sólo aparecía con posts ajenos al pipeline
-> Esa primera entrega **falló en n8n**, y el motivo merece quedar escrito porque es de los que no se ven leyendo:
+> ### ⚠️ Elegir integraciones concretas es una trampa a futuro
+> El filtro de `sendWebhooks` (`post.activity.ts:316-323`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas **sólo entrega cuando el `integrationId` coincide**.
 >
-> ```js
-> // MAL: ...ctx va al final y sobreescribe accion con el 'escribir' que trae ctx
-> return [{ json: { accion: 'ignorar', motivo: '…', ...ctx } }];
-> ```
+> Hoy están marcadas las cuatro que existen. **El día que se conecte una quinta cuenta habrá que añadirla aquí a mano, o sus avisos no llegarán y no lo dirá nadie.** Con la opción «todas las integraciones» eso no pasa; merece la pena cambiarlo la próxima vez que se conecte una cuenta.
 >
-> Cuando ninguna fila de Notion reclama el post, el nodo devolvía `accion: 'escribir'` igualmente y la siguiente llamada iba a `PATCH /v1/pages/undefined` → `Invalid request URL`.
+> Dos de los cinco caminos previos al bucle («No Post») no conocen la integración y pasan `''`, así que no entregan. No se pierde nada: ahí el post no existe y el cuerpo sería `[]` igualmente.
 >
-> **Sólo se manifiesta con posts que no vienen del pipeline** — es decir, con cada publicación hecha a mano desde la UI de Postiz, que son las que hoy existen. Las pruebas anteriores del receptor no lo destaparon porque todas usaban una fila que sí existía.
->
-> Corregido con `Object.assign({}, ctx, { accion: … })` y reprobado con el mismo escenario: ahora termina en `success` y sale por «Sin fila que actualizar». De paso, `release_url` se limpia cuando el estado es `Error`, para que no quede un permalink viejo contradiciendo al estado.
-
-> ### ⚠️ Consecuencia de elegir «integraciones específicas»
-> El filtro de `sendWebhooks` (`post.activity.ts:316-323`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas, **sólo entrega cuando el `integrationId` coincide**.
->
-> Dos de los cinco caminos previos al bucle («No Post») no conocen la integración y pasan `''`, así que **no entregan**. No se pierde nada: en esos casos el post no existe y el cuerpo sería `[]` de todos modos.
->
-> **Lo que sí es una trampa a futuro:** hoy están marcadas las cuatro integraciones que existen, pero el día que se conecte una quinta habrá que añadirla aquí a mano o sus avisos no llegarán, **en silencio**. Con la opción «todas las integraciones» eso no pasa. Merece la pena cambiarlo la próxima vez que se conecte una cuenta.
->
-> Que TikTok esté incluido es inocuo: el receptor busca en Notion una fila que reclame el post y, al no encontrarla, lo ignora sin escribir nada.
+> Que TikTok esté incluido es inocuo: el receptor busca en Notion una fila que reclame el post y, al no encontrarla, lo ignora sin escribir.
 
 > ### 🔑 No rotar la API key sin avisar a n8n
-> El botón *Rotate Key* de *Settings → Developers* invalida la clave que usa la credencial `h6bGMcfTHiZUD0dy`. Rompería **los cuatro workflows a la vez** y de forma silenciosa: no se notaría hasta la pasada de las 06:00. Si se rota, hay que actualizar la credencial de n8n el mismo día.
+> El botón *Rotate Key* de *Settings → Developers* invalida la clave que usa la credencial `h6bGMcfTHiZUD0dy`. Rompería **los cuatro workflows a la vez** y en silencio: no se notaría hasta la pasada de las 06:00. Si se rota, hay que actualizar la credencial de n8n el mismo día.
 >
-> El resto de esa pantalla —CLI, skill del agente, MCP de Postiz, nodo comunitario de n8n— **no se usa a propósito**: todo eso publica *directamente en Postiz*, saltándose Notion, que es justo lo que prohíbe §6. La Fase 4 usa el **MCP de Notion**, no el de Postiz.
-
-**Los medios de prueba ya están soft-deleted** (~470 MB: dos reels de 150 MB y dos imágenes). No hay endpoint público para borrar media, así que se marcaron igual que hace el botón de la UI (`deletedAt = now()`, `media.repository.ts:52-62`), tras comprobar que ningún post vivo los referenciaba.
-
-El blob físico lo borra la **fase 2** de la limpieza, que recoge **cualquier** media con `deletedAt` de más de 7 días —publicado o no (`findOrphanedSoftDeletedMedia`, `media.repository.ts:394-413`)—. Verificado que el limpiador está vivo: `RUN_CRON=true` y el workflow `media-cleanup-workflow` lleva **29 ciclos completados**.
+> El resto de esa pantalla —CLI, skill del agente, MCP de Postiz, nodo comunitario de n8n— **no se usa a propósito**: todo eso publica *directamente en Postiz*, saltándose Notion, que es justo lo que prohíbe §6. La capa creativa (§10.2) usa el **MCP de Notion**, no el de Postiz.
 
 ## 15. Fuentes
 
