@@ -84,11 +84,20 @@ export async function postWorkflowV106({
   // in case doesn't exists for some reason, fail it
   if (!firstPost) {
     await changeState(postId, 'ERROR', 'No Post');
+    // v1.0.6 — every terminal path emits a webhook. Otherwise a scheduled post
+    // can fail here and the external consumer (n8n) never learns about it: the
+    // row would sit in "Programado" until a recovery pass notices.
+    await sendWebhooks(postId, organizationId, '');
     return;
   }
 
   if (!postNow && firstPost.state !== 'QUEUE') {
     await changeState(firstPost.id, 'ERROR', 'Already posted', [firstPost]);
+    await sendWebhooks(
+      firstPost.id,
+      organizationId,
+      firstPost.integration?.id || ''
+    );
     return;
   }
 
@@ -106,6 +115,7 @@ export async function postWorkflowV106({
 
   if (!post) {
     await changeState(postId, 'ERROR', 'No Post');
+    await sendWebhooks(postId, organizationId, '');
     return;
   }
 
@@ -126,6 +136,11 @@ export async function postWorkflowV106({
       'Refresh channel needed',
       postsListBefore
     );
+    await sendWebhooks(
+      postsListBefore[0].id,
+      organizationId,
+      post.integration?.id || ''
+    );
     return;
   }
 
@@ -145,6 +160,11 @@ export async function postWorkflowV106({
       'ERROR',
       'Channel disabled',
       postsListBefore
+    );
+    await sendWebhooks(
+      postsListBefore[0].id,
+      organizationId,
+      post.integration?.id || ''
     );
     return;
   }

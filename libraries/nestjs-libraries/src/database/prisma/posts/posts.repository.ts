@@ -878,6 +878,14 @@ export class PostsRepository {
         content: true,
         publishDate: true,
         releaseURL: true,
+        // `releaseId` and `error` are what let a webhook consumer tell apart the
+        // outcomes that all arrive as state=ERROR:
+        //   - never published           -> no releaseId/releaseURL
+        //   - published, comment failed -> releaseId/releaseURL still set
+        // Without them the consumer cannot report a reason, nor avoid
+        // re-creating (and re-publishing) a post that is already live.
+        releaseId: true,
+        error: true,
         state: true,
         integration: {
           select: {
