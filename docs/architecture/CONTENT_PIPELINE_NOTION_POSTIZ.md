@@ -1026,7 +1026,15 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 **11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `content`, `assets`, `first_comment`, `modo`, `publicación`, `postiz_post_id`, `postiz_media`, `error_log`, `release_url`. Tipos y opciones correctos.
 
-> **Todas con descripción menos una:** `colaboradores` la tiene **vacía**, porque el `ALTER` que sembró sus opciones la borró. Reponerla a mano si molesta.
+> ### ⚠️ Las descripciones de propiedad no se pueden escribir por API — y se borran solas
+> Comprobado ejecutándolo contra Notion:
+>
+> - `PATCH /v1/databases` **rechaza** cualquier cuerpo que incluya `description` en una propiedad (400, en `2022-06-28` y en `2025-09-03`, y también en `/v1/data_sources`).
+> - Un `PATCH` que reenvía el **tipo** de la propiedad —aunque mande las opciones con sus mismos `id`— **deja la descripción vacía**.
+>
+> Es decir: son de sólo lectura por API y **frágiles ante cualquier cambio de esquema automatizado**. Así se perdieron las de `colaboradores` y `modo`; hay que reponerlas a mano en la UI.
+>
+> **Antes de tocar el esquema con un script, apunta las descripciones**: no hay forma de restaurarlas programáticamente.
 
 **1 propiedad de tipo botón:** `Sync now` → *Enviar webhook* (§9.1). Sólo se puede crear desde la UI.
 
