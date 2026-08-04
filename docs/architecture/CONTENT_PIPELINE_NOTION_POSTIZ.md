@@ -599,9 +599,8 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 3. si tiene postiz_post_id y no está publicado ──► DELETE primero
 4. si `postiz_media` está vacío:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
-      mide el tamaño con un GET de 1 byte (Range)  ← tope de 300 MB
       POST /public/v1/upload-from-url  { "url": ... }
-        └─ los bytes NO pasan por n8n: los baja Postiz
+        └─ los bytes NO pasan por n8n: los baja Postiz, por streaming
       └──► ESCRIBE postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
@@ -655,7 +654,23 @@ Las dos escrituras siguen separadas: guardar `postiz_media` en cuanto sube hace 
 >
 > **Medido de punta a punta:** reel de 150 MB subido a Notion, y de Notion a Postiz en **9 s**, con `md5` idéntico en destino y `206` para `facebookexternalhit/1.1`.
 >
-> El tope de 300 MB sigue haciendo falta, pero por otro motivo: `upload-from-url` carga el fichero entero en memoria de Postiz (`Buffer.from(await response.arrayBuffer())`) y **no comprueba tamaño**. Notion admite hasta 5 GiB. Sin ese guardarraíl, un arrastre equivocado tumbaría el contenedor que además corre el orchestrator. Por eso el worker mide antes con un `Range: bytes=0-0`, que cuesta un byte.
+> ### El tope de 300 MB desapareció: `upload-from-url` va por streaming
+>
+> La primera versión hacía `Buffer.from(await response.arrayBuffer())`, así que la memoria crecía con el fichero — y como este proceso **también corre el orchestrator**, una subida grande se llevaba por delante la publicación programada. De ahí venían los 300 MB y la sonda de tamaño en n8n: gestionar el síntoma.
+>
+> Ahora el tipo se detecta con `fileType.stream()` —lee la cabecera y sigue emitiendo todos los bytes— y se vuelca a disco con `pipeline()`. **La memoria pasa a ser constante.** Medido:
+>
+> | Fichero | Memoria de Postiz | Tiempo |
+> |---|---|---|
+> | 672 MB | **2130 MB → 2132 MB** | 8 s |
+>
+> Dos megas de diferencia para 672 de fichero, con `md5` idéntico en destino. (Los 2,1 GB son la línea base de los tres procesos, no la subida: en reposo no se movía de 2130.)
+>
+> El único límite que queda es **`MAX_URL_UPLOAD_BYTES`**, hoy **1 GiB**, y existe para que una URL equivocada no llene el disco — no para acotar la RAM. Probado con un fichero de 1,4 GB: `400` con mensaje legible y **sin dejar fichero parcial**.
+>
+> **La sonda de tamaño de n8n se eliminó.** El límite vive ahora en un solo sitio, que es el que puede aplicarlo; duplicar la constante en los dos lados era una trampa de mantenimiento. Si Postiz lo rechaza, su mensaje llega tal cual a `error_log`.
+>
+> `uploadStream` es **opcional** en `IUploadProvider`: quien no pueda streamear —R2 necesitaría multipart— no lo implementa y el llamante cae al camino con buffer, que se conserva intacto.
 
 ### 9.3 El margen de seguridad — obligatorio
 
@@ -1074,7 +1089,22 @@ Verificado contra la API real:
 11. ✅ **Zona horaria fijada y probada** (§7.5): `10:00+02:00` enviado → `08:00` UTC almacenado, con un post real.
 12. ✅ **Subflow de sync** (§9.2) con el margen de seguridad (§9.3) — `A0XMq6dLdAWvwMPv`.
 13. ✅ **Cron 06:00 Europe/Madrid** sobre la ventana de 15 días (`eKxZPM4zjwhNb3vf`) **+ retirada y recuperación a las 06:20** (`rxVcGlxSZjzzI5ez`, §14.3). Confirmado que la zona del cron es Madrid de verdad: el contenedor de n8n corre con `TZ` y `GENERIC_TIMEZONE` = `Europe/Madrid`.
-14. ⏸️ **A mano en la UI de Notion** (la API no permite crearlos, §9.1): propiedad Botón `Sincronizar ahora` → acción *Enviar webhook* → `https://auto.dustincalderon.com/webhook/postiz-sync-ig`, con la cabecera `X-Sync-Token`. Opcionalmente, automatización `publicación → Listo` → mismo webhook.
+14. ⏸️ **A mano en la UI de Notion — el único paso que queda.** Propiedad Botón `Sincronizar ahora` → acción *Enviar webhook*. Hay **dos URLs válidas**, se usa la que permita la UI:
+
+    | Si la UI deja añadir cabeceras | Si no |
+    |---|---|
+    | `…/webhook/postiz-sync-ig` + cabecera `X-Sync-Token` | `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` |
+
+    Opcionalmente, automatización `publicación → Listo` → el mismo webhook.
+
+> ### Por qué hay dos entradas y no una
+> **Confirmado ejecutándolo: la API de Notion no puede crear una propiedad de tipo botón.** Las dos versiones (`2022-06-28` y `2025-09-03`) devuelven `validation_error` y la lista de tipos válidos que enumeran no incluye `button`. Es UI o nada.
+>
+> Y de ahí el problema: el botón tiene que autenticarse, pero **no se puede verificar desde fuera si la UI de Notion admite cabeceras personalizadas** en la acción *Enviar webhook*. Dejar el pipeline dependiendo de eso es apostar.
+>
+> La salida es quitar la apuesta: se añadió una segunda entrada con **el secreto en la ruta**, igual que el receptor (§14.3), que funciona lleve cabeceras o no. Las dos desembocan en el mismo nodo, así que no hay dos implementaciones que puedan divergir.
+>
+> Probadas las cinco combinaciones: cabecera correcta → `200`; sin cabecera y con cabecera errónea → **`403`**; ruta secreta con un payload real de botón → `200`; ruta secreta equivocada → **`404`**.
 15. ✅ **Receptor del webhook de Postiz** — `VMezjZaMTIU5dIUz`, probado con los cuatro payloads, **dado de alta en Postiz y con la entrega verificada** (§14.7).
 16. ✅ **Dry-run hecho — programando de verdad, no con `modo = borrador`.** Se creó un post con fecha dentro de ventana, se comprobó en Postiz y se retiró con la propia pasada de retirada. Cero publicaciones en Instagram.
 
@@ -1102,7 +1132,7 @@ Verificado contra la API real:
 | # | Decisión | Bloquea | Notas |
 |---|---|---|---|
 | 1 | ~~Formato y zona horaria~~ | — | **Resuelta:** offset explícito, contenedor en UTC (§9.8) |
-| ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta: 300 MB**, pero por un motivo distinto al inicial. No protege la memoria de n8n (ya no ve los bytes) sino la de **Postiz**, que sí carga el fichero entero (§12) |
+| ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta, y el tope dejó de ser un problema.** No son 300 MB sino **1 GiB** (`MAX_URL_UPLOAD_BYTES`), y ya no protege memoria —el streaming la hace constante— sino el disco (§9.2). Probado con 672 MB |
 | ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `release_url` aparte |
 | ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
 | 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
@@ -1133,7 +1163,9 @@ Verificado contra la API real:
 
 **~~Los bytes pasan por la memoria de n8n.~~ Ya no.** Era el riesgo operativo número uno y **ha desaparecido por cambio de arquitectura**, no por mitigación: con `upload-from-url` los bytes van de Notion a Postiz directamente y n8n sólo manda una URL (§9.2). Medido con un reel de 150 MB: **9 s**, `md5` idéntico, memoria de n8n irrelevante.
 
-**El riesgo que queda es de memoria de _Postiz_**, no de n8n: `upload-from-url` carga el fichero entero en un `Buffer` y no comprueba tamaño. Por eso el worker mide antes con un `Range: bytes=0-0` y **rechaza por encima de 300 MB** con un error legible. Sin ese tope, un fichero de 5 GiB (lo que Notion permite) tumbaría el contenedor que además corre el orchestrator.
+**Y el riesgo de memoria de _Postiz_ también se cerró de raíz.** `upload-from-url` ya no bufferiza: streamea a disco, con memoria constante (§9.2). Lo único que queda es `MAX_URL_UPLOAD_BYTES` = **1 GiB**, y su motivo es el disco, no la RAM: Notion admite ficheros de hasta 5 GiB y no queremos que uno llene el Seagate por error.
+
+> A escala real esto sobra de largo: los reels pesan 150-250 MB y ya se probó uno de **672 MB** sin despeinarse. El tope está por higiene, no por estrechez.
 
 **Notion es ahora un punto único de fallo.** Es la contrapartida de que sea SSoT de verdad. Mitigación razonable: exportación periódica del workspace. No es urgente, pero conviene no ignorarlo.
 
@@ -1192,6 +1224,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `releaseId` + `error` en el payload del webhook | `posts.repository.ts` → `getPostByForWebhookId` |
 | Webhook en los 5 caminos previos al bucle | `post.workflow.v1.0.6.ts` |
 | **`DELETE /public/v1/media/:id`** | `public.integrations.controller.ts` |
+| **`upload-from-url` por streaming** | `public.integrations.controller.ts` + `local.storage.ts` (`uploadStream`) + `upload.interface.ts` |
 | Este documento | `docs/architecture/` |
 
 **Desplegado:** imagen `postiz-custom:local` (tag `local-69921960`). Verificado tras recrear: contenedor `healthy`, tres procesos con **0 reinicios**, `backend-error.log` vacío, y el workflow del post del 14 de agosto **sigue `Running`** (Temporal conserva el estado; arrancó como `V105` y ahí sigue).
@@ -1226,9 +1259,12 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 
 | Ruta | Auth | Para qué |
 |---|---|---|
-| `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | Botón de Notion y sync a demanda |
+| `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | Sync a demanda (scripts, curl) |
+| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | Botón de Notion, si la UI no admite cabeceras (§10, Fase 3b, punto 14) |
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | Retirada/recuperación a demanda |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | Destino del webhook de Postiz |
+
+Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH` y `N8N_POSTIZ_WEBHOOK_PATH`.
 
 > ### Por qué el receptor lleva el secreto en la URL y no en una cabecera
 > `post.activity.ts:329-335` manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
@@ -1245,8 +1281,10 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 | `/opt/homeserver/.env` | **`N8N_SYNC_IG_TOKEN`** añadido — el token del webhook (§9.1) |
 | `/opt/homeserver/.env` | **`NOTION_API_KEY`** añadido — copia durable del token de Notion |
 | `/opt/homeserver/.env` | **`N8N_POSTIZ_WEBHOOK_PATH`** añadido — ruta secreta del receptor (§14.3) |
+| `/opt/homeserver/.env` | **`N8N_SYNC_IG_BUTTON_PATH`** añadido — ruta secreta del botón de Notion |
+| `/opt/homeserver/postiz/postiz.env` | **`MAX_URL_UPLOAD_BYTES=1073741824`** añadido — 1 GiB (§9.2) |
 
-Los tres verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vacío y `CLOUDFLARE_BUCKET_URL` sin barra final, también.
+Todos verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vacío y `CLOUDFLARE_BUCKET_URL` sin barra final, también.
 
 > ### 🔑 Dónde vive cada secreto, y por qué no en este repo
 > El token de Notion estaba **sólo** en `#ARCHIVE/Motion_to_Notion/.env`, un repo muerto. Ahora vive en dos sitios durables:
@@ -1306,6 +1344,9 @@ Durante la verificación se crearon objetos en producción. Registro honesto de 
 | **Entrega real Postiz → n8n** | Webhook recibido **con contenido**, incluidos `error` y `releaseId` (§14.7) |
 | Post sin fila en Notion | El receptor lo ignora y **no** intenta escribir (§14.7, aviso del spread) |
 | **Fallo tras subir el asset** | Copy de 2593 caracteres → `400`. La fila queda en `Error` con el motivo real, `postiz_media` vacío, y **el media borrado**: 30 vivos antes y después |
+| **Subida de 672 MB por streaming** | 8 s, `md5` idéntico, memoria 2130 → 2132 MB |
+| **Tope de tamaño** | 1,4 GB con tope de 1 GiB → `400` legible y **sin fichero parcial** en disco |
+| Entradas del botón de Notion | Cabecera correcta → 200 · sin cabecera → **403** · cabecera errónea → **403** · ruta secreta con payload de botón → 200 · ruta secreta errónea → **404** |
 | Límite de Cloudflare | 90 MB pasa · 100 MB y 150 MB dan `413` del edge |
 | Diagnóstico de §4.4.1 | `Post.id` y `releaseId` disjuntos en producción (0 coincidencias) |
 
