@@ -922,18 +922,18 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | ¿Hace falta Notion? | **Sí** — el calendario de §7.1 lleva tiempo en uso |
 | ¿Las 3 cuentas están en Postiz? | **Sí**, ya conectadas |
 | Alcance | **Instagram, 3 cuentas** (`instagram-standalone`, §4.9) |
-| Estructura en Notion | **Una sola tabla** — el calendario existente, con 10 propiedades más (§7.2) |
+| Estructura en Notion | **Una sola tabla** — el calendario existente, con 11 propiedades más (§7.2) |
 | IDs de integración | Los tres, verificados en la base de datos (§7.2.1) |
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `publicación`, separada del `Status` humano (§7.2) |
-| Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva — *decidido el diseño; sin implementar (punto 17)* |
+| Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
 | Archivo en Drive | **Después**, cuando el pipeline funcione. Trabajo aparte, fuera del camino de publicación |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Margen de seguridad | **2 h** (§9.3) |
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 
-> **Ninguna bloquea el arranque.** Las propiedades se pueden crear ya; la #3 sólo decide si `release_url` reutiliza `URL` o es propia.
+> **Ninguna de las dos abiertas bloquea el uso diario.** La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
 
 ## 12. Riesgos
 
