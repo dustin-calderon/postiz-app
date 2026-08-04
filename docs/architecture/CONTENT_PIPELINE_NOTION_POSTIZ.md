@@ -1097,8 +1097,19 @@ Verificado contra la API real:
 
     Opcionalmente, automatización `publicación → Listo` → el mismo webhook.
 
+    > **Sin verificar, porque la API no lo expone:** que tu versión de Notion ofrezca *Enviar webhook* como acción de una **propiedad botón**. Si no apareciera ahí, el equivalente es una **automatización de base de datos** (el icono del rayo) con la misma acción y la misma URL. El workflow se comporta igual en los dos casos: ignora el cuerpo y hace la pasada completa.
+
 > ### Por qué hay dos entradas y no una
-> **Confirmado ejecutándolo: la API de Notion no puede crear una propiedad de tipo botón.** Las dos versiones (`2022-06-28` y `2025-09-03`) devuelven `validation_error` y la lista de tipos válidos que enumeran no incluye `button`. Es UI o nada.
+> **Confirmado ejecutándolo: la API de Notion no puede crear una propiedad de tipo botón.** Las dos versiones (`2022-06-28` y `2025-09-03`) devuelven `validation_error`, y los 23 tipos que enumeran como válidos son:
+>
+> ```
+> checkbox · created_by · created_time · date · email · files · formula ·
+> last_edited_by · last_edited_time · multi_select · name · number · people ·
+> phone_number · place · relation · rich_text · rollup · select · status ·
+> title · unique_id · url
+> ```
+>
+> No está `button`. Es UI o nada — **y tiene que ser una propiedad de tipo Botón**, no un sucedáneo.
 >
 > Y de ahí el problema: el botón tiene que autenticarse, pero **no se puede verificar desde fuera si la UI de Notion admite cabeceras personalizadas** en la acción *Enviar webhook*. Dejar el pipeline dependiendo de eso es apostar.
 >
