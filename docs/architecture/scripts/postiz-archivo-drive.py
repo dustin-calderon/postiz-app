@@ -20,7 +20,7 @@ Registro de lo ya archivado:
   - Posts sin fila (los de la UI) -> fichero local, porque no hay donde anotarlo.
 Para rearchivar algo: vaciar `❌ drive_url` (o borrarlo del fichero local).
 """
-import fcntl, json, os, re, subprocess, sys, unicodedata, urllib.request
+import fcntl, json, os, re, subprocess, sys, tempfile, unicodedata, urllib.request
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -163,15 +163,46 @@ def registro_web():
     try:
         with open(REGISTRO_WEB, encoding="utf-8") as f:
             return json.load(f)
-    except (IOError, ValueError):
-        return {}
+    except FileNotFoundError:
+        return {}                       # primera ejecucion: no hay nada anotado
+    except (IOError, ValueError) as e:
+        # Un registro ilegible NO es un registro vacio. Devolver {} hacia creer
+        # que no se habia archivado nada y volvia a subir las 19 piezas, creando
+        # carpetas duplicadas en Drive. Se aparta y se aborta: es preferible una
+        # noche sin archivar, que se recupera sola, a un Drive que hay que
+        # limpiar a mano.
+        roto = "%s.roto-%s" % (REGISTRO_WEB, datetime.now().strftime("%Y%m%d%H%M%S"))
+        try:
+            os.replace(REGISTRO_WEB, roto)
+        except OSError:
+            roto = "(no se pudo apartar)"
+        log("FALLO: registro local ilegible (%s). Apartado en %s. No se archiva "
+            "nada esta pasada; revisalo antes de repetir." % (e, roto))
+        raise SystemExit(2)
 
 
 def guardar_registro(reg):
     if SECO:
         return
-    with open(REGISTRO_WEB, "w", encoding="utf-8") as f:
-        json.dump(reg, f, ensure_ascii=False, indent=1, sort_keys=True)
+    # Escritura atomica. `open(..., "w")` trunca antes de escribir, asi que una
+    # muerte a mitad dejaba el JSON cortado, que es justo el caso de arriba.
+    # El temporal va en el MISMO directorio a proposito: os.replace solo es
+    # atomico dentro del mismo sistema de ficheros.
+    destino = os.path.dirname(REGISTRO_WEB) or "."
+    fd, tmp = tempfile.mkstemp(dir=destino, prefix=".postiz-archivo-web.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(reg, f, ensure_ascii=False, indent=1, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())        # sin esto el rename puede adelantar a los datos
+        os.chmod(tmp, 0o664)            # mkstemp da 0600; el fichero era 664
+        os.replace(tmp, REGISTRO_WEB)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # ── 3. Nombre de la carpeta ────────────────────────────────────────
