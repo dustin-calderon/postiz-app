@@ -409,12 +409,45 @@ razonada.
 |---|---|
 | El `PATCH` de Notion borra descripciones | Captura antes, comprobación después (§5) |
 | Se archiva de una caché, no del original | Probado md5-idéntico contra Notion (§3). Y para el material antiguo la caché **es** el original |
-| El script falla en silencio meses | **Sin mitigar.** Cada pasada escribe su recuento en `/var/log/postiz-archivo.log` y ahí se acaba: **no hay cron, timer ni webhook** que compruebe si una pieza lleva días sin `❌ drive_url`. La única señal es una línea de log que nadie vigila. **Alerta pendiente** |
-| **El registro local se corrompe** | Se escribe sin atomicidad (`open(..., "w")`, sin `tmp`+`rename`) y al leerlo un `except ValueError` devuelve `{}` en silencio. Si se corrompe se reintentan los 19 posts —las subidas son idempotentes por ruta, así que **no se pierde el archivo**—, pero sí se pierden las 18 correspondencias `Post.id → carpeta`. **Riesgo conocido y aceptado**, no arreglado |
+| El script falla en silencio meses | **Mitigado a medias (2026-08-05).** El script llama a `latido()` en sus tres finales posibles, con `status=up` o `down`. Está **inerte hasta que exista `POSTIZ_ARCHIVO_PING_URL`** — ver «Activar el aviso» abajo. Mientras no se cree el monitor, el riesgo sigue tal cual |
+| **El registro local se corrompe** | **Arreglado (2026-08-05).** Se escribe a un temporal en el mismo directorio con `fsync` y `os.replace`, que es atómico. Y al leerlo se distingue «no existe» (primera ejecución, `{}`) de «no se puede leer»: lo segundo aborta con código 2 y **deja el fichero donde está**, para que cada pasada vuelva a avisar hasta que una persona lo repare. Apartarlo sólo retrasaba el problema un día: sin fichero, la pasada siguiente vuelve a ser «primera ejecución» y duplica carpetas igual |
 | **El script escribe en el remoto equivocado** | `gdrive` responde **404**, no un error de permisos, y un 404 se lee como «la carpeta no existe». El script referencia carpetas **por ID** y debe fallar en vez de crearlas |
 | Drive se llena | 0,73 TB usados de 2,20 TB. El ritmo actual son ~200 MB/mes. Margen de años |
 | Alguien borra la carpeta en Drive | Vaciar `❌ drive_url` la reconstruye. El espejo se rehace solo en la siguiente pasada |
 | **El Seagate se desmonta y el espejo copia un directorio vacío** | `rclone copy` no borra en destino, así que no destruiría el archivo — pero conviene comprobar el montaje antes de correr |
+
+### Activar el aviso — 3 pasos, y hace falta la UI de Kuma
+
+El código ya está; falta crear el monitor, que requiere entrar en Uptime Kuma
+(`127.0.0.1:3001`, ya corriendo en el servidor).
+
+1. En Kuma: **Add New Monitor** → tipo **Push**. Nombre `Postiz · archivo Drive`,
+   *Heartbeat Interval* **86400** (24 h) y *Retries* **1**. Kuma da una URL del
+   tipo `http://localhost:3001/api/push/<token>`.
+2. En `/opt/homeserver/.env`, añadir esa URL:
+   ```
+   POSTIZ_ARCHIVO_PING_URL=http://localhost:3001/api/push/<token>
+   ```
+   El cron de las 02:55 ya hace `set -a; . /opt/homeserver/.env`, así que no hay
+   que tocar el `crontab`.
+3. Elegir en Kuma a dónde va el aviso (correo, Telegram, lo que ya uses).
+
+Comprobación, sin esperar a la noche:
+
+```bash
+set -a && . /opt/homeserver/.env && set +a && python3 /opt/homeserver/scripts/postiz-archivo-drive.py --seco
+```
+
+> `--seco` **no late a propósito** —una pasada de prueba no debe marcar el
+> monitor como sano—, así que para verificar el latido hay que hacer una pasada
+> normal, o un `curl` a mano a la URL del punto 1 y mirar que Kuma se pone en
+> verde.
+
+**Por qué un monitor Push y no un chequeo activo:** un Push se cae solo cuando
+*deja* de recibir el latido. Eso cubre el caso que de verdad no se detectaba —que
+el cron ni siquiera se ejecute—, y no sólo el de que se ejecute y falle. El
+script ya salía con código distinto de cero al fallar; el problema era que el
+cron manda la salida a `/dev/null`.
 
 ## 10. Decisiones tomadas
 
