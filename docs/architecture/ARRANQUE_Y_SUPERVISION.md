@@ -205,6 +205,68 @@ y repetir el `up -d`.
 
 ---
 
+## ☠️ Borrar un canal borra su historial de publicaciones
+
+**Nunca borres un canal para volver a conectarlo.** El botón de borrar de la UI
+(`DELETE /integrations/`, `integrations.controller.ts:402-417`) hace esto:
+
+```ts
+const isTherePosts = await this._integrationService.getPostsForChannel(org.id, id);
+if (isTherePosts.length) {
+  for (const post of isTherePosts) {
+    this._postService.deletePost(org.id, post.group).catch((err) => {});   // ← todos, incluidos los PUBLISHED
+  }
+}
+return this._integrationService.deleteChannel(org.id, id);
+```
+
+Volver a añadir el canal **restaura la integración pero no los posts**: el
+`upsert` de `createOrUpdateIntegration` va por `organizationId_internalId`, y el
+`internalId` de Instagram no cambia, así que recupera la fila con su mismo `id`
+y `deletedAt: null` — pero nadie deshace el borrado de los posts.
+
+> **Pasó el 2026-08-05.** Se reconectaron los tres canales de Instagram
+> borrándolos y volviéndolos a añadir, y desaparecieron del calendario los **19
+> posts publicados**: 11 de CITEM a las 08:32:45 UTC y 8 de Dustin Compositor a
+> las 08:36:46, cada bloque con un `deletedAt` idéntico al milisegundo —la firma
+> de un borrado en cascada—, unos cuatro minutos antes de que cada canal se
+> volviera a dar de alta. Se recuperaron poniendo `deletedAt = NULL`.
+
+### El camino seguro para volver a pasar por OAuth
+
+La UI sólo enseña «Channel disconnected, click to reconnect» cuando
+`refreshNeeded` está activo (`launches.component.tsx:248-253`), y para un canal
+sano no ofrece ninguna forma de repetir el OAuth. La hay, pero hay que
+provocarla a mano:
+
+```sql
+-- marca el canal como "necesita reconexión"; NO toca los posts
+UPDATE "Integration" SET "refreshNeeded" = true WHERE id = '<integrationId>';
+```
+
+Después, en la UI, el canal aparece con el aviso de reconectar: al pulsarlo se
+repite el OAuth y `createOrUpdateIntegration` actualiza la fila en sitio. Los
+posts no se tocan.
+
+### Si ya se borraron
+
+Es `deletedAt`, no un `DELETE`: se recupera. Restaura **sólo los `PUBLISHED`**
+—ésos no se pueden republicar— y deja en paz los `QUEUE` y `ERROR`, que al
+revivir podrían publicar o reintentar:
+
+```sql
+CREATE TABLE respaldo AS SELECT id, "deletedAt" FROM "Post"
+  WHERE state = 'PUBLISHED' AND "deletedAt" BETWEEN '<inicio>' AND '<fin>';
+UPDATE "Post" p SET "deletedAt" = NULL FROM respaldo r WHERE p.id = r.id;
+```
+
+Comprueba después que la **pasada de retirada no los vuelve a borrar**: lanza
+`postiz-retirada-ig` y `postiz-sync-ig` y confirma que responden
+`nada que hacer` y que el conteo de vivos no baja. El 2026-08-05 los 19
+sobrevivieron a las dos.
+
+---
+
 ## Cosas que parecen averías y no lo son
 
 | Observación | Qué es de verdad |
