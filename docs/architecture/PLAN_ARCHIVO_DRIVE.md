@@ -32,9 +32,13 @@ El tercero no era hipotético. Medido el 2026-08-04:
 > contaba dos veces el `.mov` compartido y etiquetaba MiB como MB.
 
 > ### ⚠️ Y por debajo no había ninguna copia de seguridad
-> `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de
-> bases de datos y configuración**. **Cero menciones a Postiz**: ni sus medios ni su base
-> de datos entran en el backup. Ningún cron ni timer de systemd tocaba `/mnt/seagate` — los dos jobs de este plan (§7.1) son los primeros, y **sólo leen y copian**.
+> `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hacía **sólo volcados de
+> bases de datos y configuración**, con **cero menciones a Postiz**: ni sus medios ni su base
+> de datos entraban en el backup. Ningún cron ni timer de systemd tocaba `/mnt/seagate` — los dos jobs de este plan (§7.1) son los primeros, y **sólo leen y copian**.
+>
+> **Corregido a medias el 2026-08-05:** la **base de datos** ya se vuelca en ese mismo
+> backup de las 04:00 y sube a R2 (verificado restaurándola). Los **medios** siguen fuera
+> de `backup-daily.sh`; su copia es el espejo de las 02:40 de este plan.
 >
 > Es decir: la caché no era «la copia menos importante», era la **única** copia de una
 > parte del material, sin respaldo de ningún tipo, con un job nocturno borrándola.

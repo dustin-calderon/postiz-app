@@ -74,7 +74,12 @@ Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04
 > ### ⚠️ Desde el 2026-08-04 sí hay dos crons sobre `/mnt/seagate` — y ninguno borra
 > Los instaló [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) §7.1: **`02:40`** el espejo del disco entero a Drive y **`02:55`** el archivador curado de lo publicado. Los dos **sólo leen y copian**: no borran nada de `/uploads`, ni tocan la base de datos, ni interfieren con el workflow de limpieza.
 >
-> Lo que **sigue siendo cierto** es la otra mitad de la frase: `backup-daily.sh` **no respalda ni los medios ni la base de datos de Postiz**. La segunda copia de los medios existe hoy porque la hace un script aparte, no porque el backup del servidor los cubra.
+> ### ✅ Y desde el 2026-08-05 la base de datos **sí** se respalda
+> `backup-daily.sh` no mencionaba Postiz ni una vez: su bucle de `pg_dump` recorre las bases de `postgres_core`, y Postiz vive en **su propio contenedor** (`postiz-postgres`), así que nunca entraba. Se añadió un volcado propio, que corre en el mismo cron de las 04:00 y **sube a R2** como el resto.
+>
+> Verificado restaurándolo de verdad en una base temporal, no mirando que el fichero exista: `Post` 115, `Integration` 4, `Media` 101, publicados vivos 19 y los 4 tokens — **idéntico a la base viva**.
+>
+> Lo que sigue siendo cierto es la otra mitad: **los medios no entran en `backup-daily.sh`**. Su segunda copia existe porque la hace el espejo a Drive de las 02:40, no porque el backup del servidor los cubra.
 
 **3650 no es «desactivar la limpieza».** El workflow sigue vivo y las dos fases siguen corriendo; lo que deja de ocurrir es la purga automática por antigüedad. La Phase 2 —los blobs de lo que alguien borra a mano— es la que se usa a diario, y no depende de este número. Volver a bajarlo sólo tendrá sentido cuando exista una segunda copia real de cada fichero: es lo que persigue [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md).
 
@@ -296,7 +301,7 @@ docker logs postiz 2>&1 | grep -i 'MediaCleanup'
 | La retención viaja como **argumento de workflow**, no como variable leída en cada ciclo | Documentado arriba. Es el conocimiento más caro de la revisión: cambiar el `.env` y reiniciar **no hacía nada** |
 | El workflow vivo llevaba desde el **2026-07-06** con `retentionDays = 30` | Terminado y relanzado. `retentionDays = ['3650']` verificado en el historial de Temporal |
 | Los 18 posts publicados desde la UI **no tienen fila en Notion** | La caché era su única copia. 9 ya sin ficheros; 9 con 201,0 MB (18 ficheros) a punto de purgarse el 2026-08-05 |
-| **No existe ninguna copia de seguridad** de los medios ni de la base de Postiz | `backup-daily.sh` sólo vuelca bases de datos y configuración, y **sigue sin cubrir Postiz**. Ese día nada tocaba `/mnt/seagate`; desde el 2026-08-04 lo leen dos crons de archivo (02:40 y 02:55) que no borran nada |
+| **No existía ninguna copia de seguridad** de los medios ni de la base de Postiz | **Resuelto en dos pasos.** Los medios: espejo a Drive de las 02:40 desde el 2026-08-04. La base: volcado propio dentro de `backup-daily.sh` desde el **2026-08-05**, verificado restaurándolo. No entraba porque el bucle de `pg_dump` sólo recorre `postgres_core` y Postiz tiene contenedor aparte |
 | Los «11 huérfanos permanentes (20,8 MB)» del análisis previo | **Falso.** 10 eran la biblioteca de medios; 1 era fuga real. Ver «Corrección» |
 
 Sin bugs en el código: las dos fases siguen haciendo lo que este documento dice.

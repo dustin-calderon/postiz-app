@@ -240,7 +240,7 @@ Según [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md):
 >
 > **Ya lo era, y no para el futuro sino para el pasado.** Los **18 posts publicados desde la UI de Postiz no tienen fila en Notion**: para ellos la caché del Seagate no era una copia derivada, era la única. Nueve ya habían perdido sus ficheros cuando se miró —junio es la fecha en que se **subieron**, no en que se publicaron: dos de esas nueve salieron ya en julio—; los otros nueve conservaban 201,0 MB —191,7 MiB en 18 ficheros distintos— que se habrían empezado a purgar el 2026-08-05. (La cifra que figuraba aquí, 214,5 MB, era falsa: contaba dos veces un `.mov` referenciado por dos publicaciones y etiquetaba MiB como MB.)
 >
-> Tampoco había red debajo: **ninguna copia de seguridad del servidor toca Postiz** — `backup-daily.sh` sólo vuelca bases de datos y configuración, y ningún cron ni timer roza `/mnt/seagate`.
+> Tampoco había red debajo: **ninguna copia de seguridad del servidor tocaba Postiz** — `backup-daily.sh` sólo volcaba bases de datos y configuración, y ningún cron ni timer rozaba `/mnt/seagate`. Hoy ya no es así: los medios los copia el espejo a Drive de las 02:40 (desde el 2026-08-04) y la base entra en `backup-daily.sh` (desde el 2026-08-05).
 >
 > **Aplicado: `MEDIA_RETENTION_DAYS = 3650`** (§14.4). El procedimiento no es obvio —el workflow lleva la retención como argumento y hay que terminarlo y relanzarlo en Temporal, no basta con reiniciar el contenedor—: está en [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md).
 
