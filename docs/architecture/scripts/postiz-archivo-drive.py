@@ -20,7 +20,8 @@ Registro de lo ya archivado:
   - Posts sin fila (los de la UI) -> fichero local, porque no hay donde anotarlo.
 Para rearchivar algo: vaciar `❌ drive_url` (o borrarlo del fichero local).
 """
-import fcntl, json, os, re, subprocess, sys, tempfile, unicodedata, urllib.request
+import fcntl, json, os, re, subprocess, sys, tempfile, unicodedata
+import urllib.parse, urllib.request
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -66,6 +67,35 @@ def log(msg):
             f.write(linea + "\n")
     except IOError:
         pass
+
+
+def latido(ok, mensaje=""):
+    """Avisa a un monitor externo de como termino la pasada.
+
+    Inerte mientras POSTIZ_ARCHIVO_PING_URL no exista: sin esa variable no hace
+    absolutamente nada, asi que añadirlo no cambia el comportamiento de hoy.
+    La URL la da un monitor de tipo Push de Uptime Kuma, que ya corre en este
+    servidor y es quien decide a quien avisar.
+
+    Se eligio Push y no un chequeo activo por una razon concreta: un monitor
+    Push se cae solo cuando DEJA de recibir el latido, asi que cubre tambien el
+    caso de que el cron no llegue a ejecutarse. Era el hueco real -- el script
+    ya salia con codigo distinto de cero cuando fallaba, pero el cron manda la
+    salida a /dev/null y nadie la miraba.
+    """
+    destino = os.environ.get("POSTIZ_ARCHIVO_PING_URL", "").strip()
+    if not destino or SECO:
+        return
+    try:
+        url = "%s%sstatus=%s&msg=%s" % (
+            destino,
+            "&" if "?" in destino else "?",
+            "up" if ok else "down",
+            urllib.parse.quote((mensaje or ("ok" if ok else "fallo"))[:120]))
+        urllib.request.urlopen(url, timeout=15).read()
+    except Exception as e:
+        # Que el aviso falle NO puede cambiar el resultado del archivo.
+        log("aviso: no se pudo enviar el latido (%s)" % str(e)[:80])
 
 
 def sql(q):
@@ -425,12 +455,18 @@ def main():
 
     log("resumen: %d archivados · %d ya estaban · %d sin ficheros · %d fallos"
         % (hechos, saltados, sin_ficheros, fallos))
+    latido(fallos == 0, "%d archivados, %d fallos" % (hechos, fallos))
     return 1 if fallos else 0
 
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        codigo = main()
+    except SystemExit as e:                     # p. ej. registro local ilegible
+        codigo = e.code if isinstance(e.code, int) else 2
+        latido(False, "abortado con codigo %s" % codigo)
     except Exception as e:
         log("ERROR FATAL: %s" % e)
-        sys.exit(2)
+        latido(False, "ERROR FATAL: %s" % str(e)[:120])
+        codigo = 2
+    sys.exit(codigo)
