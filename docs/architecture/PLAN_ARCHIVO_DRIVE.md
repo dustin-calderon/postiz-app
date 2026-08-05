@@ -409,14 +409,49 @@ razonada.
 |---|---|
 | El `PATCH` de Notion borra descripciones | Captura antes, comprobación después (§5) |
 | Se archiva de una caché, no del original | Probado md5-idéntico contra Notion (§3). Y para el material antiguo la caché **es** el original |
-| El script falla en silencio meses | **Mitigado a medias (2026-08-05).** El script llama a `latido()` en sus tres finales posibles, con `status=up` o `down`. Está **inerte hasta que exista `POSTIZ_ARCHIVO_PING_URL`** — ver «Activar el aviso» abajo. Mientras no se cree el monitor, el riesgo sigue tal cual |
+| El script falla en silencio meses | **Deja de ser un riesgo relevante (2026-08-05), y se decide no alertar.** Con la retención en 3650 y un espejo nocturno que no borra, el archivo curado es la **tercera** copia: si falla no se pierde ningún byte, sólo la organización y el enlace, y la pasada siguiente lo recoge sola. El código del aviso existe (`latido()`) pero queda **inerte a propósito** — el porqué, abajo |
 | **El registro local se corrompe** | **Arreglado (2026-08-05).** Se escribe a un temporal en el mismo directorio con `fsync` y `os.replace`, que es atómico. Y al leerlo se distingue «no existe» (primera ejecución, `{}`) de «no se puede leer»: lo segundo aborta con código 2 y **deja el fichero donde está**, para que cada pasada vuelva a avisar hasta que una persona lo repare. Apartarlo sólo retrasaba el problema un día: sin fichero, la pasada siguiente vuelve a ser «primera ejecución» y duplica carpetas igual |
 | **El script escribe en el remoto equivocado** | `gdrive` responde **404**, no un error de permisos, y un 404 se lee como «la carpeta no existe». El script referencia carpetas **por ID** y debe fallar en vez de crearlas |
 | Drive se llena | 0,73 TB usados de 2,20 TB. El ritmo actual son ~200 MB/mes. Margen de años |
 | Alguien borra la carpeta en Drive | Vaciar `❌ drive_url` la reconstruye. El espejo se rehace solo en la siguiente pasada |
 | **El Seagate se desmonta y el espejo copia un directorio vacío** | `rclone copy` no borra en destino, así que no destruiría el archivo — pero conviene comprobar el montaje antes de correr |
 
-### Activar el aviso — 3 pasos, y hace falta la UI de Kuma
+### Por qué NO hay una alerta, y no es un cabo suelto
+
+Esta entrada existe para que dentro de seis meses nadie la lea como algo a medio
+hacer. **Se decidió no ponerla, el 2026-08-05, con este razonamiento:**
+
+Un fichero publicado tiene hoy tres copias, y el archivo curado es la última:
+
+| | Qué es | Si falla |
+|---|---|---|
+| Seagate `/uploads` | El original que usa Postiz | Con `MEDIA_RETENTION_DAYS = 3650` sobrevive ~10 años |
+| Espejo Drive **02:40** | El disco entero con `rclone copy` — **nunca borra** | Es la única copia fuera del servidor |
+| Archivo curado **02:55** | Carpetas por cuenta/fecha + `❌ drive_url` | **No se pierde ningún byte**: siguen en los dos de arriba |
+
+Si el archivador falla una noche, lo único que no ocurre es la organización y el
+enlace. Y se arregla solo: el registro es idempotente y la pasada siguiente
+recoge lo pendiente. Además se ve sin ninguna alerta — una fila `Publicado` con
+`❌ drive_url` vacía.
+
+> **El riesgo original se escribió cuando `MEDIA_RETENTION_DAYS` era 30** y el
+> archivo iba camino de ser la única copia de todo lo de más de un mes. Con 3650
+> esa premisa ya no se sostiene. Alertar aquí sería avisar de una comodidad, y
+> una alerta que salta por algo que no importa enseña a ignorar las alertas.
+
+**Si alguna vez hace falta una, va en el espejo de las 02:40, no aquí.** Ése es
+el que importa: es la única copia fuera de casa, y si deja de correr en silencio
+y el Seagate muere se pierde todo lo posterior a la última pasada buena. Aun
+así no corre prisa — ese script ya comprueba que el disco esté montado, que no
+esté vacío y que el remoto responda, y sale con código 1 en cada caso, así que
+el fallo silencioso clásico («se desmontó y copié un directorio vacío») está
+cubierto.
+
+**Revisar esta decisión si** baja `MEDIA_RETENTION_DAYS`, o si el espejo de las
+02:40 deja de existir. Cualquiera de las dos devuelve al archivo curado el papel
+de copia única.
+
+### Si aun así se quiere activar — 3 pasos, y hace falta la UI de Kuma
 
 El código ya está; falta crear el monitor, que requiere entrar en Uptime Kuma
 (`127.0.0.1:3001`, ya corriendo en el servidor).
@@ -463,3 +498,4 @@ cron manda la salida a `/dev/null`.
 | Origen de los metadatos | **Base de datos de Postiz.** Notion sólo pone el título | Decidido, 2026-08-04 |
 | Dónde corre | Script en el host + cron, no n8n | Propuesta |
 | Registro del curado | Propiedad `❌ drive_url` en Notion | Propuesta |
+| **Alerta si una pieza no se archiva** | **No se pone.** El archivo curado es la tercera copia, no la primera; un fallo no pierde bytes y se corrige solo. El código (`latido()`) queda inerte por si cambia la premisa — ver §9 | Usuario, 2026-08-05 |
