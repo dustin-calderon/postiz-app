@@ -10,7 +10,7 @@
     "build": "next build",
     "build:sentry": "dotenv -e ../../.env -- next build",
     "start": "dotenv -e ../../.env -- next start -p 4200",
-    "pm2": "pm2 start pnpm --name frontend -- start"
+    "pm2": "pm2 start ../../node_modules/next/dist/bin/next --name frontend --node-args=\"--env-file-if-exists=../../.env\" -- start -p 4200"
   },
   "keywords": [],
   "author": "",
