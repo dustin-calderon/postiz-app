@@ -1159,6 +1159,10 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > set -a; . /opt/homeserver/.env; set +a; python3 /opt/homeserver/n8n-workflows/suite-pruebas-postiz.py
 > ```
 >
+> **Desde el 2026-08-05 está versionada** en `docs/architecture/scripts/`, junto con `prueba-trial-reels.py`. Vivían sólo en el servidor con permisos `600` y sin respaldo — la red de seguridad del pipeline estaba a una reinstalación de perderse. Se aplica la misma regla que a los scripts de Drive: **si se toca una copia hay que actualizar la otra**, y se comparan con `md5sum`. Sí van al repositorio, al contrario que los JSON de n8n: leen los cuatro valores sensibles de `os.environ` y no llevan ninguna ruta secreta dentro.
+>
+> Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
+>
 > Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, el estado en reposo y la limpieza de sus propios ficheros.
 >
 > Tres cosas que hay que respetar al tocarla, porque las tres ya dieron un resultado falso:
