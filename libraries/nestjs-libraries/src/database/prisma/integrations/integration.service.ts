@@ -4,6 +4,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -84,6 +85,42 @@ export class IntegrationService {
     return this._integrationRepository.checkPreviousConnections(org, id);
   }
 
+  /**
+   * Stores an avatar and, whatever happens, never fails the caller.
+   *
+   * The avatar is decorative. The two operations that carry it — connecting a
+   * channel and refreshing its token — are not, and they used to die together:
+   * a picture URL whose file had gone missing made `uploadSimple` download the
+   * 404 page and throw, so the freshly obtained token was never persisted.
+   * Three Instagram channels were on course to lock themselves out that way on
+   * 2026-08-15.
+   *
+   * `undefined` means "leave the stored picture as it is" — that is what the
+   * repository does with a falsy value — so a failure here costs a stale avatar
+   * and nothing else.
+   */
+  private async resolvePicture(picture: string | undefined) {
+    if (!picture) {
+      return undefined;
+    }
+
+    if (picture.indexOf('imagedelivery.net') > -1) {
+      return picture;
+    }
+
+    try {
+      return await this.storage.uploadSimple(picture);
+    } catch (err) {
+      Logger.warn(
+        `Could not store the avatar from ${picture}: ${
+          err instanceof Error ? err.message : err
+        }. Keeping the one already on record.`,
+        'IntegrationService'
+      );
+      return undefined;
+    }
+  }
+
   async createOrUpdateIntegration(
     additionalSettings:
       | {
@@ -110,11 +147,7 @@ export class IntegrationService {
     timezone?: number,
     customInstanceDetails?: string
   ) {
-    const uploadedPicture = picture
-      ? picture?.indexOf('imagedelivery.net') > -1
-        ? picture
-        : await this.storage.uploadSimple(picture)
-      : undefined;
+    const uploadedPicture = await this.resolvePicture(picture);
 
     return this._integrationRepository.createOrUpdateIntegration(
       additionalSettings,

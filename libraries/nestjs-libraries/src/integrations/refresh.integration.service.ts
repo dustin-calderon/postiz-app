@@ -32,7 +32,12 @@ export class RefreshIntegrationService {
       !!socialProvider.oneTimeToken,
       integration.organizationId,
       integration.name,
-      integration.picture!,
+      // Prefer the avatar the provider just handed us over the one we have on
+      // record. Every provider returns a fresh `picture` from this same refresh
+      // call and it used to be thrown away, re-sending the stored URL instead —
+      // so once that file went missing the refresh downloaded its own 404 page
+      // and blew up, taking the new token with it.
+      refresh.picture || integration.picture!,
       'social',
       integration.internalId,
       integration.providerIdentifier,

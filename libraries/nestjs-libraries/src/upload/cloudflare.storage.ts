@@ -94,6 +94,12 @@ class CloudflareStorage implements IUploadProvider {
         // @ts-ignore — undici option, not in lib.dom fetch types
         dispatcher: ssrfSafeDispatcher,
       });
+      // See the same guard in local.storage.ts: `fetch` only rejects on
+      // transport errors, so an error page would otherwise reach the sniffer
+      // and be reported as an unsupported file type instead of as the 404 it is.
+      if (!loadImage.ok) {
+        throw new Error(`Could not fetch ${path}: HTTP ${loadImage.status}`);
+      }
       body = Buffer.from(await loadImage.arrayBuffer());
     }
     const detected = await fromBuffer(body);

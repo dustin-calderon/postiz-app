@@ -48,6 +48,13 @@ export class LocalStorage implements IUploadProvider {
         // @ts-ignore — undici option, not in lib.dom fetch types
         dispatcher: ssrfSafeDispatcher,
       });
+      // `fetch` only rejects on transport errors, so without this an error page
+      // walks straight into the sniffer below and comes back out as
+      // "Unsupported file type." — which sent a real incident chasing the mime
+      // allow-list when the URL was simply a 404.
+      if (!loadImage.ok) {
+        throw new Error(`Could not fetch ${path}: HTTP ${loadImage.status}`);
+      }
       body = Buffer.from(await loadImage.arrayBuffer());
     }
 
