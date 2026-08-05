@@ -205,6 +205,29 @@ y repetir el `up -d`.
 
 ---
 
+## 🧹 Al depurar en este servidor: nada de volcados en `/tmp`
+
+El 2026-08-05 se encontró `/tmp/postiz_dump.sql` de la sesión anterior: 119 KB,
+**67 coincidencias de tokens de integración** y permisos `-rw-rw-r--`, es decir,
+legible por cualquier proceso de la máquina y por cualquier contenedor que monte
+`/tmp`. Eran los tokens vivos de las tres cuentas de Instagram.
+
+`/tmp` no se limpia hasta el reinicio, y el servidor lleva **27 días** encendido.
+Un volcado de `Integration` o de `Post` lleva credenciales aunque no lo parezca.
+
+- Para consultar, `psql -Atc` contra el contenedor: no deja fichero.
+- Si hace falta un fichero, escríbelo en el directorio del proyecto con `600` y
+  bórralo al terminar.
+- Comprobación rápida de que no quedó nada:
+  ```bash
+  grep -rlE 'IGAA[A-Za-z0-9]{20}|EAA[A-Za-z0-9]{20}|ntn_[A-Za-z0-9]{20}' /tmp 2>/dev/null
+  ```
+
+Los ficheros de trabajo que sí se conservan a propósito son las copias `.bak-*`
+de lo que **no** está en git: `docker-compose.yml` y `postiz.env`. Todo lo demás
+—scripts, suites— vive en `docs/architecture/scripts/`, así que una copia suelta
+en el servidor sólo añade una versión más que puede divergir.
+
 ## ☠️ Borrar un canal borra su historial de publicaciones
 
 **Nunca borres un canal para volver a conectarlo.** El botón de borrar de la UI
