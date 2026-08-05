@@ -168,16 +168,16 @@ def registro_web():
     except (IOError, ValueError) as e:
         # Un registro ilegible NO es un registro vacio. Devolver {} hacia creer
         # que no se habia archivado nada y volvia a subir las 19 piezas, creando
-        # carpetas duplicadas en Drive. Se aparta y se aborta: es preferible una
-        # noche sin archivar, que se recupera sola, a un Drive que hay que
-        # limpiar a mano.
-        roto = "%s.roto-%s" % (REGISTRO_WEB, datetime.now().strftime("%Y%m%d%H%M%S"))
-        try:
-            os.replace(REGISTRO_WEB, roto)
-        except OSError:
-            roto = "(no se pudo apartar)"
-        log("FALLO: registro local ilegible (%s). Apartado en %s. No se archiva "
-            "nada esta pasada; revisalo antes de repetir." % (e, roto))
+        # carpetas duplicadas en Drive que hay que limpiar a mano.
+        #
+        # El fichero se deja DONDE ESTA, a proposito. Apartarlo con marca de
+        # tiempo salvaba esta pasada pero no la siguiente: sin fichero, la de
+        # mañana vuelve a ser "primera ejecucion" y duplica igual. Solo retrasa
+        # el problema un dia. Asi cada pasada aborta con el mismo aviso hasta
+        # que una persona lo repare o lo borre, que es la unica salida que no
+        # ensucia Drive.
+        log("FALLO: registro local ilegible en %s (%s). No se archiva nada "
+            "hasta que se repare o se borre a mano." % (REGISTRO_WEB, e))
         raise SystemExit(2)
 
 
