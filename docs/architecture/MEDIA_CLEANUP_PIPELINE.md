@@ -54,11 +54,18 @@ No es un descuido: es una obligación de Temporal. El workflow corre en un sandb
 
 `MEDIA_RETENTION_DAYS=3650` añadida a `/opt/homeserver/postiz/postiz.env` (copia previa: `postiz.env.bak-20260804-retention`). El workflow anterior se terminó y el nuevo arrancó con `retentionDays = ['3650']`, **verificado en el historial de Temporal**. La pasada inmediata no borró nada: 35 medios vivos y 54 ficheros en disco, antes y después.
 
-**Por qué se subió.** El argumento de que 30 días eran seguros descansa entero en que Notion guarda el máster ([CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7). Es cierto para lo que pasa por el pipeline y **falso para todo lo anterior**: los 18 posts publicados desde la UI de Postiz no tienen fila en Notion, así que la caché del Seagate era su única copia. Nueve ya habían perdido sus ficheros —todo junio—; los otros nueve conservaban **214,5 MB** que se habrían empezado a purgar el 2026-08-05.
+**Por qué se subió.** El argumento de que 30 días eran seguros descansa entero en que Notion guarda el máster ([CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7). Es cierto para lo que pasa por el pipeline y **falso para todo lo anterior**: los 18 posts publicados desde la UI de Postiz no tienen fila en Notion, así que la caché del Seagate era su única copia. Nueve ya habían perdido sus ficheros —todo junio—; los otros nueve conservaban **201,0 MB** (191,7 MiB) en **18 ficheros distintos** que se habrían empezado a purgar el 2026-08-05.
+
+> Este documento dio antes la cifra como **214,5 MB**, y era falsa por dos errores acumulados: contaba dos veces un `.mov` que referencian **dos publicaciones distintas** —18 ficheros, 19 referencias— y etiquetaba MiB como MB.
 
 Lo anticipaba el propio documento del pipeline: *«Si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla»*. Lo que no vio es que ya lo era para el material antiguo.
 
-Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de bases de datos y configuración**, sin una sola mención a Postiz, y ningún cron ni timer de systemd toca `/mnt/seagate`. Ni los medios ni la base de datos de Postiz estaban respaldados.
+Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de bases de datos y configuración**, sin una sola mención a Postiz, y aquel día ningún cron ni timer de systemd tocaba `/mnt/seagate`. Ni los medios ni la base de datos de Postiz estaban respaldados.
+
+> ### ⚠️ Desde el 2026-08-04 sí hay dos crons sobre `/mnt/seagate` — y ninguno borra
+> Los instaló [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) §7.1: **`02:40`** el espejo del disco entero a Drive y **`02:55`** el archivador curado de lo publicado. Los dos **sólo leen y copian**: no borran nada de `/uploads`, ni tocan la base de datos, ni interfieren con el workflow de limpieza.
+>
+> Lo que **sigue siendo cierto** es la otra mitad de la frase: `backup-daily.sh` **no respalda ni los medios ni la base de datos de Postiz**. La segunda copia de los medios existe hoy porque la hace un script aparte, no porque el backup del servidor los cubra.
 
 **3650 no es «desactivar la limpieza».** El workflow sigue vivo y las dos fases siguen corriendo; lo que deja de ocurrir es la purga automática por antigüedad. La Phase 2 —los blobs de lo que alguien borra a mano— es la que se usa a diario, y no depende de este número. Volver a bajarlo sólo tendrá sentido cuando exista una segunda copia real de cada fichero: es lo que persigue [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md).
 
@@ -104,6 +111,11 @@ Identifica y elimina archivos de medios que ya cumplieron su función:
 | **Step 3** (Raw SQL) | Excluye candidatos cuyo `path` aparece en posts **activos**: `QUEUE`, `DRAFT`, `ERROR`, `PUBLISHED` reciente (dentro de la retención vigente, no «30 días»), o recurrentes (`intervalInDays IS NOT NULL`) |
 | **Blob removal** | Elimina archivo físico de R2 o filesystem local |
 | **Soft-delete** | Marca `deletedAt = now()` en la DB |
+
+> ### ⚠️ Con la retención en 3650, la Phase 1 está inerte
+> El Step 1 filtra por `createdAt < ahora − retención` (`media.repository.ts:275-282`), así que hoy sólo sería candidato un fichero **subido antes de 2016**. No habrá ninguno hasta **~2036**: la Phase 1 corre cada 24 h y sale siempre con cero candidatos.
+>
+> **Lo único que borra ficheros hoy es la Phase 2**, y sólo lo que ya tiene `deletedAt` en `Media` —es decir, lo que alguien borró a mano desde la UI o por `DELETE /public/v1/media/:id`—, pasado su periodo de gracia de 7 días. Cualquier razonamiento sobre «qué se está purgando» tiene que partir de ahí, no de la Phase 1.
 
 ### Phase 2 — Blobs huérfanos de media soft-deleted
 
@@ -274,8 +286,8 @@ docker logs postiz 2>&1 | grep -i 'MediaCleanup'
 |---|---|
 | La retención viaja como **argumento de workflow**, no como variable leída en cada ciclo | Documentado arriba. Es el conocimiento más caro de la revisión: cambiar el `.env` y reiniciar **no hacía nada** |
 | El workflow vivo llevaba desde el **2026-07-06** con `retentionDays = 30` | Terminado y relanzado. `retentionDays = ['3650']` verificado en el historial de Temporal |
-| Los 18 posts publicados desde la UI **no tienen fila en Notion** | La caché era su única copia. 9 ya sin ficheros; 9 con 214,5 MB a punto de purgarse el 2026-08-05 |
-| **No existe ninguna copia de seguridad** de los medios ni de la base de Postiz | `backup-daily.sh` sólo vuelca bases de datos y configuración. Nada toca `/mnt/seagate` |
+| Los 18 posts publicados desde la UI **no tienen fila en Notion** | La caché era su única copia. 9 ya sin ficheros; 9 con 201,0 MB (18 ficheros) a punto de purgarse el 2026-08-05 |
+| **No existe ninguna copia de seguridad** de los medios ni de la base de Postiz | `backup-daily.sh` sólo vuelca bases de datos y configuración, y **sigue sin cubrir Postiz**. Ese día nada tocaba `/mnt/seagate`; desde el 2026-08-04 lo leen dos crons de archivo (02:40 y 02:55) que no borran nada |
 | Los «11 huérfanos permanentes (20,8 MB)» del análisis previo | **Falso.** 10 eran la biblioteca de medios; 1 era fuga real. Ver «Corrección» |
 
 Sin bugs en el código: las dos fases siguen haciendo lo que este documento dice.

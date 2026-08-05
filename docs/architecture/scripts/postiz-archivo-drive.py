@@ -41,6 +41,10 @@ CUENTAS = {
     "cmqjq77hg0001mw7y2xf6bg86": "Dustin Calderón",
     "cmqjqapu00003mw7yrudcwklj": "CITEM",
     "cmqjqfvnw0005mw7yoywgo6he": "AMORISMO VOL III",
+    # TikTok. Se llama igual que la de Instagram ("Dustin Calderon"), asi que
+    # sin un nombre distinto un cross-post generaria LA MISMA carpeta y el
+    # segundo post machacaria los masters del primero.
+    "cmqjs6xnx0001q07q9aohapuv": "Dustin Calderón (TikTok)",
 }
 LOG = "/var/log/postiz-archivo.log"
 # publishDate se guarda en UTC. La zona se resuelve con la base de datos del
@@ -248,6 +252,23 @@ def archivar(post, fila):
     if SECO:
         return "", len(ficheros), len(perdidos)
 
+    # GUARDA DE COLISION. El nombre de carpeta no es unico por construccion:
+    # dos piezas de la misma cuenta, el mismo dia y con titulos que truncan
+    # igual producen la misma ruta. Sin esto `copyto` SOBRESCRIBE los masters
+    # de la primera y el resumen dice "0 fallos". Mejor fallar a las claras.
+    ya = subprocess.run(["rclone", "cat", "%s:%s/post.txt" % (REMOTO, carpeta),
+                         "--drive-root-folder-id", PUBLICADO_ID],
+                        capture_output=True, text=True, timeout=300)
+    if ya.returncode == 0 and ya.stdout.strip():
+        duenno = ""
+        for ln in ya.stdout.splitlines():
+            if ln.startswith("Post ID:"):
+                duenno = ln.split(":", 1)[1].strip()
+        if duenno and duenno != post["id"]:
+            raise RuntimeError(
+                "COLISION: la carpeta %r ya es del post %s. No se sobrescribe. "
+                "Renombra una de las dos piezas en Notion." % (carpeta, duenno))
+
     rc, err = rclone("mkdir", "%s:%s" % (REMOTO, carpeta))
     if rc != 0:
         raise RuntimeError("no se pudo crear %r: %s" % (carpeta, err))
@@ -274,6 +295,12 @@ def archivar(post, fila):
     faltan = esperados - presentes
     if faltan:
         raise RuntimeError("tras copiar, faltan en Drive: %s" % sorted(faltan))
+    # Y lo que SOBRA: si una pasada anterior dejo 6 ficheros y esta sube 3, los
+    # tres viejos siguen dentro mezclados con los nuevos. Mirar solo lo que
+    # falta no lo detecta nunca.
+    sobran = presentes - esperados
+    if sobran:
+        raise RuntimeError("en Drive sobran ficheros de otra pieza o pasada: %s" % sorted(sobran))
 
     ids = subprocess.run(["rclone", "lsjson", "--dirs-only",
                           "%s:%s" % (REMOTO, os.path.dirname(carpeta)),
@@ -350,9 +377,16 @@ def main():
                 comp = notion("https://api.notion.com/v1/pages/" + fila["page_id"])
                 escrito = comp["properties"]["❌ drive_url"].get("url") or ""
                 if escrito != url:
-                    log("  AVISO: Notion no guardo el enlace de %s (leido: %r)" % (post["id"][:10], escrito))
+                    fallos += 1
+                    hechos -= 1
+                    log("  FALLO: Notion no guardo el enlace de %s (leido: %r)" % (post["id"][:10], escrito))
             except Exception as e:
-                log("  AVISO: no se pudo escribir ❌ drive_url en %s: %s" % (post["id"][:10], str(e)[:120]))
+                # Contaba como exito: `hechos` ya estaba incrementado y esto
+                # solo avisaba. El resumen decia "0 fallos" mientras la pieza
+                # quedaba sin marcar y se resubia entera cada noche.
+                fallos += 1
+                hechos -= 1
+                log("  FALLO al escribir ❌ drive_url en %s: %s" % (post["id"][:10], str(e)[:120]))
         else:
             reg[post["id"]] = {"url": url, "carpeta": carpeta,
                                "fecha": post["fecha"][:19], "perdidos": n_perd}

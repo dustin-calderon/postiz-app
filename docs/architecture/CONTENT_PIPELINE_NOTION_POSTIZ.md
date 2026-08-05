@@ -231,7 +231,7 @@ Según [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md):
 > ### ⚠️ La retención se subió a 3650. El razonamiento de los 30 días era cierto a medias
 > Este documento sostenía que 30 días eran correctos **porque el original vive en Notion** — y avisaba: *«si algún día Postiz volviera a ser el único sitio donde vive el fichero, esta variable pasa a ser una bomba y hay que subirla»*.
 >
-> **Ya lo era, y no para el futuro sino para el pasado.** Los **18 posts publicados desde la UI de Postiz no tienen fila en Notion**: para ellos la caché del Seagate no era una copia derivada, era la única. Nueve ya habían perdido sus ficheros (todo junio) cuando se miró; los otros nueve conservaban 214,5 MB que se habrían empezado a purgar el 2026-08-05.
+> **Ya lo era, y no para el futuro sino para el pasado.** Los **18 posts publicados desde la UI de Postiz no tienen fila en Notion**: para ellos la caché del Seagate no era una copia derivada, era la única. Nueve ya habían perdido sus ficheros cuando se miró —junio es la fecha en que se **subieron**, no en que se publicaron: dos de esas nueve salieron ya en julio—; los otros nueve conservaban 201,0 MB —191,7 MiB en 18 ficheros distintos— que se habrían empezado a purgar el 2026-08-05. (La cifra que figuraba aquí, 214,5 MB, era falsa: contaba dos veces un `.mov` referenciado por dos publicaciones y etiquetaba MiB como MB.)
 >
 > Tampoco había red debajo: **ninguna copia de seguridad del servidor toca Postiz** — `backup-daily.sh` sólo vuelca bases de datos y configuración, y ningún cron ni timer roza `/mnt/seagate`.
 >

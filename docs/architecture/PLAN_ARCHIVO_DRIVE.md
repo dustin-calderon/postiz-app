@@ -21,13 +21,20 @@ Pero hay tres agujeros reales, y uno de ellos estaba activo:
 
 El tercero no era hipotético. Medido el 2026-08-04:
 
-- **9 posts publicados desde la UI ya habían perdido sus ficheros** (todo junio).
-- **9 posts conservaban 214,5 MB**, cuya purga empezaba el **2026-08-05**.
+- **9 posts publicados desde la UI ya habían perdido sus ficheros.** Junio es la fecha
+  de **subida** de esos ficheros, no la de publicación: dos de esas nueve piezas se
+  publicaron ya en julio (2026-07-01 y 2026-07-03).
+- **9 posts conservaban 201,0 MB** (191,7 MiB) en **18 ficheros distintos** —19
+  referencias, porque un `.mov` lo comparten dos publicaciones—, cuya purga empezaba el
+  **2026-08-05**.
+
+> La cifra que daba antes este documento, **214,5 MB, era falsa por partida doble**:
+> contaba dos veces el `.mov` compartido y etiquetaba MiB como MB.
 
 > ### ⚠️ Y por debajo no había ninguna copia de seguridad
 > `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de
 > bases de datos y configuración**. **Cero menciones a Postiz**: ni sus medios ni su base
-> de datos entran en el backup. Ningún cron ni timer de systemd toca `/mnt/seagate`.
+> de datos entran en el backup. Ningún cron ni timer de systemd tocaba `/mnt/seagate` — los dos jobs de este plan (§7.1) son los primeros, y **sólo leen y copian**.
 >
 > Es decir: la caché no era «la copia menos importante», era la **única** copia de una
 > parte del material, sin respaldo de ningún tipo, con un job nocturno borrándola.
@@ -74,9 +81,11 @@ Publicado/
       2026-08-04 kinda chic/
         01.jpg  02.jpg  03.jpg  04.jpg  05.jpg
         post.txt
-  AMORISMO VOL III/
   Dustin Calderón/
 ```
+
+`AMORISMO VOL III` está en el mapa de cuentas (§7.1) y **no tiene carpeta**: no ha
+publicado nada todavía. Una carpeta de cuenta sólo existe cuando hay una pieza dentro.
 
 Numeración ordinal con ceros (`01`, `02`… `10`) para que **el orden del carrusel se vea
 en cualquier explorador de ficheros**, que es el dato que se pierde primero. Los nombres
@@ -86,23 +95,28 @@ originales van dentro de `post.txt`.
 
 ```
 Pieza:      kinda chic
-Cuenta:     CITEM
+Cuenta:     CITEM Conservatorio Iberoamericano de Teatro Musical
 Publicado:  2026-08-04 20:40 (Europe/Madrid)
 Instagram:  https://www.instagram.com/p/DboOxwfjuQO/
 Tipo:       Carrusel
-Notion:     https://notion.so/<page_id>
+Notion:     https://www.notion.so/<page_id sin guiones>
+Post ID:    <Post.id>
 
 --- copy ---
 Its kinda chic la verdad, que esperas para ser parte de CITEM?
 
 --- primer comentario ---
-(vacío)
+(ninguno)
 
---- ficheros, en orden ---
-01.jpg  ←  1.jpg
-02.jpg  ←  2.jpg
+--- ficheros, en orden de carrusel ---
+01.jpg  145513 B  <-  1.jpg
 ...
 ```
+
+Dos detalles que no son descuidos. El `Cuenta:` lleva el **`Integration.name` completo**,
+mientras que la carpeta lleva el nombre corto del mapa (§3, §7.1): el fichero documenta de
+dónde salió la pieza, la carpeta agrupa. Y el **`Post ID:`** no está de adorno — es lo que
+lee la guarda de colisión antes de escribir sobre una carpeta existente (§7.1).
 
 ## 3. De dónde salen los bytes
 
@@ -130,7 +144,8 @@ Notion o sin ella:
 | Dato | Origen |
 |---|---|
 | Ficheros y su **orden** | `Post.image` (JSON de `MediaDto[]`) |
-| Cuenta | `Integration.name` |
+| Cuenta — **nombre de la carpeta** | Mapa `integrationId` → nombre, en la cabecera del script (§7.1). **No** `Integration.name` |
+| Cuenta — línea `Cuenta:` de `post.txt` | `Integration.name`, completo y sin recortar |
 | Copy y primer comentario | `Post.content` |
 | Fecha de publicación | `Post.publishDate` |
 
@@ -163,9 +178,9 @@ servidor para este tipo de tareas (`/opt/homeserver/scripts/*` + `crontab`):
 
 | | | Estado |
 |---|---|---|
-| Script | `/opt/homeserver/scripts/postiz-archivo-drive.py` | **Pendiente** |
-| Cron | `40 3 * * *` — antes del backup diario (04:00) y del sync de Notion (06:00) | **Pendiente** |
-| Log | `/var/log/postiz-archivo.log` | **Pendiente** |
+| Script | `/opt/homeserver/scripts/postiz-archivo-drive.py` | **✅ Instalado** |
+| Cron | `40 2` (espejo) y `55 2` (archivador) — antes del backup diario (04:00) y del sync de Notion (06:00) | **✅ Instalado** (§7.1) |
+| Log | `/var/log/postiz-archivo.log` | **✅ Instalado**, con rotación semanal |
 | Remoto rclone | **`gdrive-work`** | **✅ Configurado y verificado** |
 
 ### La cuenta importa: `gdrive-work`, no `gdrive`
@@ -200,8 +215,8 @@ reorganice su unidad.
 
 ## 5. Cómo sabe qué está ya archivado
 
-**Pendiente de implementar.** Una propiedad nueva en Notion: **`❌ drive_url`** (tipo
-`url`), que hace dos cosas a la vez:
+**Creada y poblada.** Una propiedad en Notion: **`❌ drive_url`** (tipo `url`), que hace
+dos cosas a la vez:
 
 - **Es el registro.** Con valor = archivado; sin valor = pendiente. Idempotente sin
   fichero de estado ni consultas a Drive.
@@ -226,8 +241,13 @@ título, ni `❌ drive_url` donde anotar nada. Se archivan enteramente desde los
 Postiz (§3), que es justo lo que hace viable esta parte:
 
 ```
-Publicado/<Integration.name>/<AAAA-MM>/<AAAA-MM-DD HHMM>/
+Publicado/<cuenta del mapa>/<AAAA-MM>/<AAAA-MM-DD titulo>/
 ```
+
+La cuenta sale del mapa por `integrationId` (§7.1) igual que en el resto del archivo, y a
+falta de título en Notion se usan **las primeras palabras del copy**. La hora (`HHMM`)
+sólo entra como último recurso, si el copy está vacío: **ninguna de las 18 carpetas reales
+la usa**.
 
 Su registro no puede vivir en Notion, así que vive en un fichero local:
 `/opt/homeserver/scripts/.postiz-archivo-web.json` — la lista de `Post.id` ya archivados.
@@ -245,13 +265,13 @@ junio— y **9 conservan los suyos**, ya fuera de peligro desde que la retenció
 | **1** | **Destino en Drive**: remoto `gdrive-work`, las dos carpetas y sus IDs, con escritura probada | **✅ Hecho** (§4) |
 | **2** | **Espejo técnico**: `rclone copy` del disco a `Respaldo técnico/` + entrada de cron | **✅ Hecho** — 54/54 ficheros, verificado con `rclone check` (hashes, 0 diferencias) |
 | **3** | Propiedad `❌ drive_url` en Notion, con la comprobación de descripciones | **✅ Hecho** — creada; las 10 descripciones existentes, intactas |
-| **4** | El archivador curado + su modo `--seco` | **✅ Hecho** — `postiz-archivo-drive.py`, 345 líneas |
+| **4** | El archivador curado + su modo `--seco` | **✅ Hecho** — `postiz-archivo-drive.py` |
 | **5** | Primera pasada real sobre `kinda chic`, verificada fichero a fichero | **✅ Hecho** — 5/5 md5-idénticos y en orden; el enlace de Notion responde 200 |
 | **6** | Pasada única del material anterior al pipeline (§6) | **✅ Hecho** — 18 posts; 9 con ficheros, 9 con el `post.txt` documentando la pérdida |
 | 7 | Documentación: manual de Notion | **Pendiente** |
 
 **El orden cambió respecto a la primera versión de este plan.** Allí la fase 0 era
-rescatar a mano los 214,5 MB, porque era lo único con fecha de caducidad. Subir la
+rescatar a mano los 201,0 MB, porque era lo único con fecha de caducidad. Subir la
 retención **eliminó esa fecha**, y con ella la urgencia: ahora el espejo puede ir antes
 que el curado, que es el orden correcto —primero que exista una segunda copia de todo,
 después que se pueda encontrar—.
@@ -305,6 +325,37 @@ las que no tienen fila. La siguiente pasada la rehace.
 > está en la cabecera del script y es el mismo que usa el nodo `Planificar`. Una
 > integración que no esté en el mapa se archiva igual, con el nombre recortado, y **deja
 > un aviso en el log** para que se añada.
+>
+> **Había una cuarta integración fuera del mapa**, y era la peligrosa:
+> `cmqjs6xnx0001q07q9aohapuv`, de **TikTok**, se llama exactamente `Dustin Calderón` —
+> igual que la de Instagram—. Un cross-post entre las dos habría producido **la misma
+> carpeta**. Está añadida como `Dustin Calderón (TikTok)`.
+
+### Cuatro guardas que salieron de auditar el script ya en marcha
+
+Ninguna venía de un fallo observado en producción: las cuatro son caminos en los que el
+script habría dicho `OK` mientras perdía trabajo.
+
+**1 · Colisión de nombres de carpeta.** La ruta **no es única por construcción**: dos
+piezas de la misma cuenta, publicadas el mismo día y con títulos que truncan igual a 70
+caracteres, dan exactamente la misma carpeta, y `rclone copyto` **sobrescribía los
+másters de la primera sin devolver ningún error**. Ahora, antes de copiar, se lee el
+`Post ID:` del `post.txt` que ya haya en la carpeta y, si es de otra pieza, la pasada
+**aborta**. Probado disparándolo de verdad con una pieza sintética. La salida a mano es
+renombrar una de las dos piezas en Notion.
+
+**2 · La verificación posterior mira también lo que sobra.** Comprobaba sólo los ficheros
+que faltaban. Si una pasada anterior dejó 6 ficheros y la nueva sube 3, los tres viejos se
+quedaban dentro, mezclados con los nuevos, y nadie lo detectaba: la carpeta pasaba la
+verificación entera.
+
+**3 · Un fallo al escribir en Notion cuenta como fallo.** La pieza se sumaba a `hechos`
+*antes* de tocar Notion, así que un error escribiendo `❌ drive_url` sólo dejaba un
+`AVISO`: el resumen decía **`0 fallos`** mientras la pieza quedaba sin marcar y se
+resubía entera cada noche.
+
+**4 · La integración de TikTok fuera del mapa** (arriba), que habría hecho colisionar dos
+cuentas distintas en la misma carpeta.
 
 ## 7.2 Lo que está probado, y lo que no
 
@@ -317,13 +368,15 @@ razonada.
 | El archivo respeta el orden del carrusel | Los 5 de `kinda chic`, **md5 idéntico** al disco, uno a uno |
 | El enlace de Notion funciona | Petición HTTP real → **200** |
 | No duplica al repetirse | Segunda pasada: *«0 archivados · 19 ya estaban»* |
-| **Cron los ejecuta de verdad** | Entradas temporales a dos minutos vista, confirmadas en `syslog` y en el log |
+| **Cron los ejecuta de verdad** | Entradas temporales a dos minutos vista, confirmadas en `syslog` y en el log. Prueba el **mecanismo**, no el horario real (ver abajo) |
+| **La guarda de colisión aborta** | Disparada de verdad con una pieza sintética que apuntaba a una carpeta ajena: la pasada falla y no sobrescribe |
 | El cerrojo impide el solape | Cogido desde otro proceso: la pasada sale limpia sin tocar nada |
 | La rotación del log es válida | `logrotate -d` sin errores |
 | El `PATCH` de Notion no rompió nada | Las 10 descripciones existentes, intactas |
 
 | Sin probar | Riesgo |
 |---|---|
+| **El horario real de los crons (02:40 y 02:55)** | **No han disparado ni una vez.** Lo verificado fueron entradas temporales a dos minutos vista: confirman el mecanismo, no la hora. Un error en el campo horario no se vería hasta la primera noche |
 | **La paginación de Notion** | Escrita, pero con una sola fila el bucle nunca da la segunda vuelta. Se ejercitará sola al pasar de 100 |
 | **Los caminos de fallo** (Drive caído, Notion caído) | Por diseño: la pieza se anota como fallo y se reintenta a la noche siguiente. No reproducido |
 | **Una pieza nueva de punta a punta** | El camino es el mismo que recorrió `kinda chic`. Se verá en la próxima publicación real |
@@ -356,7 +409,8 @@ razonada.
 |---|---|
 | El `PATCH` de Notion borra descripciones | Captura antes, comprobación después (§5) |
 | Se archiva de una caché, no del original | Probado md5-idéntico contra Notion (§3). Y para el material antiguo la caché **es** el original |
-| El script falla en silencio meses | Cada pasada escribe recuento en el log; una pieza sin `❌ drive_url` tras 7 días se reporta |
+| El script falla en silencio meses | **Sin mitigar.** Cada pasada escribe su recuento en `/var/log/postiz-archivo.log` y ahí se acaba: **no hay cron, timer ni webhook** que compruebe si una pieza lleva días sin `❌ drive_url`. La única señal es una línea de log que nadie vigila. **Alerta pendiente** |
+| **El registro local se corrompe** | Se escribe sin atomicidad (`open(..., "w")`, sin `tmp`+`rename`) y al leerlo un `except ValueError` devuelve `{}` en silencio. Si se corrompe se reintentan los 19 posts —las subidas son idempotentes por ruta, así que **no se pierde el archivo**—, pero sí se pierden las 18 correspondencias `Post.id → carpeta`. **Riesgo conocido y aceptado**, no arreglado |
 | **El script escribe en el remoto equivocado** | `gdrive` responde **404**, no un error de permisos, y un 404 se lee como «la carpeta no existe». El script referencia carpetas **por ID** y debe fallar en vez de crearlas |
 | Drive se llena | 0,73 TB usados de 2,20 TB. El ritmo actual son ~200 MB/mes. Margen de años |
 | Alguien borra la carpeta en Drive | Vaciar `❌ drive_url` la reconstruye. El espejo se rehace solo en la siguiente pasada |
