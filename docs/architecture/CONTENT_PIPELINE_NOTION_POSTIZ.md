@@ -456,11 +456,18 @@ Se añaden a la tabla el día que se necesiten. Añadir una propiedad en Notion 
 
 | Campo Notion | Tipo | → API | Restricción |
 |---|---|---|---|
-| `is_trial_reel` | Checkbox | `settings.is_trial_reel` | **Exactamente 1 media, y debe ser vídeo** |
+| `is_trial_reel` | Checkbox | `settings.is_trial_reel` | **Exactamente 1 media, debe ser vídeo, y `Tipo` ≠ `Historia`** — ver abajo dónde se comprueba cada una |
 | `graduation_strategy` | Select | `settings.graduation_strategy` | `MANUAL`·`SS_PERFORMANCE`. Sólo con trial reel |
 | `thumbnail_seconds` | Number | `image[].thumbnailTimestamp` | **No declarado en `MediaDto`** — sobrevive porque el ValidationPipe no usa `whitelist` (`main.ts:53-57`). Frágil ante merges. Tampoco se envía en stories |
 
 > **`audio_id` no está en la lista a propósito.** Con `instagram-standalone` el parámetro se descarta en silencio (§4.9). Exponerlo en Notion sería ofrecer un botón que no hace nada.
+
+> ### ⚠️ Las tres reglas del trial reel no se comprueban en el mismo sitio
+> Leer sólo el código de Postiz lleva a la conclusión equivocada. `instagram.standalone.provider.ts:53-63` valida **dos**: `'Trial Reels can only have one video'` y `'Trial Reels must be a video'`. La tercera **no está ahí**: `instagram.provider.ts:631` añade `trial_params` aunque `isStory` sea `true`, sin guarda.
+>
+> Quien la comprueba es **el subflow de n8n**, antes de llegar a Postiz, con el motivo `trial reel: no puede ser una Historia`. Verificado por `prueba-trial-reels.py` (12/12 el 2026-08-05), que cubre las tres.
+>
+> La consecuencia práctica: para una fila que venga de Notion las tres dan `Error` legible, pero **un post creado directamente contra la API de Postiz se saltaría la tercera**. Es otra razón por la que §6 prohíbe publicar sin pasar por Notion.
 
 ### 7.2.4 Colaboradores — y sus dos restricciones duras
 
