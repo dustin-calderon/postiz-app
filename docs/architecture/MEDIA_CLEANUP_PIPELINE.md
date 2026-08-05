@@ -3,7 +3,16 @@
 > **Estado**: ✅ Producción  
 > **Última revisión**: 2026-08-04  
 > **Responsable de diseño**: Custom fork (`custom/postiz-dc`)  
-> **Relacionado**: [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) — desde agosto de 2026 hay un worker que sube medios por API, y eso cambia el perfil de basura que genera el sistema (ver «Limitación conocida»).
+> **Relacionado**: [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) — desde agosto de 2026 hay un worker que sube medios por API, y eso cambia el perfil de basura que genera el sistema (ver «Limitación conocida»). · [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md) — recrear el contenedor **no** cambia la retención, y ahí está el porqué.
+
+> ### ⚠️ Un fichero en `/uploads` sin fila en `Media` no siempre es basura del pipeline
+> Los **avatares** de los canales se guardan con `uploadSimple()`, que escribe el
+> fichero y **no crea fila en `Media`**. Son invisibles para las dos fases de
+> limpieza —que sólo seleccionan filas de `Media`—, así que ninguna puede
+> borrarlos ni por error ni a propósito. El 2026-08-05 el disco tenía 61
+> ficheros: 54 con fila, 4 avatares en uso y 3 avatares abandonados por
+> refrescos de token anteriores. Ver la tabla final de
+> [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md).
 
 ---
 

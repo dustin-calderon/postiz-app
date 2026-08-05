@@ -65,3 +65,7 @@ apps/frontend/public/g.js
 # Internal PR tracking docs (root only — .fork/ is exempt and tracked)
 /PR-*.md
 !.fork/
+
+# Python bytecode (los scripts de docs/architecture/scripts se ejecutan en el servidor)
+__pycache__/
+*.pyc

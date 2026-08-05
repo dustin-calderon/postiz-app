@@ -9,7 +9,14 @@
 >
 > Este documento explica **por qué** cada decisión es como es. Aquél enseña **cómo funciona**. Si sólo vas a leer uno y quieres operar el sistema, empieza por los diagramas.
 >
-> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md)
+> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md) · [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md)
+>
+> ### ⚠️ Si el pipeline «no hace nada», mira primero si el backend está vivo
+> El 2026-08-04 la API estuvo 2 h 38 min caída detrás de un contenedor que se
+> declaraba `healthy`, y desde fuera se parecía a un fallo del pipeline. No lo era.
+> **→ [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md)** cubre esa capa:
+> cómo arrancan los tres procesos, quién los vigila y cómo comprobar en un
+> comando que un arranque fue bien.
 
 ---
 
