@@ -20,6 +20,7 @@
 # Uso: bash /opt/homeserver/postiz/verifica-arranque.sh
 
 C="docker exec postiz"
+CI="docker exec -i postiz"      # el -i hace falta para lo que recibe por pipe
 
 echo "===== $(date -Is) ====="
 
@@ -27,7 +28,7 @@ echo "-- 1. Contenedor --"
 docker inspect postiz --format 'StartedAt={{.State.StartedAt}} Health={{.State.Health.Status}} RestartCount={{.RestartCount}}'
 
 echo "-- 2. pm2 --"
-$C pm2 jlist 2>/dev/null | $C node -e \
+$C pm2 jlist 2>/dev/null | $CI node -e \
   'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s))console.log("   "+p.name.padEnd(13)+" pid="+String(p.pid).padEnd(7)+" restarts="+p.pm2_env.restart_time+" "+p.pm2_env.status)})'
 
 echo "-- 3. El pid de pm2 ES el proceso real? (no debe verse pnpm/dotenv/sh) --"
