@@ -79,6 +79,19 @@ async function start() {
     Logger.log(`🚀 Backend is running on: http://localhost:${port}`);
   } catch (e) {
     Logger.error(`Backend failed to start on port ${port}`, e);
+    // A backend that cannot listen is useless, and staying alive is actively
+    // harmful: pm2 counts the process as "online" and can end up supervising it
+    // instead of the instance that actually holds the port, leaving the real
+    // server unmanaged. pm2 7.0.1 fires its kill callback twice on a restart
+    // and so starts two instances; one loses the race for the port, and before
+    // this exit the loser lingered forever. That is how a single container
+    // start grew six backends on 2026-08-04, and how the API stayed down for
+    // 2.5h behind a container that reported itself healthy.
+    //
+    // Exiting hands the decision back to pm2: it restarts, and by then the port
+    // is normally free. If it genuinely is not, the restart loop is visible —
+    // which is the whole point, and what the previous behaviour hid.
+    process.exit(1);
   }
 }
 
