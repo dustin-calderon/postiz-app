@@ -2,7 +2,10 @@ import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
-import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import {
+  getSsrfSafeAxios,
+  getSsrfSafeDispatcher,
+} from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -99,6 +102,13 @@ export abstract class SocialAbstract {
     additionalSettings: any[]
   ): Promise<string | true> {
     return true;
+  }
+
+  // axios flavor of the SSRF-safe dispatcher that `this.fetch` applies - for
+  // providers that need axios (form-data / stream uploads). Never call plain
+  // axios with a user-influenced URL.
+  protected getSsrfSafeAxios() {
+    return getSsrfSafeAxios();
   }
 
   /** Reads the pixel dimensions of an image via sharp (works for http or local paths). */

@@ -8,7 +8,6 @@ import {
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { google, youtube_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library/build/src/auth/oauth2client';
-import axios from 'axios';
 import { YoutubeSettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/youtube.settings.dto';
 import {
   BadBody,
@@ -425,7 +424,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
 
     const { settings }: { settings: YoutubeSettingsDto } = firstPost;
 
-    const response = await axios({
+    const response = await this.getSsrfSafeAxios()({
       url: firstPost?.media?.[0]?.path,
       method: 'GET',
       responseType: 'stream',
@@ -463,7 +462,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
           videoId: all?.data?.id!,
           media: {
             body: (
-              await axios({
+              await this.getSsrfSafeAxios()({
                 url: settings?.thumbnail?.path,
                 method: 'GET',
                 responseType: 'stream',

@@ -23,10 +23,10 @@ import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
+import { getSsrfSafeAxios } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
-import axios from 'axios';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
@@ -34,7 +34,9 @@ import { isVideo } from '@gitroom/helpers/utils/has.extension';
 async function reduceImageBySize(url: string, maxSizeKB = 976) {
   try {
     // Fetch the image from the URL
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const response = await getSsrfSafeAxios().get(url, {
+      responseType: 'arraybuffer',
+    });
     let imageBuffer = Buffer.from(response.data);
 
     // Use sharp to get the metadata of the image
