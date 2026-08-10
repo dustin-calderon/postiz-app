@@ -778,7 +778,9 @@ Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay q
 >
 > El sondeo pregunta cada 30 s, **devuelve en cuanto Meta responde `FINISHED`** y está acotado a 8 minutos.
 >
-> Medido en un carrusel de 5 fotos: timer disparado a las `18:40:00`, workflow completado a las `18:42:15` — **2 min 15 s**. Un reel pesado tarda más. Esa medición es **anterior** a que el sondeo devolviera al primer `FINISHED`: hoy el mismo carrusel debería tardar hasta 30 s menos.
+> Medido en un carrusel de 5 fotos, **antes** de que el sondeo devolviera al primer `FINISHED`: timer disparado a las `18:40:00`, workflow completado a las `18:42:15` — **2 min 15 s**.
+>
+> Medido **después** del cambio, con un reel de 19 s y 28 MB (2026-08-10): programado a las `14:00:00Z`, Instagram lo sella a las `14:00:32Z` y Postiz lo marca `PUBLISHED` a las `14:00:38`. **38 segundos**, una sola pasada del sondeo y sin reintentos. Un reel pesado sigue tardando más — manda el tiempo que Meta tarde en procesar.
 >
 > Consecuencia práctica: si la pieza tiene que estar visible a una hora concreta, la `Fecha` de Notion se pone unos minutos antes. Y no hay que dar por fallida una publicación hasta pasados unos minutos de su hora.
 
