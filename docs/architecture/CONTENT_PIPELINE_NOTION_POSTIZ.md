@@ -1021,11 +1021,21 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 
 ## 12. Riesgos
 
-### El tamaño de los ficheros ya no es un riesgo
+### El tamaño de los ficheros no es un riesgo *para Postiz*, pero sí para publicar
 
-Lo fue, y se cerró por cambio de arquitectura en vez de por mitigación: con `upload-from-url` los bytes van de Notion a Postiz directamente —n8n sólo manda una URL— y Postiz los **streamea a disco** con memoria constante (§9.2).
+La mitad conocida está cerrada, y por cambio de arquitectura en vez de por mitigación: con `upload-from-url` los bytes van de Notion a Postiz directamente —n8n sólo manda una URL— y Postiz los **streamea a disco** con memoria constante (§9.2). Lo único que queda por ahí es `MAX_URL_UPLOAD_BYTES` = **1 GiB**, y su motivo es el **disco, no la RAM**: Notion admite ficheros de hasta 5 GiB y no queremos que uno llene el Seagate por error.
 
-Lo único que queda es `MAX_URL_UPLOAD_BYTES` = **1 GiB**, y su motivo es el **disco, no la RAM**: Notion admite ficheros de hasta 5 GiB y no queremos que uno llene el Seagate por error. A escala real sobra de largo — los reels pesan 150-250 MB.
+> ### ⚠️ Corrección: una versión previa daba esto por cerrado del todo
+>
+> Decía que el tamaño «ya no es un riesgo» porque a Postiz le da igual. Eso mide al consumidor equivocado: **quien tiene que descargarse el fichero es Meta**, del Beelink y por el túnel, y ahí el tamaño manda.
+>
+> El **2026-08-06** dos Trial Reels de **2160×3840 a 38 Mbps → 585 MB** no se publicaron nunca. Meta no terminó de descargarlos, el contenedor se quedó en `IN_PROGRESS`, saltó el `startToCloseTimeout` de 10 min de la actividad, Temporal reintentó 3 veces **volviendo a servir los 585 MB** y eso agotó el rate limit de la app. Firma en la tabla `Errors`: `activity StartToClose timeout`. Un clip de **1080×1920 a 8 Mbps (18 MB)** del mismo día publicó sin problema y acumuló 2.250 visualizaciones.
+>
+> Así que la frase «los reels pesan 150-250 MB» tampoco es una tranquilidad: es ya la zona incómoda. **Lo publicable es ≤1080×1920 y ≲12 Mbps** — Instagram admite hasta 25 Mbps y 1 GiB, pero eso es lo que *acepta*, no lo que nuestro uplink *entrega a tiempo*.
+
+**Dónde está resuelto y dónde no.** El pipeline de clips lo cierra en su Paso 5: mide el clip con `ffprobe` antes de subirlo y lo recodifica a 1080×1920 / 8 Mbps si se sale (Opus renderiza a la resolución de la fuente y su API no deja elegirla).
+
+**El camino de Notion no tiene esa red.** Un vídeo en 4K adjuntado en una fila se sube tal cual y morirá igual. Si algún día pasa, el sitio donde va la comprobación es §7.4, junto al resto de validaciones previas al envío. Hoy es un hueco conocido y asumido, no un descuido.
 
 ### ⚠️ El Seagate es USB y `/uploads` es un bind mount
 
