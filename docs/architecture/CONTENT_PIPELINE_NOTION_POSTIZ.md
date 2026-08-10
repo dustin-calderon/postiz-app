@@ -763,13 +763,23 @@ Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay q
 
 > ### La hora programada es cuándo *empieza* a publicar, no cuándo aparece
 >
-> Temporal despierta el workflow al segundo exacto, pero publicar en Instagram no es una llamada: Postiz crea un contenedor por imagen y **sondea el estado de cada uno hasta que Meta los da por procesados** (`instagram.provider.ts:680-695`). Los contenedores se crean en paralelo, así que manda el más lento.
+> Temporal despierta el workflow al segundo exacto, pero publicar en Instagram no es una llamada: Postiz crea un contenedor por imagen y **sondea el estado de cada uno hasta que Meta los da por procesados** (método `waitForContainer` de `instagram.provider.ts`). Los contenedores se crean en paralelo, así que manda el más lento.
 >
-> El sondeo tiene un suelo estructural: el `await timer(30000)` está **antes** de asignar `status = status_code`, de modo que siempre se espera un ciclo completo de 30 s aunque Meta responda «listo» a la primera.
+> El sondeo pregunta cada 30 s, **devuelve en cuanto Meta responde `FINISHED`** y está acotado a 8 minutos.
 >
-> Medido en un carrusel de 5 fotos: timer disparado a las `18:40:00`, workflow completado a las `18:42:15` — **2 min 15 s**. Un reel pesado tarda más.
+> Medido en un carrusel de 5 fotos: timer disparado a las `18:40:00`, workflow completado a las `18:42:15` — **2 min 15 s**. Un reel pesado tarda más. Esa medición es **anterior** a que el sondeo devolviera al primer `FINISHED`: hoy el mismo carrusel debería tardar hasta 30 s menos.
 >
 > Consecuencia práctica: si la pieza tiene que estar visible a una hora concreta, la `Fecha` de Notion se pone unos minutos antes. Y no hay que dar por fallida una publicación hasta pasados unos minutos de su hora.
+
+> ### Lo que había antes aquí, y por qué se cambió (agosto 2026)
+>
+> El bucle era `while (status === 'IN_PROGRESS')` con el `await timer(30000)` **antes** de asignar `status = status_code`. Tres defectos, los tres corregidos:
+>
+> - **Cualquier estado que no fuera `IN_PROGRESS` salía del bucle y publicaba igual**, incluidos `ERROR` y `EXPIRED` — o una respuesta sin `status_code`. Ahora sólo `FINISHED`/`PUBLISHED` siguen adelante; el resto lanza un error legible.
+> - **No tenía tope.** `postSocial` corre en una actividad Temporal con `startToCloseTimeout` de 10 min: un contenedor lento agotaba el plazo, Temporal reintentaba y **el vídeo se subía a Instagram por segunda vez**. El tope de 8 min corta eso sin quitarle tiempo a nada que hoy publique bien.
+> - **Suelo de 30 s** aunque Meta respondiera «listo» a la primera.
+>
+> En el mismo cambio: un rate limit de Meta (`code 4`, «Application request limit reached») venía marcado por Meta como **`is_transient: true`** pero Postiz lo convertía en un fallo **no reintentable** con el mensaje inútil «Unknown Error», y el post se perdía. Pasó de verdad con dos posts de CITEM el 6 de agosto de 2026. Ahora `handleErrors` honra el flag `is_transient` de Meta y reintenta. Son 3 reintentos de 5 s: reduce las pérdidas, **no las elimina**.
 
 ### 9.4 Cierre del bucle: reactivo
 

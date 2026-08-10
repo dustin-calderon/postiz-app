@@ -9,6 +9,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { timer } from '@gitroom/helpers/utils/timer';
 import dayjs from 'dayjs';
 import {
+  BadBody,
   SocialAbstract,
   ValidityMedia,
 } from '@gitroom/nestjs-libraries/integrations/social.abstract';
@@ -380,6 +381,22 @@ export class InstagramProvider
       };
     }
 
+    // Meta marks every temporary condition (app/user throttling, transient
+    // backend errors) with `is_transient`. Honouring that flag instead of
+    // enumerating messages one by one keeps this future proof: without it a
+    // throttle such as "Application request limit reached" (code 4) falls
+    // through to a non-retryable "Unknown Error" and the post is lost even
+    // though Meta explicitly told us to try again. Every specific mapping
+    // above still takes precedence, so permanent limits (like the daily
+    // "Page request limit reached") keep their own message.
+    if (body.indexOf('"is_transient":true') > -1) {
+      return {
+        type: 'retry' as const,
+        value:
+          'Instagram is temporarily rate limiting this account, please try again later',
+      };
+    }
+
     return undefined;
   }
 
@@ -590,6 +607,71 @@ export class InstagramProvider
     };
   }
 
+  /**
+   * Meta processes video and carousel containers asynchronously, so a container
+   * must reach a terminal status before it can be published.
+   * https://developers.facebook.com/docs/instagram-platform/content-publishing/
+   *
+   * Only `IN_PROGRESS` means "keep waiting". `ERROR` and `EXPIRED` are failures
+   * and publishing them anyway would either throw a meaningless error or leave
+   * the media silently missing from the account, so they are surfaced as such.
+   *
+   * The wait is bounded because `postSocial` runs inside a Temporal activity
+   * with a 10 minute `startToCloseTimeout`: an unbounded poll gets killed
+   * mid-flight and the activity is then retried, which uploads the media to
+   * Instagram a second time. The bound sits just under that timeout so nothing
+   * that publishes today starts failing: a slow container still gets its eight
+   * minutes, it just ends in a clear error instead of a duplicate upload.
+   */
+  private async waitForContainer(
+    type: string,
+    containerId: string,
+    token: string
+  ): Promise<void> {
+    const pollIntervalMs = 30000;
+    const deadline = Date.now() + 8 * 60 * 1000;
+
+    for (let attempt = 0; ; attempt++) {
+      if (attempt > 0) {
+        await timer(pollIntervalMs);
+      }
+
+      const { status_code } = await (
+        await this.fetch(
+          `https://${type}/v20.0/${containerId}?access_token=${token}&fields=status_code`,
+          undefined,
+          '',
+          0,
+          true
+        )
+      ).json();
+
+      if (status_code === 'FINISHED' || status_code === 'PUBLISHED') {
+        return;
+      }
+
+      if (status_code !== 'IN_PROGRESS') {
+        throw new BadBody(
+          this.identifier,
+          JSON.stringify({ containerId, status_code }),
+          '{}',
+          status_code === 'EXPIRED'
+            ? 'Instagram media expired before it could be published, please try again'
+            : 'Instagram could not process your media, please try again'
+        );
+      }
+
+      if (Date.now() >= deadline) {
+        throw new BadBody(
+          this.identifier,
+          JSON.stringify({ containerId, status_code }),
+          '{}',
+          'Instagram is taking too long to process your media, please try again'
+        );
+      }
+    }
+  }
+
   async post(
     id: string,
     token: string,
@@ -677,22 +759,11 @@ export class InstagramProvider
         ).json();
         console.log('in progress2', id);
 
-        let status = 'IN_PROGRESS';
-        while (status === 'IN_PROGRESS') {
-          const { status_code } = await (
-            await this.fetch(
-              `https://${type}/v20.0/${photoId}?access_token=${
-                userToken || accessToken
-              }&fields=status_code`,
-              undefined,
-              '',
-              0,
-              true
-            )
-          ).json();
-          await timer(30000);
-          status = status_code;
-        }
+        await this.waitForContainer(
+          type,
+          photoId,
+          userToken || accessToken
+        );
         console.log('in progress3', id);
 
         return photoId;
@@ -772,22 +843,11 @@ export class InstagramProvider
         )
       ).json();
 
-      let status = 'IN_PROGRESS';
-      while (status === 'IN_PROGRESS') {
-        const { status_code } = await (
-          await this.fetch(
-            `https://${type}/v20.0/${containerId}?fields=status_code&access_token=${
-              userToken || accessToken
-            }`,
-            undefined,
-            '',
-            0,
-            true
-          )
-        ).json();
-        await timer(30000);
-        status = status_code;
-      }
+      await this.waitForContainer(
+        type,
+        containerId,
+        userToken || accessToken
+      );
 
       const { id: mediaId, ...all4 } = await (
         await this.fetch(
