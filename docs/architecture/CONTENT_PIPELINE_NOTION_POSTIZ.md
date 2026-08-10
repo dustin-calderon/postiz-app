@@ -267,8 +267,19 @@ Verificado en la base de datos de producción: las tres integraciones tienen `pr
 | Integración | Cuenta |
 |---|---|
 | `cmqjq77hg0001mw7y2xf6bg86` | Dustin Calderón \| Compositor de Teatro Musical |
-| `cmqjqapu00003mw7yrudcwklj` | CITEM Conservatorio Iberoamericano de Teatro Musical |
+| `cmqjqapu00003mw7yrudcwklj` | CITEM Conservatorio Iberoamericano de Teatro Musical ⚠️ *(nombre obsoleto — ver nota)* |
 | `cmqjqfvnw0005mw7yoywgo6he` | AMORISMO VOL III |
+
+> ⚠️ **El nombre de la integración de CITEM está obsoleto en Postiz, no en Instagram** (verificado 2026-08-10).
+> La cuenta real es **`citem.teatromusical` · `CITEM - Ecosistema Digital de Teatro Musical`**.
+> `Conservatorio Iberoamericano de Teatro Musical` está retirado de todo el ecosistema desde
+> ADR-044 (2026-07-21) — ver `campus_dc/docs/branding/POSITIONING.md` §5.
+>
+> Postiz **cachea el nombre en el momento de conectar** la integración y no lo refresca solo, así
+> que su BD conserva el nombre viejo. **No es un bug de datos ni hay que editar la BD a mano:** se
+> corrige reconectando la integración de Instagram desde la UI de Postiz. Mientras no se reconecte,
+> cualquier informe o `post.txt` generado desde esta tabla arrastrará el nombre retirado — que es
+> justo lo que pasa en `PLAN_ARCHIVO_DRIVE.md` §`post.txt`.
 
 *(Existe además una integración de TikTok, `cmqjs6xnx0001q07q9aohapuv`, fuera del alcance de este documento.)*
 
