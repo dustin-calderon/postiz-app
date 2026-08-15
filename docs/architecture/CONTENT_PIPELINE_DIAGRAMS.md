@@ -98,7 +98,7 @@ flowchart TD
 ### Las puertas de `Planificar`, en orden
 
 El **orden importa**: las validaciones estructurales van antes que la ventana y el margen.
-Si no, una fila sin hora se parsea como medianoche UTC, cae dentro del margen de 2 h
+Si no, una fila sin hora se parsea como medianoche UTC, cae dentro del margen
 y sale como «saltar» en vez de `Error` — lo contrario de la regla.
 
 Y el margen lleva un **`Y ya tiene ❌ postiz_post_id`** que no es adorno: sin él, una fila

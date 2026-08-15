@@ -662,9 +662,12 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 > ⚠️ La segunda fila **no es "ignorar y seguir"**. Si sólo se implementa esta tabla y no §9.7, vaciar `Status` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
 
 > ### ⚠️ El orden de las puertas importa: primero la hora, después la ventana
-> Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen de 2 h se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
+> Parece intercambiable y no lo es. Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
 >
 > El orden implementado es: **validaciones estructurales** (hora, offset, cuenta, copy, media, colaboradores) → y sólo con una fecha válida, **ventana → pasado → margen**.
+
+> ### Zona horaria: los instantes viajan con offset; la visualización manda Madrid
+> El pipeline es correcto con cualquier offset ISO (`+02:00`, `Z`…): Postiz publica el instante real. Pero **lo que se ve en Notion es el literal escrito**, así que una automatización que escriba `Fecha` en UTC muestra «11:40» cuando el instante es las 13:40 de Madrid — pasó el 2026-08-15 y confunde a quien aprueba. Convención: las filas creadas en la UI ya van en la zona del usuario; toda escritura por API debe mandar `{"start": "<hora local sin offset>", "time_zone": "Europe/Madrid"}` — Notion la normaliza al offset correcto (DST incluido) y el validador la acepta.
 >
 > No es teórico: hoy **1 de cada 100 filas** con fecha tiene hora.
 
@@ -763,19 +766,22 @@ Las dos escrituras siguen separadas: guardar `❌ postiz_media` en cuanto sube h
 
 ### 9.3 El margen de seguridad — obligatorio
 
-**No se borra y recrea ninguna fila cuyo `publish_at` esté dentro de las próximas 2 horas.**
+**No se borra y recrea ninguna fila cuyo `publish_at` esté dentro de los próximos 5 minutos.** (Eran 2 horas hasta el 2026-08-15.)
 
 Borrar y recrear abre una ventana en la que el post no existe en Postiz. Hacerlo cerca de la hora de publicación es una carrera contra el orchestrator, con dos finales malos: el post se pierde, o se recrea con una fecha ya pasada y el comportamiento deja de ser predecible.
 
-> **Este guardarraíl vive en el subflow, no en el horario del cron.** La hora del cron (06:00 Europe/Madrid) ya garantiza que **el cron** nunca colisione con una publicación. Pero **el botón se dispara cuando alguien lo pulsa**, y antes o después alguien va a tocar un post veinte minutos antes de que salga. El guardarraíl existe por el botón, no por el cron. Son tres líneas en el subflow.
+> **Este guardarraíl vive en el subflow, no en el horario del cron.** La hora del cron (06:00 Europe/Madrid) ya garantiza que **el cron** nunca colisione con una publicación. Pero **el botón se dispara cuando alguien lo pulsa**, y antes o después alguien va a tocar un post minutos antes de que salga. El guardarraíl existe por el botón, no por el cron. Son tres líneas en el subflow.
 
-Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay que cambiar algo a 20 minutos de publicar, se hace a mano en Postiz — es la única excepción a "nunca se aprueba en Postiz", y es una excepción de emergencia.
+> ### Por qué 5 minutos y no 2 horas
+> La ventana real que protege el margen es de **~2 segundos** (el hueco DELETE→POST) más la duración de una pasada (~11 s medidos). Las 2 horas eran tamaño de susto, no de riesgo, y tenían un coste diario: reprogramar algo a menos de 2 h exigía cirugía manual (borrar el post por API y limpiar el puntero — pasó el 2026-08-15 con el reel recuperado). Con 5 min, una edición en Notion se propaga casi hasta la hora de publicar, y el fallo del create tras el delete ya no es silencioso: la rama de error del subflow lo escribe en `❌ error_log`.
+
+Si una fila cae dentro del margen, el sync **no hace nada** y lo anota. Si hay que cambiar algo a menos de 5 minutos de publicar, se hace a mano en Postiz — es la única excepción a "nunca se aprueba en Postiz", y es una excepción de emergencia.
 
 > ### ⚠️ El margen sólo se aplica a lo que ya está en Postiz
 >
 > La condición es `dentro del margen` **Y** `❌ postiz_post_id` no vacío. Sin la segunda mitad el guardarraíl se vuelve del revés y **come filas nuevas**:
 >
-> - Una fila aprobada a 40 minutos de su hora cae en el margen y se salta.
+> - Una fila aprobada a minutos de su hora cae en el margen y se salta.
 > - En la siguiente pasada la fecha está **más cerca**, no más lejos: se vuelve a saltar.
 > - No hay salida. Nunca se crea, y cuando la fecha pasa la fila termina en `Error` con el motivo equivocado.
 >
@@ -894,7 +900,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 
 El emparejamiento es por `❌ postiz_post_id` mientras no exista `externalId`; en cuanto exista, es directo y no depende de que Notion conserve el ID.
 
-> Aplica el mismo margen de seguridad de §9.3: nada dentro de las próximas 2 horas se retira automáticamente.
+> Aplica el mismo margen de seguridad de §9.3: nada dentro de los próximos 5 minutos se retira automáticamente.
 
 ### 9.8 El cuerpo exacto de `POST /public/v1/posts`
 
@@ -1037,7 +1043,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Archivo en Drive | **En marcha.** Ya no es «para después»: destino, cuenta y origen de los bytes están decididos y verificados; falta el script del espejo y el archivador curado. Sigue fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
 | Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
-| Margen de seguridad | **2 h** (§9.3) |
+| Margen de seguridad | **5 min** (§9.3; eran 2 h hasta el 2026-08-15) |
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 

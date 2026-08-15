@@ -159,14 +159,15 @@ com = sql('SELECT count(*) FROM "Post" WHERE "parentPostId"=\'%s\';' % pid_post)
 check("crea el primer comentario", com == "1")
 
 print(); print("=" * 62); print("3b · EL MARGEN NO SE COME LAS FILAS NUEVAS"); print("=" * 62)
-# Regresion: el margen de 2 h protege el borrar-y-recrear. Aplicado tambien a
-# filas nuevas, una aprobada para dentro de 40 min se salta en cada pasada
-# —la fecha solo se acerca— y no se crea nunca.
-# modo=borrador a proposito: la fecha cae dentro de 40 min y un QUEUE saldria
+# Regresion: el margen (5 min desde el 2026-08-15; antes 2 h) protege el
+# borrar-y-recrear. Aplicado tambien a filas nuevas, una aprobada para dentro
+# del margen se salta en cada pasada —la fecha solo se acerca— y no se crea
+# nunca. La fila va a +4 min para caer DENTRO del margen actual.
+# modo=borrador a proposito: la fecha cae en minutos y un QUEUE saldria
 # publicado de verdad a Instagram si la limpieza fallara. El margen se evalua
 # en `Planificar`, antes de que `modo` importe, asi que la regresion se prueba
 # igual con riesgo cero.
-dentro = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=40))
+dentro = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=4))
 f3 = subir("t1.jpg")
 pid_m = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name": "AMORISMO VOL III"}},
               "modo": {"select": {"name": "borrador"}},
