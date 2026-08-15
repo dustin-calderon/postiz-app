@@ -15,6 +15,7 @@ import { InstagramProvider } from '@gitroom/nestjs-libraries/integrations/social
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
+import { checkInstagramVideos } from '@gitroom/nestjs-libraries/integrations/social/instagram.video.rules';
 
 const instagramProvider = new InstagramProvider();
 
@@ -61,7 +62,9 @@ export class InstagramStandaloneProvider
         return 'Trial Reels must be a video';
       }
     }
-    return true;
+    return checkInstagramVideos(firstPost, settings, (p) =>
+      this.probeUploadedVideo(p)
+    );
   }
 
   public override handleErrors(

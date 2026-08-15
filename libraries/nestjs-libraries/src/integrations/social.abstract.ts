@@ -3,10 +3,24 @@ import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
 import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
 import sharp from 'sharp';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
+import { join, normalize, sep } from 'node:path';
+
+const execFileAsync = promisify(execFile);
 
 export type ValidityMedia = {
   path: string;
   thumbnail?: string;
+};
+
+export type VideoMetadata = {
+  width: number;
+  height: number;
+  durationSec: number;
+  bitrateBps: number;
+  sizeBytes: number;
 };
 
 export class RefreshToken extends ApplicationFailure {
@@ -74,8 +88,9 @@ export abstract class SocialAbstract {
    * `posts` mirrors the client shape: the outer array is the main post followed
    * by each comment, the inner array is the media items for that entry.
    *
-   * Note: video-duration validations that used to run in the browser are not
-   * re-implemented here (no ffmpeg dependency). Image-dimension checks use sharp.
+   * Image-dimension checks use sharp; video checks use ffprobe when the media
+   * resolves to a local upload (see `probeUploadedVideo`) and fail open when
+   * the file cannot be measured.
    */
   async checkValidity(
     posts: Array<ValidityMedia[]>,
@@ -99,6 +114,100 @@ export abstract class SocialAbstract {
       await readOrFetch(url)
     ).metadata();
     return { width, height };
+  }
+
+  /**
+   * Maps a stored media path (full public URL or relative path) to its file on
+   * disk. Returns null whenever the file is not measurable locally: storage is
+   * not local, UPLOAD_DIRECTORY is unset, the URL has no /uploads segment
+   * (external media), the resolved path escapes the upload directory, or the
+   * file does not exist. Mirrors the URL→disk mapping of LocalStorage.removeFile.
+   */
+  protected resolveLocalUploadPath(mediaPath: string): string | null {
+    const uploadDirectory = process.env.UPLOAD_DIRECTORY;
+    if (
+      (process.env.STORAGE_PROVIDER || 'local') !== 'local' ||
+      !uploadDirectory ||
+      !mediaPath
+    ) {
+      return null;
+    }
+
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(new URL(mediaPath).pathname);
+    } catch {
+      if (mediaPath.startsWith('http')) {
+        return null;
+      }
+      pathname = mediaPath.startsWith('/') ? mediaPath : `/${mediaPath}`;
+    }
+
+    const uploadsIdx = pathname.indexOf('/uploads/');
+    const relativePath =
+      uploadsIdx !== -1
+        ? pathname.slice(uploadsIdx + '/uploads'.length)
+        : pathname;
+
+    const diskPath = normalize(join(uploadDirectory, `.${relativePath}`));
+    // A path built from user input feeds a native binary: never allow it to
+    // escape the upload directory.
+    if (!diskPath.startsWith(normalize(uploadDirectory + sep))) {
+      return null;
+    }
+
+    return existsSync(diskPath) ? diskPath : null;
+  }
+
+  /**
+   * Measures a local video file with ffprobe. Returns null when it cannot be
+   * measured (ffprobe missing, timeout, unparseable output, no video stream):
+   * callers must treat null as "no evidence", not as a failure.
+   */
+  protected async getVideoMetadata(
+    localPath: string
+  ): Promise<VideoMetadata | null> {
+    try {
+      const { stdout } = await execFileAsync(
+        'ffprobe',
+        [
+          '-v',
+          'error',
+          '-print_format',
+          'json',
+          '-show_format',
+          '-show_streams',
+          localPath,
+        ],
+        { timeout: 5000, maxBuffer: 1024 * 1024 }
+      );
+      const probe = JSON.parse(stdout);
+      const stream = (probe?.streams || []).find(
+        (s: any) => s?.codec_type === 'video'
+      );
+      if (!stream) {
+        return null;
+      }
+      // A field that cannot be read stays 0, which never exceeds a limit:
+      // each rule only fires with actual evidence.
+      return {
+        width: +stream.width || 0,
+        height: +stream.height || 0,
+        durationSec: +(probe?.format?.duration ?? stream.duration) || 0,
+        bitrateBps: +(stream.bit_rate ?? probe?.format?.bit_rate) || 0,
+        sizeBytes: +probe?.format?.size || 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** resolveLocalUploadPath + getVideoMetadata; null = not measurable. */
+  protected async probeUploadedVideo(
+    mediaPath: string
+  ): Promise<VideoMetadata | null> {
+    const localPath = this.resolveLocalUploadPath(mediaPath);
+    return localPath ? this.getVideoMetadata(localPath) : null;
   }
 
   public async mention(

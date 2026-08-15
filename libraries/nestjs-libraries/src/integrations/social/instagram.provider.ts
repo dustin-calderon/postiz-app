@@ -18,6 +18,7 @@ import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
+import { checkInstagramVideos } from '@gitroom/nestjs-libraries/integrations/social/instagram.video.rules';
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
@@ -77,7 +78,9 @@ export class InstagramProvider
         return 'Audio can only be added to a video Reel';
       }
     }
-    return true;
+    return checkInstagramVideos(firstPost, settings, (p) =>
+      this.probeUploadedVideo(p)
+    );
   }
 
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
