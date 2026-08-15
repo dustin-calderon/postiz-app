@@ -9,7 +9,7 @@ RECV = os.environ["N8N_POSTIZ_WEBHOOK_PATH"]
 DB = "186a2405a123812aa925cde1bb94ef12"
 W = "https://auto.dustincalderon.com/webhook/"
 H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28"}
-ok = []; fail = []
+ok = []; fail = []; omitidas = []
 
 def api(u, d=None, m=None, h=None, raw=False):
     hh = dict(H)
@@ -41,6 +41,13 @@ def sql(q):
 def check(nombre, cond, detalle=""):
     (ok if cond else fail).append(nombre)
     print("  %s %s %s" % ("PASA " if cond else "FALLA", nombre, detalle))
+
+def omite(nombre, motivo):
+    """Una comprobación que HOY no puede afirmarse no es una que falla.
+    Contarla como fallo entrena a ignorar la suite (2026-08-15: los checks de
+    reposo fallaban en falso con 7 filas reales programadas en ventana)."""
+    omitidas.append(nombre)
+    print("  OMITE %s (%s)" % (nombre, motivo))
 
 def subir(nombre):
     fu = api("https://api.notion.com/v1/file_uploads", {"filename": nombre, "content_type": "image/jpeg"})
@@ -88,7 +95,13 @@ c, b = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": "malo"})
 check("sync con token erróneo rechaza", c == 403 and de_n8n(b), "(%d, %s)" % (c, "de n8n" if de_n8n(b) else "DE CLOUDFLARE — no llego a n8n"))
 c, r = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); check("sync con token correcto acepta", c == 200, "(%d)" % c)
 c, _ = hit(W + "postiz-sync-0000000000000000"); check("ruta secreta errónea rechaza", c == 404, "(%d)" % c)
-c, r = hit(W + BTN, '{"source":{"type":"automation"}}'); check("botón de Notion funciona", c == 200 and "nada que hacer" in r, "(%d)" % c)
+# 200 con "nada que hacer" (reposo) o con el JSON de una fila procesada:
+# ambas son "el botón funciona". Exigir además el reposo mezclaba dos
+# afirmaciones y fallaba en falso con filas reales en ventana (2026-08-15).
+c, r = hit(W + BTN, '{"source":{"type":"automation"}}')
+con_filas = '"object":"page"' in r
+check("botón de Notion funciona", c == 200 and ("nada que hacer" in r or con_filas),
+      "(%d%s)" % (c, ", con filas reales en ventana" if con_filas else ""))
 c, _ = hit(W + RECV, "[]"); check("receptor acepta payload vacío", c == 200, "(%d)" % c)
 
 print(); print("=" * 62); print("2 · VALIDACIONES QUE DEBEN DAR Error"); print("=" * 62)
@@ -204,9 +217,15 @@ api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
 
 print(); print("=" * 62); print("6 · ESTADO EN REPOSO"); print("=" * 62)
 c, r1 = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
-check("sync no hace nada", "nada que hacer" in r1)
+if '"object":"page"' in r1:
+    omite("sync no hace nada", "calendario con filas reales en ventana")
+else:
+    check("sync no hace nada", "nada que hacer" in r1)
 c, r2 = hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
-check("retirada no hace nada", "nada que hacer" in r2)
+if '"object":"page"' in r2:
+    omite("retirada no hace nada", "calendario con filas reales en ventana")
+else:
+    check("retirada no hace nada", "nada que hacer" in r2)
 # Antes contaba TODOS los posts vivos en QUEUE de la base y esperaba
 # exactamente 1, lo que mezclaba el estado de la suite con el contenido real
 # del usuario: el 2026-08-05 fallaba con 38 posts programados de verdad, y
@@ -234,13 +253,19 @@ for m in sueltos:
         borrados += 1
     except Exception as e:
         print("  no se pudo borrar %s: %s" % (m[:8], e))
+# Un media reciente que usa un post vivo NO es un medio suelto: contar todos
+# los de <30 min fallaba en falso justo después de actividad real del
+# pipeline (2026-08-15, el reel recuperado).
 check("no deja medios de prueba sueltos",
-      sql("""SELECT count(*) FROM "Media" WHERE "deletedAt" IS NULL
-             AND "createdAt" > now() - interval '30 minutes';""") == "0",
+      sql("""SELECT count(*) FROM "Media" m WHERE m."deletedAt" IS NULL
+             AND m."createdAt" > now() - interval '30 minutes'
+             AND NOT EXISTS (SELECT 1 FROM "Post" p WHERE p."deletedAt" IS NULL
+                             AND p.image::text LIKE '%'||m.id||'%');""") == "0",
       "(%d borrados)" % borrados)
 
 print(); print("=" * 62)
-print("RESULTADO: %d pasan, %d fallan" % (len(ok), len(fail)))
+print("RESULTADO: %d pasan, %d fallan%s" % (len(ok), len(fail),
+      ", %d omitidas" % len(omitidas) if omitidas else ""))
 if fail:
     print("FALLAN:", ", ".join(fail)); sys.exit(1)
 print("TODO CORRECTO")

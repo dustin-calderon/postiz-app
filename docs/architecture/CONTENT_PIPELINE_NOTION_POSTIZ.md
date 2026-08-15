@@ -685,7 +685,11 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
         │    upload-from-url por 127.0.0.1:4007 — igual que antes
         ├─ fuera del techo: descarga → ffmpeg 1080×1920/8 Mbps →
         │    re-mide → multipart por 127.0.0.1:4007 (sin túnel)
-        └─ los bytes NO pasan por n8n en ningún caso
+        ├─ los bytes NO pasan por n8n en ningún caso
+        └─ si el script falla (exit≠0): el nodo SSH NO lanza error —
+           devuelve {code,stdout,stderr}— así que un IF (code==0)
+           enruta el fallo a Status=Error + ❌ error_log con el
+           «ABORTADO: …» del stderr. Verificado de punta a punta.
       └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
