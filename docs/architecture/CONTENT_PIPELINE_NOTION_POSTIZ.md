@@ -214,6 +214,8 @@ Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `r
 
 `instagram.provider.ts:48-57` rechaza >10 medias y exige al menos una. El API público ejecuta `validatePosts` antes de crear nada y devuelve un 400 legible. La validación en n8n sigue siendo buena idea (fallar antes es mejor), pero no es la última línea de defensa.
 
+**Desde el 2026-08-15 `checkValidity` también mide los videos** (`instagram.video.rules.ts`, tras el fallo del trial reel 4K de esa mañana): ffprobe sobre el fichero local y rechazo si excede los límites duros de la Graph API — >1920 px de lado, >25 Mbps, >1 GB, >15 min (>60 s en story). El mensaje incluye los valores medidos y viaja por el webhook hasta `❌ error_log`, así que un video imposible se descubre al crear el post, no el día de la publicación. Es **fail-open**: solo bloquea con evidencia (media remota o no medible pasa de largo), y solo aplica a rutas con storage `local`.
+
 > ### ⚠️ …salvo con `modo = borrador`, donde casi no valida nada
 > El resultado de `checkValidity` viaja en `item.errors`, y ese campo **sólo se comprueba dentro de `if (body.type !== 'draft')`** (`public.integrations.controller.ts:267-279`). Fuera de ese bloque queda una sola comprobación: `emptyContent`, que exige que el texto **y** las imágenes estén vacíos **a la vez** (`posts.service.ts:831-835`).
 >
@@ -677,8 +679,13 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 3. si tiene ❌ postiz_post_id y no está publicado ──► DELETE primero
 4. si `❌ postiz_media` está vacío:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
-      POST /public/v1/upload-from-url  { "url": ... }
-        └─ los bytes NO pasan por n8n: los baja Postiz, por streaming
+      SSH al host ──► normalizar-video.sh <url>     (desde 2026-08-15)
+        ├─ mide con ffprobe (~2 s, sin descargar)
+        ├─ dentro del techo (≤1080 ancho, ≤12 Mbps):
+        │    upload-from-url por 127.0.0.1:4007 — igual que antes
+        ├─ fuera del techo: descarga → ffmpeg 1080×1920/8 Mbps →
+        │    re-mide → multipart por 127.0.0.1:4007 (sin túnel)
+        └─ los bytes NO pasan por n8n en ningún caso
       └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
@@ -1046,9 +1053,9 @@ La mitad conocida está cerrada, y por cambio de arquitectura en vez de por miti
 >
 > Así que la frase «los reels pesan 150-250 MB» tampoco es una tranquilidad: es ya la zona incómoda. **Lo publicable es ≤1080×1920 y ≲12 Mbps** — Instagram admite hasta 25 Mbps y 1 GiB, pero eso es lo que *acepta*, no lo que nuestro uplink *entrega a tiempo*.
 
-**Dónde está resuelto y dónde no.** El pipeline de clips lo cierra en su Paso 5: mide el clip con `ffprobe` antes de subirlo y lo recodifica a 1080×1920 / 8 Mbps si se sale (Opus renderiza a la resolución de la fuente y su API no deja elegirla).
+**Dónde está resuelto.** El pipeline de clips lo cierra en su Paso 5: mide el clip con `ffprobe` antes de subirlo y lo recodifica a 1080×1920 / 8 Mbps si se sale (Opus renderiza a la resolución de la fuente y su API no deja elegirla).
 
-**El camino de Notion no tiene esa red.** Un vídeo en 4K adjuntado en una fila se sube tal cual y morirá igual. Si algún día pasa, el sitio donde va la comprobación es §7.4, junto al resto de validaciones previas al envío. Hoy es un hueco conocido y asumido, no un descuido.
+**El camino de Notion tiene la misma red desde el 2026-08-15.** El día llegó: el trial reel «trial wicked 1 2.mp4» (máster 4K de 585 MB adjuntado en Notion) murió en `waitForContainer` exactamente como se predijo aquí. El cierre son dos capas: el subflow normaliza vía `normalizar-video.sh` en el host (§9.2, espejo del Paso 5 de clips), y Postiz rechaza en `checkValidity` cualquier video que aun así exceda los límites duros de Meta (§4.5) — esa segunda capa cubre también lo que se suba por la UI.
 
 ### ⚠️ El Seagate es USB y `/uploads` es un bind mount
 
@@ -1085,7 +1092,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 |---|---|
 | Biblioteca en `/srv/media` (Seagate) | Para un equipo es peor: exige LAN o Nextcloud sincronizado por persona. Notion es un login web. |
 | Watchers de directorios | Era el único componente que podía romper algo **en silencio** (escribir sobre un punto de montaje desmontado y llenar el disco del Beelink). Se elimina por borrado, no por mitigación. |
-| Normalización con ffmpeg / ImageMagick | Se sustituye por una convención de exportación. Una convención sale gratis; un script hay que mantenerlo. Se añadirá el día que Instagram rechace algo de verdad. |
+| ~~Normalización con ffmpeg / ImageMagick~~ | **Revertido el 2026-08-15**, por la condición que esta misma fila fijaba: Instagram rechazó algo de verdad (el trial reel 4K de 585 MB). La convención de exportación no sobrevivió al primer máster subido sin convertir. Ahora el subflow normaliza en el host (`normalizar-video.sh`, §9.2) y Postiz valida en la creación (§4.5). |
 | Archivo de material en bruto (raw) | Es un proyecto legítimo, pero **es otro proyecto**. Archivar no tiene nada que ver con publicar; mezclarlos hace que ninguno arranque. |
 | Estructura de tres niveles (raw / master / delivery) | Consecuencia del anterior. |
 | ~~Subir `MEDIA_RETENTION_DAYS`~~ | **Revertido.** Se dio por innecesario asumiendo que todo lo publicado tenía máster en Notion; los 18 posts anteriores al pipeline no lo tienen, y su única copia se estaba purgando. Subida a **3650** el 2026-08-04 (§4.7). |
