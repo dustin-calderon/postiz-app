@@ -632,12 +632,21 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 >
 > **Cómo se configura el botón.** Es una propiedad de tipo **Botón** en el calendario, con la acción *Enviar webhook*. Hay dos URLs válidas y ambas desembocan en el mismo nodo:
 
-| URL | Auth | |
-|---|---|---|
-| `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **← la que usa el botón** |
-| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | para scripts y `curl` |
+| URL | Auth | Respuesta | |
+|---|---|---|---|
+| `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **`202` al instante** | **← la que usa el botón** |
+| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada | para scripts y `curl` |
 
 El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, relee el calendario por su cuenta.
+
+> ### ⚠️ El botón responde antes de trabajar (desde 2026-08-16)
+> Notion corta la petición del botón **mucho antes** que el túnel y muestra «no se pudo ejecutar el botón: se agotó el tiempo de espera». Medido el 2026-08-16: pasadas de hasta **21 s** pasaban, una de **37 s** ya no; los 100 s del edge de Cloudflare ni se rozan, así que **no es Cloudflare**. Y como el botón descarta el cuerpo de la respuesta, esperar no aportaba nada: sólo ponía un techo de tiempo a la pasada.
+>
+> El nodo del botón usa `responseMode: responseNode` y responde **`202`** en ~140 ms; la pasada sigue por detrás. El resultado autoritativo se escribe donde siempre: en la fila de Notion (`Status`, `❌ error_log`).
+>
+> **La ruta con cabecera NO cambia: sigue siendo síncrona a propósito.** Los scripts y la batería de pruebas disparan y leen el resultado en la misma llamada; volverla asíncrona obligaría a reescribir la única red de seguridad real para resolver un problema que sólo tiene Notion. No rompe la regla de «nunca dos implementaciones»: los dos webhooks entran al **mismo** `Notion: leer cola` y hacen exactamente el mismo trabajo — lo que difiere es el contrato de transporte de cada llamante.
+>
+> **Residuo conocido:** con respuesta inmediata es más fácil lanzar dos pasadas solapadas. No es nuevo —el 2026-08-16 ya se solaparon dos por el propio timeout, que invitaba a repulsar— y el margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`. Una fila aún sin crear sí podría crearse dos veces; si algún día pasa de verdad, la solución es un candado en el planner, no volver a lo síncrono.
 
 > La variante con cabecera sería algo mejor —un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no— y la UI de Notion **sí** admite encabezados personalizados. Cambiarlo es editar la automatización del botón; no urge, porque la ruta viaja cifrada bajo HTTPS.
 
@@ -684,15 +693,17 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
       SSH al host ──► normalizar-video.sh <url>     (desde 2026-08-15)
         ├─ mide con ffprobe (~2 s, sin descargar)
-        ├─ dentro del techo (≤1080 ancho, ≤12 Mbps):
+        ├─ clasifica imagen/video por LÍNEA DE TIEMPO  (desde 2026-08-16)
+        │    duration ≥ 1 s o nb_frames ≥ 2 ⇒ video; si no, imagen
+        ├─ imagen, o video dentro del techo (≤1080 ancho, ≤12 Mbps):
         │    upload-from-url por 127.0.0.1:4007 — igual que antes
-        ├─ fuera del techo: descarga → ffmpeg 1080×1920/8 Mbps →
-        │    re-mide → multipart por 127.0.0.1:4007 (sin túnel)
+        ├─ SOLO un video fuera del techo: descarga → ffmpeg
+        │    1080×1920/8 Mbps → re-mide → multipart por 127.0.0.1:4007
         ├─ los bytes NO pasan por n8n en ningún caso
         └─ si el script falla (exit≠0): el nodo SSH NO lanza error —
-           devuelve {code,stdout,stderr}— así que un IF (code==0)
-           enruta el fallo a Status=Error + ❌ error_log con el
-           «ABORTADO: …» del stderr. Verificado de punta a punta.
+           devuelve {code,stdout,stderr}— así que el veredicto de cada
+           asset es su `code`. Se agrega en «Recolectar media» y el IF
+           mira el agregado, no cada item (ver recuadro abajo).
       └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts
       type                        = modo                 (§7.2.2)
@@ -709,6 +720,30 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
       y si el media se subió EN ESTA pasada:
         DELETE /public/v1/media/:id  +  vaciar ❌ postiz_media
 ```
+
+> ### ⚠️ La normalización es una puerta de VIDEO, y por ahí pasa todo el media
+> El subflow manda un asset por invocación **sin saber qué es**. Hasta el 2026-08-16 el script medía y, como toda medida ausente cuenta como «fuera de techo» (y el bitrate de una imagen es `N/A` siempre), **recodificaba cada foto**: un carrusel de 10 PNG salía convertido en 10 MP4 de **un fotograma**. Los que por azar caían bajo los 12 Mbps se subían así —una foto publicada como video—; los demás abortaban. Verificado sobre el fichero subido: `nb_frames=1`, `duration=0.04`.
+>
+> **Cómo se clasifica, y por qué no de otra forma.** El único discriminador fiable es la **línea de tiempo**: `duration ≥ 1 s` o `nb_frames ≥ 2`. Medido con ffprobe el 2026-08-16, lo que **no** sirve:
+>
+> | Señal | Por qué falla |
+> |---|---|
+> | El contenedor | un HEIC de iPhone es `mov,mp4,m4a,3gp,3g2,mj2`, igual que un MP4 |
+> | `avg_frame_rate` | vale `25/1` hasta en un PNG |
+> | El códec | un HEIC es `hevc`, igual que un video H.265 |
+> | `nb_frames == 1` | en PNG y JPEG es `N/A`, no `1` |
+> | `duration` a secas | `N/A` en PNG/WebP pero **0,04 s** en JPEG — hacen falta las dos |
+>
+> La `duration` se pide al **contenedor**, no al stream: el demuxer de imagen le inventa al stream un fotograma nominal de 0,04 s.
+>
+> **La recodificación pasa a ser la excepción**, no el caso por defecto: sólo un asset positivamente identificado como video y positivamente fuera de techo. Todo lo demás vuelve al camino de siempre. Dentro de la rama de video se conserva intacta la regla contraria —*una medida ausente NO cumple, se normaliza*—, que es la que evitó repetir el 2026-08-06. Y si ffprobe no saca ni dimensiones, se **aborta**: subir a ciegas y recodificar a ciegas son las dos malas.
+
+> ### ⚠️ El veredicto es de la fila, no de cada asset
+> `¿Subida OK?` era un IF **por item**: con 10 assets y 2 correctos partía la ejecución en dos ramas vivas. n8n ejecuta primero la rama buena, `Recolectar media` lanzaba su excepción y **mataba la ejecución antes de que la rama de error escribiera nada**. Resultado el 2026-08-16: la fila se quedó en `Listo`, con `❌ error_log` vacío y 2 media huérfanos — un fallo completamente invisible desde Notion, que es peor que el fallo.
+>
+> Desde el 2026-08-16 la agregación va **antes** del IF: `Recolectar media` recibe los N items del SSH, no lanza nunca, y emite **un solo item** con `n_fallos`, el `media_json` y los `media_ids` que sí se subieron. El IF mira `n_fallos == 0`. Un carrusel a medias no se publica, así que el veredicto no puede ser por asset; y con un único item no hay dos ramas vivas que puedan competir.
+>
+> Ese agregado es además lo que hace **reclamable el huérfano parcial**: lo subido en una pasada que fracasa entra en `media_ids` y lo borra la cadena de limpieza de abajo. Antes iba fijo a `[]`.
 
 > ### Por qué el worker borra su propio media al fallar
 > La limpieza automática sólo hace candidato lo que aparece en un post **publicado**. Un fichero subido y nunca publicado **no lo recoge nadie**, valga lo que valga `MEDIA_RETENTION_DAYS`. Sin este paso, cada fila abandonada tras un fallo dejaría un reel de 150 MB en el Seagate para siempre.
@@ -1187,12 +1222,12 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 
 **Puntos de entrada:**
 
-| Ruta | Auth | Para qué |
-|---|---|---|
-| `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | Sync a demanda (scripts, curl) |
-| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | El botón `Sync now` de Notion (§9.1) |
-| `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | Retirada/recuperación a demanda |
-| `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | Destino del webhook de Postiz |
+| Ruta | Auth | Responde | Para qué |
+|---|---|---|---|
+| `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | `200` al terminar | Sync a demanda (scripts, curl) |
+| `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | **`202` al instante** | El botón `Sync now` de Notion (§9.1) |
+| `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | `200` al terminar | Retirada/recuperación a demanda |
+| `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | `200` al terminar | Destino del webhook de Postiz |
 
 Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH` y `N8N_POSTIZ_WEBHOOK_PATH`.
 
@@ -1210,6 +1245,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > ```
 >
 > **Desde el 2026-08-05 está versionada** en `docs/architecture/scripts/`, junto con `prueba-trial-reels.py`. Vivían sólo en el servidor con permisos `600` y sin respaldo — la red de seguridad del pipeline estaba a una reinstalación de perderse. Se aplica la misma regla que a los scripts de Drive: **si se toca una copia hay que actualizar la otra**, y se comparan con `md5sum`. Sí van al repositorio, al contrario que los JSON de n8n: leen los cuatro valores sensibles de `os.environ` y no llevan ninguna ruta secreta dentro.
+>
+> **Desde el 2026-08-16 también `normalizar-video.sh`**, por el mismo motivo y con la misma regla: es la puerta por la que pasa todo el media y sólo existía en `/opt/homeserver/postiz/`. No lleva secretos —el `ORG` es un id, y la `apiKey` la lee de la base al ejecutarse—, así que puede ir al repositorio tal cual.
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >

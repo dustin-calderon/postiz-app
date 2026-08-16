@@ -70,6 +70,11 @@ Postiz nunca escribe en Notion. Dos escritores serían ninguna verdad.
 Tres disparadores, un solo camino. El botón **no** manda una fila: relee la cola entera,
 igual que el cron. Una sola implementación no puede divergir de sí misma.
 
+Lo único que difiere es **cuándo responde cada entrada**, no lo que hace: la ruta del botón
+contesta `202` al instante porque Notion corta la petición a los pocos segundos y descarta el
+cuerpo; la ruta con cabecera sigue esperando a que la pasada termine, que es de lo que viven
+los scripts y la batería de pruebas.
+
 ```mermaid
 flowchart TD
     CRON["⏰ Cron 06:00 Madrid"]
@@ -79,9 +84,12 @@ flowchart TD
     LEER["Notion: leer cola<br/>filtro: Plataforma=Instagram<br/>Y Status no vacío"]
     PLAN{{"Planificar<br/>puertas y validaciones"}}
 
+    R202["Responder 202<br/>~140 ms · la pasada sigue por detrás"]
+
     CRON --> LEER
     WH1 --> LEER
-    WH2 --> LEER
+    WH2 --> R202
+    R202 --> LEER
     LEER --> PLAN
 
     PLAN -->|"crear · recrear"| LOOP["Recorrer filas<br/>batch = 1"]
@@ -151,9 +159,10 @@ flowchart TD
     TRAS --> QUP{"¿subir<br/>assets?"}
 
     QUP -->|"❌ postiz_media vacío<br/>o no cuadra"| EXP["Expandir assets<br/>un item por fichero"]
-    EXP --> UP["Postiz: upload-from-url<br/>por streaming"]
-    UP --> REC["Recolectar media<br/>respeta el ORDEN"]
-    REC --> GM["Notion: guardar ❌ postiz_media<br/>ESCRITURA 1"]
+    EXP --> UP["Beelink: normalizar y subir<br/>normalizar-video.sh, un asset por invocación<br/>imagen o video en techo ⇒ upload-from-url<br/>SOLO video fuera de techo ⇒ ffmpeg + multipart"]
+    UP --> REC["Recolectar media<br/>respeta el ORDEN · N items ⇒ UNO<br/>no lanza nunca: cuenta n_fallos"]
+    REC --> QOK{"¿subida OK?<br/>n_fallos == 0"}
+    QOK -->|sí| GM["Notion: guardar ❌ postiz_media<br/>ESCRITURA 1"]
     GM --> MS["Media subida"]
 
     QUP -->|"reutilizable"| MR["Media reutilizada<br/>no se resube nada"]
@@ -166,10 +175,11 @@ flowchart TD
     RES --> GID["Notion: guardar post_id y estado<br/>ESCRITURA 2"]
 
     POST -->|"error"| FE["Formatear error"]
-    UP -->|"error"| FES["Formatear error de subida"]
+    QOK -->|"no · algún asset falló"| FES["Formatear error de subida<br/>reclama como huérfano lo que SÍ subió"]
+    UP -->|"error de NODO<br/>credencial, host caído"| FES
     FE --> ME["Notion: marcar Error"]
     FES --> ME
-    ME --> EXPH["Expandir media huérfano"]
+    ME --> EXPH["Expandir media huérfano<br/>lee el formateador que haya corrido"]
     EXPH --> DELM["Postiz: DELETE media huérfano"]
 
     style UP fill:#2c5282,stroke:#63b3ed,color:#fff
@@ -356,6 +366,7 @@ sequenceDiagram
 | -------------------------------------------------------------------- | ---------------------------- | -------------------------- | ------------------------------------- |
 | Validación previa (sin hora, >10 ficheros, colaboradores en carrusel…) | `Planificar`                 | `Error` + motivo           | No se subió nada                      |
 | El asset no se puede descargar o pasa de 1 GiB                       | `upload-from-url` → 400      | `Error` + motivo de Postiz | No llegó a crearse media              |
+| Falla **algún** asset de un carrusel (no todos)                      | `Recolectar media` agregado  | `Error` + qué asset y por qué | **Borra los que sí subieron**      |
 | `POST /posts` rechazado (copy largo, media inválido…)                | subflow                      | `Error` + motivo           | **Borra el media que acaba de subir** |
 | Instagram rechaza al publicar                                        | `postWorkflowV106`           | `Error` vía webhook        | El media sobrevive para el reintento  |
 | Falla el primer comentario tras publicar                             | receptor                     | **`Publicado`** + aviso    | —                                     |

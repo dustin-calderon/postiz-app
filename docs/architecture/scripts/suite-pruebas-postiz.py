@@ -95,13 +95,18 @@ c, b = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": "malo"})
 check("sync con token erróneo rechaza", c == 403 and de_n8n(b), "(%d, %s)" % (c, "de n8n" if de_n8n(b) else "DE CLOUDFLARE — no llego a n8n"))
 c, r = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); check("sync con token correcto acepta", c == 200, "(%d)" % c)
 c, _ = hit(W + "postiz-sync-0000000000000000"); check("ruta secreta errónea rechaza", c == 404, "(%d)" % c)
-# 200 con "nada que hacer" (reposo) o con el JSON de una fila procesada:
-# ambas son "el botón funciona". Exigir además el reposo mezclaba dos
-# afirmaciones y fallaba en falso con filas reales en ventana (2026-08-15).
+# El botón responde 202 al instante y la pasada sigue por detrás. Notion corta
+# la petición mucho antes que el túnel (medido el 2026-08-16: pasadas de 21 s
+# pasaban y de 37 s ya no) y además descarta el cuerpo, así que esperar no
+# aportaba nada y rompía el botón en cuanto la ventana traía varias filas.
+# Lo que se afirma no es el resultado de la pasada —eso se ve en Notion— sino
+# que la respuesta es inmediata: si alguien devuelve el webhook a "lastNode",
+# este check lo caza. La ruta con cabecera sigue siendo síncrona a propósito.
+t_btn = time.time()
 c, r = hit(W + BTN, '{"source":{"type":"automation"}}')
-con_filas = '"object":"page"' in r
-check("botón de Notion funciona", c == 200 and ("nada que hacer" in r or con_filas),
-      "(%d%s)" % (c, ", con filas reales en ventana" if con_filas else ""))
+dt_btn = time.time() - t_btn
+check("botón de Notion responde al instante", c == 202 and '"ok":true' in r and dt_btn < 5,
+      "(%d, %.2fs)" % (c, dt_btn))
 c, _ = hit(W + RECV, "[]"); check("receptor acepta payload vacío", c == 200, "(%d)" % c)
 
 print(); print("=" * 62); print("2 · VALIDACIONES QUE DEBEN DAR Error"); print("=" * 62)
