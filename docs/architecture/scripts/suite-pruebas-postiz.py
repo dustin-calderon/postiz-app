@@ -221,7 +221,48 @@ check("NO toca los posts creados a mano (WEB)", web_antes == web_despues,
       "(%d vivos antes, %d después)" % (len(web_antes.split()), len(web_despues.split())))
 api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
 
-print(); print("=" * 62); print("6 · ESTADO EN REPOSO"); print("=" * 62)
+print(); print("=" * 62); print("6 · RUTA DE ERROR EN LA SUBIDA"); print("=" * 62)
+# Un asset ilegible dentro de una fila de dos. Hasta el 2026-08-16 este era el
+# fallo más peligroso del pipeline precisamente porque NO se veía: el IF de
+# subida partía los N items del SSH en dos ramas vivas, n8n ejecutaba primero
+# la buena y su excepción mataba la ejecución antes de que la rama de error
+# escribiera nada. La fila se quedaba en `Listo`, sin `error_log`, y lo ya
+# subido quedaba huérfano para siempre. Nada de eso rompía ningún check.
+subprocess.run("ffmpeg -y -v error -f lavfi -i color=c=orange:s=1080x1350 -frames:v 1 /tmp/e1.jpg",
+               shell=True, capture_output=True)
+with open("/tmp/eroto.jpg", "wb") as f:
+    f.write(b"esto no es una imagen, es texto plano\n" * 8)
+e_ok, e_roto = subir("e1.jpg"), subir("eroto.jpg")
+pid_e = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name": "CITEM"}},
+              "Tipo": {"select": {"name": "Carrusel"}},
+              "Fecha": {"date": {"start": d7 + "T19:00:00", "time_zone": "Europe/Madrid"}},
+              "copy": {"rich_text": [{"text": {"content": "Suite de pruebas: ruta de error."}}]},
+              "media": {"files": [{"type": "file_upload", "file_upload": {"id": e_ok}, "name": "e1.jpg"},
+                                  {"type": "file_upload", "file_upload": {"id": e_roto}, "name": "eroto.jpg"}]}})
+esperar_indice([pid_e])
+t_e = sql("SELECT now();")
+hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+r_e = leer(pid_e)
+check("un asset ilegible deja la fila en Error", r_e["Status"] == "Error", "(%s)" % r_e["Status"])
+check("el error_log dice qué asset y por qué",
+      "eroto.jpg" in r_e["error"] and "ABORTADO" in r_e["error"], "(%s)" % r_e["error"][:70])
+check("no crea el post ni deja media a medias", not r_e["post_id"] and not r_e["media"])
+# Las dos caras del huérfano, y hacen falta las dos. La primera prueba que el
+# asset bueno LLEGÓ a subirse —sin ella la segunda pasaría sin haber probado
+# nada— y que acabó reclamado; la segunda, que no queda ninguno vivo. Se
+# excluye lo que use un post vivo por la misma razón que en la limpieza:
+# contar todo lo reciente falla en falso tras actividad real del pipeline.
+check("el asset bueno se subió y acabó reclamado",
+      int(sql("""SELECT count(*) FROM "Media"
+                 WHERE "createdAt" > '%s' AND "deletedAt" IS NOT NULL;""" % t_e)) >= 1)
+check("no deja huérfanos vivos",
+      sql("""SELECT count(*) FROM "Media" m WHERE m."createdAt" > '%s'
+             AND m."deletedAt" IS NULL
+             AND NOT EXISTS (SELECT 1 FROM "Post" p WHERE p."deletedAt" IS NULL
+                             AND p.image::text LIKE '%%'||m.id||'%%');""" % t_e) == "0")
+borrar(pid_e)
+
+print(); print("=" * 62); print("7 · ESTADO EN REPOSO"); print("=" * 62)
 c, r1 = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 if '"object":"page"' in r1:
     omite("sync no hace nada", "calendario con filas reales en ventana")
@@ -240,7 +281,7 @@ else:
 resto = sql('SELECT count(*) FROM "Post" WHERE "deletedAt" IS NULL AND content LIKE \'%Suite de pruebas%\';')
 check("la suite no deja posts suyos vivos", resto == "0", "(%s vivos)" % resto)
 
-print(); print("=" * 62); print("7 · LIMPIEZA"); print("=" * 62)
+print(); print("=" * 62); print("8 · LIMPIEZA"); print("=" * 62)
 # La bateria sube ficheros de prueba y borra los posts, pero los Media quedaban
 # vivos y habia que barrerlos a mano. Se borran por la API publica —el mismo
 # soft-delete que la UI—, no por SQL, para no divergir del camino real.

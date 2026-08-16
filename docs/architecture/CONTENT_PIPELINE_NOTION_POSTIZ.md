@@ -1238,7 +1238,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 
 > ### La batería de pruebas — `/opt/homeserver/n8n-workflows/suite-pruebas-postiz.py`
 >
-> **34 comprobaciones contra producción sin publicar nada en Instagram.** Se ejecuta con el entorno del servidor cargado:
+> **39 comprobaciones contra producción sin publicar nada en Instagram.** Se ejecuta con el entorno del servidor cargado:
 >
 > ```
 > set -a; . /opt/homeserver/.env; set +a; python3 /opt/homeserver/n8n-workflows/suite-pruebas-postiz.py
@@ -1250,7 +1250,9 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
-> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, el estado en reposo y la limpieza de sus propios ficheros.
+> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, **la ruta de error de la subida**, el estado en reposo y la limpieza de sus propios ficheros.
+>
+> **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >
 > Tres cosas que hay que respetar al tocarla, porque las tres ya dieron un resultado falso:
 >
