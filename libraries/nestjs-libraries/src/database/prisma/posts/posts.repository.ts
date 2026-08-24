@@ -577,9 +577,15 @@ export class PostsRepository {
       async (tx) => {
         // Serialises concurrent creates for this identity only. Unrelated posts
         // are unaffected; a hash collision costs a brief wait, nothing more.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${
+        //
+        // The lock call is wrapped in a subquery on purpose: pg_advisory_xact_lock
+        // returns `void`, and selecting it directly makes Prisma fail with
+        // "Failed to deserialize column of type 'void'" — a 500 on every create
+        // carrying an externalId. Selecting a constant instead keeps the lock and
+        // returns a type Prisma understands. Do not inline it back.
+        await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtext(${
           orgId + ':' + externalId
-        })::bigint)`;
+        })::bigint)) AS _lock`;
 
         const claimed = await tx.post.findFirst({
           where: {
