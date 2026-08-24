@@ -881,14 +881,39 @@ Y **no pone en riesgo los assets** — pero por una razón distinta a la que par
 Un post recreado está vivo y sin borrar, luego protege sus ficheros. La conclusión se sostiene; **el razonamiento intuitivo es el contrario del que aplica el código**, y conviene tenerlo escrito para no equivocarse en el próximo cambio.
 
 > **Consecuencia a saber:** `❌ postiz_post_id` cambia en cada resincronización. Es "el post actual en Postiz", no un identificador estable en el tiempo. n8n lo reescribe cada vez, así que Notion siempre tiene el vigente.
+>
+> **El identificador estable es el otro:** desde el 2026-08-24 cada post lleva dentro el `externalId` de su fila (§9.6). Ése no cambia nunca, y es el que hay que usar para emparejar. `❌ postiz_post_id` queda como comodidad de lectura, no como el vínculo del que depende la corrección.
 
-### 9.6 El candado que evita duplicados
+### 9.6 La identidad externa — por qué el duplicado ya no es posible
 
-Crear sólo si `❌ postiz_post_id` está vacío.
+**Implementado el 2026-08-24** en el fork (`Post.externalId`). Hasta entonces el candado era «crear sólo si `❌ postiz_post_id` está vacío», y eso lo hacía improbable, no imposible.
 
-Escenario: n8n crea el post y justo antes del write-back se cae el contenedor. La fila queda sin ID. La siguiente pasada la vuelve a crear → **post duplicado en producción**.
+**Cómo falló de verdad.** Ese día dos disparos del botón entraron con 4,5 s de diferencia —Notion lanza la automatización **una vez por cada fila tocada**, y cada disparo procesa la cola entera— y las dos pasadas se solaparon 8 s. Las dos leyeron el mismo `postiz_post_id`, las dos borraron, las dos crearon, y la última escritura en Notion pisó a la otra. Resultado: **seis posts vivos que ninguna fila reclamaba**, es decir seis publicaciones duplicadas en el calendario.
 
-El candado actual lo hace improbable, no imposible. La solución definitiva es `externalId` en Postiz (§11, decisión #10): con un índice único por organización, el duplicado pasa a ser **imposible por construcción** y n8n deja de tener que acordarse de nada.
+La raíz no era la concurrencia, era **dónde vivía el vínculo**: fuera de Postiz, y escrito *después*, en una segunda llamada. Todo lo frágil salía de ahí.
+
+| Si… | Antes | Ahora |
+|---|---|---|
+| dos pasadas se cruzan | duplicado | la segunda adopta el post de la primera |
+| la escritura de vuelta se pisa | huérfano vivo | irrelevante: el post ya sabe de quién es |
+| el flujo muere entre el `POST` y el write-back | huérfano *y* fila apuntando a nada | la siguiente pasada adopta el post existente |
+| la retirada corre mientras el sync crea | borra un post legítimo | lo reclama por identidad (§9.7) |
+
+`externalId` mueve ese vínculo **dentro del post**, donde se graba de forma atómica con él. Crear pasa a ser idempotente: una segunda creación con la misma identidad **devuelve la que ya existe** en vez de acuñar otra. No hay ventana que proteger porque no hay dos pasos.
+
+n8n manda `posts[0].externalId = <id de la página de Notion>` (§9.8). Nada más.
+
+> ### Por qué un cerrojo de transacción y no un índice único
+> La versión anterior de este documento daba por hecho un índice único por organización. **No sirve aquí:** el borrado en Postiz es **blando** y ocurre en tres sitios distintos —borrado explícito, la sustitución de grupo al editar desde la UI, y el borrado de un canal—. Un índice único total obligaría a liberar la clave en los tres, y en los que añada upstream mañana; **olvidar uno no daría un duplicado: impediría crear**, que es peor que el fallo que se arregla.
+>
+> Se usa `pg_advisory_xact_lock` sobre `hash(organización + externalId)` **dentro de la misma transacción que la creación**. Mantiene la invariante donde se acuña la identidad, se libera sola al cerrar la transacción pase lo que pase, y no depende de qué conexión del pool sirvió la petición —un cerrojo de sesión sí dependería, y podría quedarse colgado sin que nadie pudiera abrirlo—.
+>
+> Hay además una razón de despliegue: el esquema se sincroniza con `prisma db push`, no con migraciones. Un índice parcial escrito en SQL crudo **lo borraría el siguiente despliegue, en silencio**.
+
+> ### ⚠️ `alreadyClaimed` no es cosmético
+> La respuesta de `POST /posts` trae `alreadyClaimed` por post. El servicio **debe** mirarlo: si lanzara el workflow de publicación para un post que ya tiene el suyo, el duplicado pasaría del calendario **a Instagram**. De dos peticiones simultáneas, exactamente una lo recibe `true` — la que llegó segunda.
+
+**Verificado con grupo de control** (batería, §6b): dos creaciones realmente solapadas con la misma identidad dejan **un** post y devuelven el mismo `postId`; las mismas dos sin identidad dejan **dos**. Sin ese control «cero duplicados» podría significar «no se creó nada» — que es exactamente lo que pasaba en el primer intento, cuando la llamada al cerrojo devolvía `void` y Prisma no sabía deserializar esa columna.
 
 ### 9.7 La pasada de retirada — sin ella el sync sólo sabe añadir
 
@@ -933,7 +958,9 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 >
 > Si la retirada borrase todo lo que no reconoce, **borraría posts ya publicados**. El filtro por estado lo tiene que hacer n8n.
 
-El emparejamiento es por `❌ postiz_post_id` mientras no exista `externalId`; en cuanto exista, es directo y no depende de que Notion conserve el ID.
+**El emparejamiento es por las dos vías, y el orden importa.** Primero por `❌ postiz_post_id`, como siempre; y además **por `externalId`** desde el 2026-08-24: `GET /posts` lo devuelve, así que un post recién creado **cuya id aún no se ha escrito en Notion** ya no parece huérfano —lleva dentro la fila a la que pertenece—.
+
+Eso cierra la última ventana que quedaba: la pasada de retirada corriendo mientras el sync crea. Antes borraba un post legítimo y dejaba la fila apuntando a un id muerto, que es un fallo **silencioso** (no se publica nada) y por tanto peor que el duplicado visible. Reclamar por identidad no puede provocar borrados de más: sólo añade motivos para **no** borrar.
 
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de los próximos 5 minutos se retira automáticamente.
 
@@ -952,6 +979,7 @@ Ejemplo de la forma exacta del cuerpo, para una de las tres cuentas. *(La fecha 
   "posts": [
     {
       "integration": { "id": "cmqjq77hg0001mw7y2xf6bg86" },
+      "externalId": "395a2405-a123-81a8-a44a-c70f9eba783e",
       "settings": {
         "__type": "instagram-standalone",
         "post_type": "post",
@@ -985,12 +1013,18 @@ Ejemplo de la forma exacta del cuerpo, para una de las tres cuentas. *(La fecha 
 
 > **`value[0].image[]` necesita `id` y `path`.** Sólo la URL da 400 (§7.2). El `id` sale de la respuesta de `POST /public/v1/upload`.
 
+#### `externalId` — opcional para la API, obligatorio para este pipeline
+
+No da 400 si falta: los posts creados desde la UI no tienen ninguno. Pero **omitirlo desde n8n desactiva la protección contra duplicados** sin dar ningún error (§9.6), que es la peor forma de romperlo. Va **por post**, no en la raíz del cuerpo: la identidad pertenece al grupo de posts, y una misma fila que algún día publique en tres canales necesitará tres identidades distintas.
+
+Su valor es el **id de la página de Notion**, tal cual lo devuelve la API (con guiones). En el subflow sale de `ctx.page_id`.
+
 #### Respuestas reales medidas
 
 | Llamada | Status | Cuerpo |
 |---|---|---|
 | `POST /upload` (multipart, campo `file`) | **201** | `{id, name, originalName, path, thumbnail, alt}` |
-| `POST /posts` | **201** | `[{postId, integration}]` |
+| `POST /posts` | **201** | `[{postId, integration, alreadyClaimed}]` |
 | `DELETE /posts/:id` | **200** | `{"error":true}` ⚠️ |
 
 > ### ⚠️ `DELETE` devuelve `{"error":true}` aunque funcione
@@ -1078,6 +1112,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Archivo en Drive | **En marcha.** Ya no es «para después»: destino, cuenta y origen de los bytes están decididos y verificados; falta el script del espejo y el archivador curado. Sigue fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
 | Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
+| Duplicados | **`externalId` en el fork**, con cerrojo de transacción — no con índice único, por el borrado blando (§9.6). Implementado y verificado con grupo de control el 2026-08-24 |
 | Margen de seguridad | **5 min** (§9.3; eran 2 h hasta el 2026-08-15) |
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |

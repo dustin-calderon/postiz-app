@@ -204,6 +204,11 @@ pasada**: si venía reutilizado, borrarlo dejaría `❌ postiz_media` apuntando 
 Reconciliar no es sólo crear lo que falta: es **retirar lo que ya no debe existir**.
 Va 20 minutos después del sync para que los `❌ postiz_post_id` ya estén escritos.
 
+> Desde el 2026-08-24 ese desfase dejó de ser lo que sostiene la corrección. Un post
+> reclama su fila **por dentro**, con `externalId`, así que la retirada ya no puede
+> llevarse un post recién creado cuya id todavía no se escribió en Notion. Los 20
+> minutos siguen siendo sensatos; ya no son imprescindibles.
+
 ```mermaid
 flowchart TD
     CR["⏰ Cron 06:20 Madrid"] --> GP["Postiz: GET ventana<br/>de hoy-30d a hoy+15d"]
