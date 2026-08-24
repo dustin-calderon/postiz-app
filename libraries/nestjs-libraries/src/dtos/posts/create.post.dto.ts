@@ -68,6 +68,20 @@ export class Post {
   @IsString()
   group: string;
 
+  /**
+   * Identity of the row this post belongs to in an external system of record
+   * (e.g. a Notion page id). Optional: posts created from the dashboard have none.
+   *
+   * When present, creation becomes idempotent — a second create carrying the same
+   * externalId returns the post that already exists instead of making another one.
+   * It lives here, on the per-integration post, and not on CreatePostDto, because
+   * identity belongs to a post group: one external row targeting three channels
+   * needs three distinct claims.
+   */
+  @IsOptional()
+  @IsString()
+  externalId?: string;
+
   @ValidateIf((o) => o.type !== 'draft')
   @ValidateNested()
   @Type(() => EmptySettings, {

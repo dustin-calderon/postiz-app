@@ -413,6 +413,7 @@ model Post {
   submittedForOrganizationId String?
   approvedSubmitForOrder     APPROVED_SUBMIT_FOR_ORDER @default(NO)
   creationMethod             CreationMethod            @default(UNKNOWN)
+  externalId                 String?
   lastMessageId              String?
   intervalInDays             Int?
   error                      String?
@@ -441,6 +442,7 @@ model Post {
   @@index([intervalInDays])
   @@index([approvedSubmitForOrder])
   @@index([creationMethod])
+  @@index([externalId])
   @@index([lastMessageId])
   @@index([createdAt])
   @@index([updatedAt])

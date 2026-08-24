@@ -5,6 +5,8 @@ import {
   APPROVED_SUBMIT_FOR_ORDER,
   CreationMethod,
   Post,
+  Prisma,
+  PrismaClient,
   State,
 } from '@prisma/client';
 import { GetPostsDto } from '@gitroom/nestjs-libraries/dtos/posts/get.posts.dto';
@@ -181,6 +183,9 @@ export class PostsRepository {
         intervalInDays: true,
         group: true,
         creationMethod: true,
+        // Lets a caller that owns the source of record match posts back to their
+        // own rows without depending on an id it wrote back after the fact.
+        externalId: true,
         tags: {
           select: {
             tag: true,
@@ -510,6 +515,33 @@ export class PostsRepository {
     });
   }
 
+  /**
+   * The shared Prisma client. PrismaRepository<'post'>.model is typed as
+   * Pick<PrismaService, 'post'> for DI ergonomics, but at runtime it IS the full
+   * PrismaService, which extends PrismaClient. Same cast as media.repository.ts.
+   */
+  private get client(): PrismaClient {
+    return this._post.model as unknown as PrismaClient;
+  }
+
+  /**
+   * Creates (or replaces) a post group.
+   *
+   * When `body.externalId` is set, creation is idempotent: if a live post already
+   * claims that identity, it is returned untouched and nothing new is written.
+   * The caller MUST check `alreadyClaimed` before starting a publish workflow —
+   * starting one for a post that already has its own scheduled job would publish
+   * it twice.
+   *
+   * Why a transaction-scoped advisory lock and not a unique index on externalId:
+   * deletion here is soft and happens in several places (explicit delete, the
+   * group replacement below, channel removal). A plain unique index would force
+   * every one of them to release the key, and missing one would not cause a
+   * duplicate — it would make creation fail outright, which is worse. The lock
+   * keeps the invariant where identity is minted, is released on commit no
+   * matter how the transaction ends, and does not depend on which pooled
+   * connection served the request (a session-scoped lock would).
+   */
   async createOrUpdatePost(
     state: 'draft' | 'schedule' | 'now' | 'update',
     orgId: string,
@@ -518,6 +550,81 @@ export class PostsRepository {
     tags: { value: string; label: string }[],
     creationMethod: CreationMethod,
     inter?: number
+  ): Promise<{
+    previousPost?: string;
+    posts: Post[];
+    alreadyClaimed: boolean;
+  }> {
+    if (!body.externalId) {
+      return {
+        ...(await this.writePost(
+          state,
+          orgId,
+          date,
+          body,
+          tags,
+          creationMethod,
+          inter,
+          this.client
+        )),
+        alreadyClaimed: false,
+      };
+    }
+
+    const externalId = body.externalId;
+
+    return this.client.$transaction(
+      async (tx) => {
+        // Serialises concurrent creates for this identity only. Unrelated posts
+        // are unaffected; a hash collision costs a brief wait, nothing more.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${
+          orgId + ':' + externalId
+        })::bigint)`;
+
+        const claimed = await tx.post.findFirst({
+          where: {
+            organizationId: orgId,
+            externalId,
+            deletedAt: null,
+            parentPostId: null,
+          },
+        });
+
+        if (claimed) {
+          return {
+            previousPost: undefined,
+            posts: [claimed],
+            alreadyClaimed: true,
+          };
+        }
+
+        return {
+          ...(await this.writePost(
+            state,
+            orgId,
+            date,
+            body,
+            tags,
+            creationMethod,
+            inter,
+            tx
+          )),
+          alreadyClaimed: false,
+        };
+      },
+      { maxWait: 15000, timeout: 20000 }
+    );
+  }
+
+  private async writePost(
+    state: 'draft' | 'schedule' | 'now' | 'update',
+    orgId: string,
+    date: string,
+    body: PostBody,
+    tags: { value: string; label: string }[],
+    creationMethod: CreationMethod,
+    inter: number | undefined,
+    db: Prisma.TransactionClient
   ) {
     const posts: Post[] = [];
     const uuid = uuidv4();
@@ -549,6 +656,10 @@ export class PostsRepository {
         content: value.content,
         delay: value.delay || 0,
         group: uuid,
+        // Only the head of the group carries the external identity. Every lookup
+        // resolves the head (`parentPostId: null`), so a claim maps to one row
+        // even when the group is a thread of several.
+        ...(posts.length === 0 ? { externalId: body.externalId ?? null } : {}),
         intervalInDays: inter ? +inter : null,
         approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
         ...(type === 'create' ? { creationMethod } : {}),
@@ -568,7 +679,7 @@ export class PostsRepository {
       });
 
       posts.push(
-        await this._post.model.post.upsert({
+        await db.post.upsert({
           where: {
             id: value.id || uuidv4(),
           },
@@ -586,7 +697,7 @@ export class PostsRepository {
       );
 
       if (posts.length === 1) {
-        await this._tagsPosts.model.tagsPosts.deleteMany({
+        await db.tagsPosts.deleteMany({
           where: {
             post: {
               id: posts[0].id,
@@ -595,7 +706,7 @@ export class PostsRepository {
         });
 
         if (tags.length) {
-          const tagsList = await this._tags.model.tags.findMany({
+          const tagsList = await db.tags.findMany({
             where: {
               orgId: orgId,
               name: {
@@ -605,7 +716,7 @@ export class PostsRepository {
           });
 
           if (tagsList.length) {
-            await this._post.model.post.update({
+            await db.post.update({
               where: {
                 id: posts[posts.length - 1].id,
               },
@@ -626,7 +737,7 @@ export class PostsRepository {
 
     const previousPost = body.group
       ? (
-          await this._post.model.post.findFirst({
+          await db.post.findFirst({
             where: {
               group: body.group,
               deletedAt: null,
@@ -640,7 +751,7 @@ export class PostsRepository {
       : undefined;
 
     if (body.group) {
-      await this._post.model.post.updateMany({
+      await db.post.updateMany({
         where: {
           group: body.group,
           deletedAt: null,

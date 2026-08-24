@@ -900,21 +900,27 @@ export class PostsService {
         content: removeLinks ? stripLinks(updateContent[i]) : updateContent[i],
       }));
 
-      const { posts } = await this._postRepository.createOrUpdatePost(
-        body.type,
-        orgId,
-        body.type === 'now' ? dayjs().format('YYYY-MM-DDTHH:mm:00') : body.date,
-        post,
-        body.tags,
-        creationMethod,
-        body.inter
-      );
+      const { posts, alreadyClaimed } =
+        await this._postRepository.createOrUpdatePost(
+          body.type,
+          orgId,
+          body.type === 'now'
+            ? dayjs().format('YYYY-MM-DDTHH:mm:00')
+            : body.date,
+          post,
+          body.tags,
+          creationMethod,
+          body.inter
+        );
 
       if (!posts?.length) {
         return [] as any[];
       }
 
-      if (body.type !== 'update') {
+      // A post returned because its externalId was already claimed keeps the
+      // publish job it was scheduled with. Starting a second workflow for it
+      // would publish the same post twice.
+      if (body.type !== 'update' && !alreadyClaimed) {
         this.startWorkflow(
           post.settings.__type.split('-')[0].toLowerCase(),
           posts[0].id,
@@ -923,10 +929,14 @@ export class PostsService {
         ).catch((err) => {});
       }
 
-      Sentry.metrics.count('post_created', 1);
+      if (!alreadyClaimed) {
+        Sentry.metrics.count('post_created', 1);
+      }
+
       postList.push({
         postId: posts[0].id,
         integration: post.integration.id,
+        alreadyClaimed,
       });
     }
 
