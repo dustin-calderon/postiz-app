@@ -1263,6 +1263,9 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 > **La credencial de Notion lleva el token de la integración `Motion_to_Notio`**, heredada de un sync con Motion que ya no se usa — lo sabemos porque el error de Notion la nombra. **Si esa integración pierde el acceso a la base, fallan los cuatro workflows a la vez**, con 404: pasó el 2026-09-13 (sync de las 06:00, retirada de las 06:20 y receptor a las 17:01). Que el 404 nombre la integración significa que el token sigue siendo válido: lo que se perdió fue el acceso, no la clave.
 
+> **Para leer el historial de ejecuciones**, la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
+> `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
+
 El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf`, que además escribe.
 
 **Puntos de entrada:**
