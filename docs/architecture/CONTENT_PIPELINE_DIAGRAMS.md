@@ -289,7 +289,7 @@ flowchart TD
 
 ## 6. La propiedad `Status`, estado a estado
 
-Sólo hay una transición que escribe una persona: **`Listo`**. Todo lo demás lo pone n8n.
+Las personas escriben **`Listo`** y **`Por replicar`**. Lo que sale de `Por replicar` lo escribe Claude; todo lo demás, n8n.
 
 ```mermaid
 stateDiagram-v2
@@ -297,6 +297,10 @@ stateDiagram-v2
     Vacio: (vacío)
 
     Vacio --> Listo: 👤 el equipo aprueba
+    Vacio --> PorReplicar: 👤 post ajeno en URL
+    PorReplicar: Por replicar
+    PorReplicar --> Listo: 🤖 Claude la prepara · quién aprueba sigue abierto
+    PorReplicar --> Error: 🤖 Claude no pudo replicar
     Listo --> Programado: 🤖 sync · modo=programar
     Listo --> EnPostiz: 🤖 sync · modo=borrador
     EnPostiz: En Postiz (borrador)
