@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar` — añadido el 2026-09-14.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Quién la pasa a `Listo` está abierto: §11 #8.** El plan vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar` — añadido el 2026-09-14.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Quién la pasa a `Listo` está abierto: §11 #8.** El plan vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -1241,6 +1241,8 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
 | `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente — añadida el 2026-09-14 (§8) |
 
+**1 propiedad libre más, `cuenta origen`** (texto, 2026-09-14): la cuenta de Instagram del post ajeno de una fila `Por replicar`. Ningún workflow la lee. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
+
 > La primera se documentó como `IG · Publicación`; en Notion se llama `▶ Publicar en IG` (comprobado el 2026-09-09 con `fetch` sobre la base).
 
 `IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `Status`, `modo`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `❌ error_log` y `❌ postiz_post_id`.
@@ -1259,9 +1261,11 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | **Activo** |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
 | Credencial Notion | `5rCv9a6s5FyI0swq` | — |
-| Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token` |
+| Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token`. Copia en `/opt/homeserver/.env` como `POSTIZ_SYNC_TOKEN` (2026-09-14) para llamar a los webhooks desde la Beelink; si se rota aquí, se rota allí |
 
 > **La credencial de Notion lleva el token de la integración `Motion_to_Notio`**, heredada de un sync con Motion que ya no se usa — lo sabemos porque el error de Notion la nombra. **Si esa integración pierde el acceso a la base, fallan los cuatro workflows a la vez**, con 404: pasó el 2026-09-13 (sync de las 06:00, retirada de las 06:20 y receptor a las 17:01). Que el 404 nombre la integración significa que el token sigue siendo válido: lo que se perdió fue el acceso, no la clave.
+>
+> **Resuelto el 2026-09-14.** Medido con el token de la credencial: `users/me` → 200 (bot `Motion_to_Notio`, workspace «DC Brand») y la base → 404, mientras otras páginas seguían visibles. Entre las conexiones de la base, en la UI, no estaba. Se volvió a añadir desde *··· → Conexiones*, la misma consulta pasó a 200, y la retirada y el sync lanzados a mano por webhook terminaron en `success`: la recuperación pasó «Las almas gemelas» de `Programado` a `Publicado` con su permalink. La causa probable —no demostrada— es que la base cambió de sitio entre el 9 y el 14 (de `AREAS / Areas / SOCIAL MEDIA` a `Company HQ / Operaciones / Social Media`). **Si se vuelve a mover la base, comprobar la conexión.**
 
 > **Para leer el historial de ejecuciones**, la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
 > `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
