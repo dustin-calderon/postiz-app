@@ -299,7 +299,7 @@ stateDiagram-v2
     Vacio --> Listo: 👤 el equipo aprueba
     Vacio --> PorReplicar: 👤 post ajeno en URL
     PorReplicar: Por replicar
-    PorReplicar --> Listo: 🤖 Claude la prepara · quién aprueba sigue abierto
+    PorReplicar --> Listo: 🤖 Claude la prepara · siempre modo=borrador
     PorReplicar --> Error: 🤖 Claude no pudo replicar
     Listo --> Programado: 🤖 sync · modo=programar
     Listo --> EnPostiz: 🤖 sync · modo=borrador

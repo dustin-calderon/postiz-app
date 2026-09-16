@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar` — añadido el 2026-09-14.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Quién la pasa a `Listo` está abierto: §11 #8.** El plan vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar` — añadido el 2026-09-14.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la pasa a `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`** (§11 #8, resuelta el 2026-09-16). El plan vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -1098,7 +1098,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
-| 8 | ¿Quién pasa a `Listo` una fila `Por replicar`? | Replicar carruseles sin revisión | Si lo hace Claude con `modo = programar`, un LLM aprueba su propia salida y entra en el camino de publicación: choca con §6. Propuesta del owner (2026-09-14): una semana en `borrador` revisando, y después sin revisión. Tomarla es **cambiar §6 a sabiendas**, no saltárselo |
+| ~~8~~ | ~~¿Quién pasa a `Listo` una fila `Por replicar`?~~ | — | **Resuelta el 2026-09-16: aprueba María.** Claude deja la fila en `Listo` con `modo = borrador` y ella cambia `modo` a `programar`. Un LLM no aprueba su propia salida, así que §6 no cambia |
 
 **Resueltas:**
 
@@ -1120,7 +1120,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 
-> **Ninguna de las abiertas bloquea el uso diario.** La #8 solo bloquea replicar carruseles sin revisión humana. La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
+> **Ninguna de las abiertas bloquea el uso diario.** La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
 
 ## 12. Riesgos
 
