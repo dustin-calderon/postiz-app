@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica automática la prepara (workflow `Carruseles · Replicar`, §14.3). **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -1241,7 +1241,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
 | `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente |
 
-**1 propiedad libre más, `cuenta origen`** (texto): la cuenta de Instagram del post ajeno de una fila `Por replicar`. Ningún workflow la lee. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
+**2 propiedades más de la réplica:** `cuenta origen` (texto), la cuenta de Instagram del post ajeno de una fila `Por replicar`, y `plantilla` (1, 2 o 3), la plantilla de CITEM que le tocó. Ningún workflow del pipeline las lee: las lee y escribe la réplica. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
 
 > La primera se documentó como `IG · Publicación`; en Notion se llama `▶ Publicar en IG` (comprobado el 2026-09-09 con `fetch` sobre la base).
 
@@ -1259,6 +1259,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **Sync IG — SUBFLOW (una fila)** | `A0XMq6dLdAWvwMPv` | **Activo** |
 | **Retirada y recuperación (IG)** (cron 06:20) | `rxVcGlxSZjzzI5ez` | **Activo** |
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | **Activo** |
+| **Carruseles · Replicar (IG)** (cron 05:00 + botón «Replicar») | `w4GOMzxTXzd26ybD` | **Activo**. Solo lanza por SSH `/opt/apps/carrusel-ig/replicar.sh`, que vuelve al instante; todo lo demás está en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md` |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
 | Credencial Notion | `5rCv9a6s5FyI0swq` | Token de la integración `Notion SM - Postiz`. Dónde más vive y cómo se rota: §14.4 |
 | Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token`. Copia en `/opt/homeserver/.env` como `POSTIZ_SYNC_TOKEN` para llamar a los webhooks desde la Beelink; si se rota aquí, se rota allí |
@@ -1282,7 +1283,7 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | `200` al terminar | Retirada/recuperación a demanda |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | `200` al terminar | Destino del webhook de Postiz |
 
-Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH` y `N8N_POSTIZ_WEBHOOK_PATH`.
+Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH`, `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_REPLICAR_BUTTON_PATH` (el botón «Replicar»).
 
 > ### Por qué el receptor lleva el secreto en la URL y no en una cabecera
 > `post.activity.ts:329-335` manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
@@ -1300,6 +1301,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > **Desde el 2026-08-05 está versionada** en `docs/architecture/scripts/`, junto con `prueba-trial-reels.py`. Vivían sólo en el servidor con permisos `600` y sin respaldo — la red de seguridad del pipeline estaba a una reinstalación de perderse. Se aplica la misma regla que a los scripts de Drive: **si se toca una copia hay que actualizar la otra**, y se comparan con `md5sum`. Sí van al repositorio, al contrario que los JSON de n8n: leen los cuatro valores sensibles de `os.environ` y no llevan ninguna ruta secreta dentro.
 >
 > **Desde el 2026-08-16 también `normalizar-video.sh`**, por el mismo motivo y con la misma regla: es la puerta por la que pasa todo el media y sólo existía en `/opt/homeserver/postiz/`. No lleva secretos —el `ORG` es un id, y la `apiKey` la lee de la base al ejecutarse—, así que puede ir al repositorio tal cual.
+>
+> **`n8n-ssh-wrapper.sh` también está en `scripts/`**, con la misma regla: es el comando forzado (`authorized_keys`) de la clave SSH de n8n, así que decide qué puede ejecutar n8n en el host si sus credenciales caen. Permite exactamente dos cosas: `normalizar-video.sh <url>` y `/opt/apps/carrusel-ig/replicar.sh` sin argumentos.
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
