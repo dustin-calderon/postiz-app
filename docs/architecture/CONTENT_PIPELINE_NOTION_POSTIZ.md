@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar` — añadido el 2026-09-14.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la pasa a `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`** (§11 #8, resuelta el 2026-09-16). El plan vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y Claude prepara la fila por el conector de Notion. **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -1098,7 +1098,6 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
-| ~~8~~ | ~~¿Quién pasa a `Listo` una fila `Por replicar`?~~ | — | **Resuelta el 2026-09-16: aprueba María.** Claude deja la fila en `Listo` con `modo = borrador` y ella cambia `modo` a `programar`. Un LLM no aprueba su propia salida, así que §6 no cambia |
 
 **Resueltas:**
 
@@ -1119,6 +1118,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Margen de seguridad | **5 min** (§9.3; eran 2 h hasta el 2026-08-15) |
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
+| Quién aprueba una fila `Por replicar` | **Una persona, María**, cambiando `modo` a `programar`. Claude la deja siempre en `borrador` (§7.2) |
 
 > **Ninguna de las abiertas bloquea el uso diario.** La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
 
@@ -1219,17 +1219,17 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 **11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. Tipos y opciones correctos.
 
-> ### ⚠️ Las descripciones de propiedad no se pueden escribir por API — y se borran solas
+> ### ⚠️ Las descripciones de propiedad no se escriben por la API REST — y se borran solas
 > Comprobado ejecutándolo contra Notion:
 >
 > - `PATCH /v1/databases` **rechaza** cualquier cuerpo que incluya `description` en una propiedad (400, en `2022-06-28` y en `2025-09-03`, y también en `/v1/data_sources`).
 > - Un `PATCH` que reenvía el **tipo** de la propiedad —aunque mande las opciones con sus mismos `id`— **deja la descripción vacía**.
 >
-> Es decir: son de sólo lectura por API y **frágiles ante cualquier cambio de esquema automatizado**. Así se perdieron las de `colaboradores` y `modo`; hay que reponerlas a mano en la UI.
+> Es decir: son de sólo lectura por la API REST y **frágiles ante cualquier cambio de esquema automatizado**. Así se perdieron las de `colaboradores` y `modo`; hay que reponerlas a mano en la UI.
 >
 > **Antes de tocar el esquema con un script, apunta las descripciones.**
 >
-> **Corrección del 2026-09-14: con el conector MCP de Notion sí se escriben.** `update-data-source` con `ALTER COLUMN "Status" SET SELECT(…) COMMENT '…'` dejó escrita la descripción de `Status`, y así sale en el esquema que devuelve la propia llamada. La misma sentencia **sin** `COMMENT` la había vaciado un minuto antes. La regla de arriba sigue en pie —cualquier cambio de tipo la borra—, pero reponerla ya no exige la UI: basta con mandar `COMMENT` en la misma sentencia.
+> **Con el conector MCP de Notion sí se escriben**, y es como se reponen: `update-data-source` con `ALTER COLUMN "<propiedad>" SET SELECT(…) COMMENT '…'`. La misma sentencia **sin** `COMMENT` la vacía, así que el `COMMENT` va siempre en la sentencia que toca la propiedad.
 
 **1 propiedad de tipo botón:** `Sync now` → *Enviar webhook* (§9.1). Sólo se puede crear desde la UI.
 
@@ -1239,9 +1239,9 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 |---|---|---|---|
 | `▶ Publicar en IG` | tabla | `Plataforma` contiene `Instagram` | `Fecha` ascendente |
 | `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
-| `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente — añadida el 2026-09-14 (§8) |
+| `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente |
 
-**1 propiedad libre más, `cuenta origen`** (texto, 2026-09-14): la cuenta de Instagram del post ajeno de una fila `Por replicar`. Ningún workflow la lee. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
+**1 propiedad libre más, `cuenta origen`** (texto): la cuenta de Instagram del post ajeno de una fila `Por replicar`. Ningún workflow la lee. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
 
 > La primera se documentó como `IG · Publicación`; en Notion se llama `▶ Publicar en IG` (comprobado el 2026-09-09 con `fetch` sobre la base).
 
@@ -1261,12 +1261,10 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | **Activo** |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
 | Credencial Notion | `5rCv9a6s5FyI0swq` | — |
-| Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token`. Copia en `/opt/homeserver/.env` como `POSTIZ_SYNC_TOKEN` (2026-09-14) para llamar a los webhooks desde la Beelink; si se rota aquí, se rota allí |
+| Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token`. Copia en `/opt/homeserver/.env` como `POSTIZ_SYNC_TOKEN` para llamar a los webhooks desde la Beelink; si se rota aquí, se rota allí |
 
-> **La credencial de Notion lleva el token de la integración `Motion_to_Notio`**, heredada de un sync con Motion que ya no se usa — lo sabemos porque el error de Notion la nombra. **Si esa integración pierde el acceso a la base, se para el pipeline entero a la vez**: fallan con 404 los tres workflows que leen Notion por su cuenta, y el subflow no llega a ejecutarse. Pasó el 2026-09-13 (sync de las 06:00, retirada de las 06:20 y receptor a las 17:01). Que el 404 nombre la integración significa que el token sigue siendo válido: lo que se perdió fue el acceso, no la clave.
+> **La credencial de Notion lleva el token de la integración `Motion_to_Notio`**, heredada de un sync con Motion que ya no se usa. **Si esa integración pierde el acceso a la base, se para el pipeline entero a la vez**: fallan con 404 los tres workflows que leen Notion por su cuenta —sync, retirada y receptor— y el subflow no llega a ejecutarse. Un 404 que nombra la integración significa que el token sigue siendo válido: lo que se perdió es el acceso. Se diagnostica con el token de la credencial (`users/me` → 200, la base → 404) y se arregla añadiendo la integración en *··· → Conexiones* de la base. **Mover la base de sitio puede quitarle la conexión: si se mueve, compruébala.**
 >
-> **Resuelto el 2026-09-14.** Medido con el token de la credencial: `users/me` → 200 (bot `Motion_to_Notio`, workspace «DC Brand») y la base → 404, mientras otras páginas seguían visibles. Entre las conexiones de la base, en la UI, no estaba. Se volvió a añadir desde *··· → Conexiones*, la misma consulta pasó a 200, y la retirada y el sync lanzados a mano por webhook terminaron en `success`: la recuperación pasó «Las almas gemelas» de `Programado` a `Publicado` con su permalink. La causa probable —no demostrada— es que la base cambió de sitio entre el 9 y el 14 (de `AREAS / Areas / SOCIAL MEDIA` a `Company HQ / Operaciones / Social Media`). **Si se vuelve a mover la base, comprobar la conexión.**
-
 > **Para leer el historial de ejecuciones**, la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
 > `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
 
