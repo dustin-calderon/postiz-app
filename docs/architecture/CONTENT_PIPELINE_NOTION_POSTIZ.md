@@ -1231,7 +1231,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 >
 > **Con el conector MCP de Notion sí se escriben**, y es como se reponen: `update-data-source` con `ALTER COLUMN "<propiedad>" SET SELECT(…) COMMENT '…'`. La misma sentencia **sin** `COMMENT` la vacía, así que el `COMMENT` va siempre en la sentencia que toca la propiedad.
 
-**1 propiedad de tipo botón:** `Sync now` → *Enviar webhook* (§9.1). Sólo se puede crear desde la UI.
+**2 propiedades de tipo botón**, las dos *Enviar webhook* y solo creables desde la UI: `Sync now` (§9.1) y `Replicar`, que lanza la réplica de carruseles (workflow `Carruseles · Replicar`, §14.3).
 
 **3 vistas nuevas**, sobre las 5 que el calendario ya tenía:
 
