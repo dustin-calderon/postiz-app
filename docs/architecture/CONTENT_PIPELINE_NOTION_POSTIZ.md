@@ -1260,10 +1260,13 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **Retirada y recuperación (IG)** (cron 06:20) | `rxVcGlxSZjzzI5ez` | **Activo** |
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | **Activo** |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
-| Credencial Notion | `5rCv9a6s5FyI0swq` | — |
+| Credencial Notion | `5rCv9a6s5FyI0swq` | Token de la integración `Notion SM - Postiz`. Dónde más vive y cómo se rota: §14.4 |
 | Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token`. Copia en `/opt/homeserver/.env` como `POSTIZ_SYNC_TOKEN` para llamar a los webhooks desde la Beelink; si se rota aquí, se rota allí |
 
-> **La credencial de Notion lleva el token de la integración `Motion_to_Notio`**, heredada de un sync con Motion que ya no se usa. **Si esa integración pierde el acceso a la base, se para el pipeline entero a la vez**: fallan con 404 los tres workflows que leen Notion por su cuenta —sync, retirada y receptor— y el subflow no llega a ejecutarse. Un 404 que nombra la integración significa que el token sigue siendo válido: lo que se perdió es el acceso. Se diagnostica con el token de la credencial (`users/me` → 200, la base → 404) y se arregla añadiendo la integración en *··· → Conexiones* de la base. **Mover la base de sitio puede quitarle la conexión: si se mueve, compruébala.**
+> **Si Notion falla, se para el pipeline entero a la vez**: los tres workflows que leen Notion por su cuenta —sync, retirada y receptor— dan error y el subflow no llega a ejecutarse. El mensaje dice cuál de las dos averías es:
+>
+> - **`API token is invalid` (401):** el token está revocado. Se crea uno nuevo y se rota con el script de §14.4.
+> - **404 que nombra la integración:** el token vale, pero la integración perdió el acceso a la base. Se arregla añadiéndola en *··· → Conexiones* de la base. **Mover la base de sitio puede quitarle la conexión: si se mueve, compruébala.**
 >
 > **Para leer el historial de ejecuciones**, la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
 > `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
@@ -1330,12 +1333,14 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 Todos verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vacío y `CLOUDFLARE_BUCKET_URL` sin barra final, también.
 
 > ### 🔑 Dónde vive cada secreto, y por qué no en este repo
-> El token de Notion estaba **sólo** en `#ARCHIVE/Motion_to_Notion/.env`, un repo muerto. Ahora vive en dos sitios durables:
+> **El token de Notion** es el de la integración interna **`Notion SM - Postiz`** del espacio de trabajo *DC Brand*, conectada a la base *Calendario Social Media* y al *Manual de uso — Social Media*. Vive en **dos sitios**, con el mismo valor:
 >
-> 1. **Credencial de n8n** `5rCv9a6s5FyI0swq` — cifrada, es la que usa el worker.
-> 2. **`/opt/homeserver/.env`** — junto al resto de secretos del servidor, que es la convención del HomeLab.
+> | Dónde | Quién lo lee |
+> |---|---|
+> | **Credencial de n8n** `5rCv9a6s5FyI0swq` (cabecera `Authorization: Bearer …`), cifrada | Sync, retirada y receptor |
+> | **`NOTION_API_KEY`** en `/opt/homeserver/.env` | Archivador de Drive, [`scripts/`](./scripts/) de pruebas y la réplica de carruseles (`Instalar-Home-Server`) |
 >
-> **Ya se puede borrar `#ARCHIVE/Motion_to_Notion` sin perder nada.**
+> **Se rota con [`scripts/rotar-token-notion.sh`](./scripts/rotar-token-notion.sh)**, que escribe los dos sitios y comprueba que los dos leen la base; el uso está en su cabecera. Rotar solo uno deja la mitad del pipeline con un token muerto.
 >
 > **Nunca en este repositorio.** Es un fork de un proyecto público: basta un push al remoto equivocado para filtrar el token. Los secretos van al `.env` del servidor o al gestor de credenciales de la herramienta que los usa — jamás a git, ni siquiera en un repo privado.
 
