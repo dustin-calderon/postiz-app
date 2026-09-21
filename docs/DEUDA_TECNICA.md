@@ -15,6 +15,7 @@ Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver toda
 **Qué la vuelve urgente.** Cualquiera de estas señales:
 
 - Se abre el registro, o aparece otra vía para subir ficheros sin sesión.
+- Se configura el OAuth genérico (`POSTIZ_GENERIC_OAUTH`): `AuthService.canRegister` deja registrarse por ese proveedor aunque `DISABLE_REGISTRATION=true`. Hoy no está configurado.
 - Aparece un exploit que no necesita subir el fichero ni tener sesión.
 - Sale una release de Postiz que ya trae un Next corregido.
 
