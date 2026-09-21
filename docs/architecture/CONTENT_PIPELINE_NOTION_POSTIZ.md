@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica automática la prepara (workflow `Carruseles · Replicar`, §14.3). **Ningún workflow la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`; la recuperación, `Programado`; y la retirada solo reclama posts con `❌ postiz_post_id`, que una fila `Por replicar` no tiene. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **Claude la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica automática la prepara (workflow `Carruseles · Replicar`, §14.3). **Ningún workflow del pipeline de publicación la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`, y la recuperación, `Programado`. La retirada reclama posts con `❌ postiz_post_id`: una fila nueva no tiene, pero una que se rehace (se vuelve a poner en `Por replicar`) sí; qué hace la retirada con ella si pasa a mitad de la réplica no está medido, y el borrador viejo se sustituye igualmente al terminar. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **La réplica la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -1118,7 +1118,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Margen de seguridad | **5 min** (§9.3; eran 2 h hasta el 2026-08-15) |
 | Ventana | **15 días** (§9.9) |
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
-| Quién aprueba una fila `Por replicar` | **Una persona, María**, cambiando `modo` a `programar`. Claude la deja siempre en `borrador` (§7.2) |
+| Quién aprueba una fila `Por replicar` | **Una persona, María**, cambiando `modo` a `programar`. La réplica la deja siempre en `borrador` (§7.2) |
 
 > **Ninguna de las abiertas bloquea el uso diario.** La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
 
@@ -1241,7 +1241,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
 | `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente |
 
-**2 propiedades más de la réplica:** `cuenta origen` (texto), la cuenta de Instagram del post ajeno de una fila `Por replicar`, y `plantilla` (1, 2 o 3), la plantilla de CITEM que le tocó. Ningún workflow del pipeline las lee: las lee y escribe la réplica. Existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta.
+**2 propiedades más de la réplica:** `cuenta origen` (texto), la cuenta de Instagram del post ajeno de una fila `Por replicar`, y `plantilla` (1, 2 o 3), la plantilla de CITEM que le tocó. Ningún workflow del pipeline las lee: las lee y escribe la réplica. `cuenta origen` existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta; `plantilla`, porque la siguiente de la rueda sale de la última declarada.
 
 > La primera se documentó como `IG · Publicación`; en Notion se llama `▶ Publicar en IG` (comprobado el 2026-09-09 con `fetch` sobre la base).
 
