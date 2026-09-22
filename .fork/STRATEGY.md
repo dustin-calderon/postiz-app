@@ -1,250 +1,51 @@
-# Fork Strategy — `dustin-calderon/postiz-app`
+# Estrategia — `dustin-calderon/postiz-app`
 
-> **Upstream:** `https://github.com/gitroomhq/postiz-app`
-> **Fork:** `https://github.com/dustin-calderon/postiz-app`
-> **Instancia producción:** Beelink homeserver (`/opt/repos/postiz-fork`)
-> **Última revisión:** 2026-06-19
-
----
-
-## Modelo mental
-
-Este fork usa un **patch stack**: una pila mínima de commits privados que vive
-**siempre encima de `upstream/main`**. Upstream es la base, no el punto de
-partida histórico.
-
-```
-upstream/main  ──●──●──[PR merged]──●──●──▶
-                               │
-                     git rebase (Windows)
-                               │
-custom/postiz-dc               ●── [feat temporal → luego PR o se queda]
-                               ●── [infra: build.sh]         ← permanente
-                               ●── [infra: docker-compose]   ← permanente
-                               │
-                         git push origin
-                               │
-                        origin/custom/postiz-dc  (GitHub)
-                               │
-                    git pull (Beelink homeserver)
-                               │
-                         ./build.sh → Docker producción
-```
-
-**Reglas:**
-- Todo el trabajo Git ocurre en **Windows** (este repo).
-- El homeserver **solo** hace `git pull` + `./build.sh`. Nunca operaciones Git propias.
-- Docker siempre se construye desde `custom/postiz-dc`. Nunca desde `upstream/main`.
+> **Origen:** `https://github.com/gitroomhq/postiz-app` (remote `upstream`)
+> **Repo:** `https://github.com/dustin-calderon/postiz-app`, rama `custom/postiz-dc` (la de por defecto)
+> **Producción:** Beelink, `/opt/repos/postiz-fork` → `/opt/homeserver/postiz/build.sh`
+> **Decisión vigente:** 2026-09-23, del owner
 
 ---
 
-## Commits privados permanentes (solo infra)
+## Producto propio, no fork que sigue a upstream
 
-| Commit | Descripción | Va a upstream |
-|--------|-------------|---------------|
-| `chore: add build.sh` | Prune de imágenes Docker por tag, específico del homelab | ❌ Nunca |
-| `chore: docker-compose + postiz.env` | Configuración de producción privada, secretos | ❌ Nunca |
+Hasta junio de 2026 este repo era un *patch stack*: pocos commits propios que se
+rebasaban sobre cada release de upstream. Eso dejó de ser verdad. Sobre `v2.21.9`
+se apilaron 127 commits propios (carpetas de medios, limpieza automática, subida
+por streaming, identidad externa del post, webhooks de fallo, el workflow de
+Temporal `postWorkflowV106`, el pipeline con Notion y n8n…). Rebasarlos sobre
+`v2.24.0` daba 32 archivos en conflicto, un `schema.prisma` con 882 líneas nuevas
+arriba y un `postWorkflowV106` de upstream con el mismo nombre que el nuestro y
+distinto código, que habría roto los posts ya programados en Temporal.
 
-> Verificar con: `git diff upstream/main custom/postiz-dc --stat -- ':!postiz.env' ':!docker-compose.yml' ':!build.sh'`
-> Output esperado: **0 archivos** cuando la rama está limpia (sin features en vuelo).
-> Si aparecen archivos, son features temporales (legítimos) o ruido a limpiar.
+Desde el 2026-09-23 este código es **nuestro**: no se rebasa ni se sigue la
+numeración de upstream. De upstream solo se traen **arreglos de seguridad**.
 
----
+## Cómo se traen los arreglos de seguridad
 
-## PRs activos / contribuciones upstream
+1. `check-apps-publicas-version.sh` (Instalar-Home-Server) compara las releases de
+   upstream con `version.revisado` de la entrada `postiz` en
+   `server/config/apps-publicas.json`: la última release cuyos arreglos de
+   seguridad ya se han mirado. Si hay una más nueva, avisa al bus.
+2. Se leen las notas de la release y los commits de seguridad desde la marca
+   (`git log --no-merges -i -E --grep="secur|ssrf|cve|vuln|xss|traversal|inject|harden" <revisado>..<nueva>`).
+3. Cada uno se **porta**, con `git cherry-pick -x` si entra y a mano si no,
+   manteniendo nuestro código y aplicando solo su cambio, o se **descarta**
+   escribiendo por qué en `docs/DEUDA_TECNICA.md`, con lo que lo reabriría.
+4. Se sube `version.revisado` en el registro.
 
-| ID | Rama | Estado | Doc | PR upstream |
-|----|------|--------|-----|-------------|
-| PR-001 | `feature/carousel-dnd` | ✅ Abierto | [`PR-001-carousel-dnd.md`](./PR-001-carousel-dnd.md) | [#1613](https://github.com/gitroomhq/postiz-app/pull/1613) |
-| PR-002 | `feature/media-folders` | ✅ Abierto | [`PR-002-media-folders.md`](./PR-002-media-folders.md) | [#1](https://github.com/dustin-calderon/postiz-app/pull/1) |
+Las dependencias no dependen de upstream: las vigila Dependabot en este repo, y
+las críticas se arreglan aquí (`pnpm.overrides`) o se descartan con su motivo.
 
----
+## Qué se ha revisado
 
-## Regla de sincronización de `.fork/` ← OBLIGATORIA
+Hasta `v2.24.0`, el 2026-09-23. Lo portado y lo descartado está en
+`docs/DEUDA_TECNICA.md` («Arreglos de seguridad de upstream revisados y no
+portados») y en los commits con `(cherry picked from commit …)`.
 
-> **Por qué desaparece `.fork/` al cambiar a una rama `feature/`:**
-> Las ramas `feature/xxx` nacen de `upstream/main`, que no tiene `.fork/`.
-> Al hacer `git checkout feature/xxx`, Git saca el árbol limpio de upstream.
-> Esto es **correcto** — no queremos ruido privado en el PR.
+## Despliegue
 
-### El protocolo de los dos mundos
-
-```
-  feature/xxx (limpio, va a upstream)      custom/postiz-dc (tu entorno real)
-  ─────────────────────────────────        ──────────────────────────────────
-  ✅ Solo commits del feature              ✅ .fork/  ← SIEMPRE vivo aquí
-  ✅ Sin .fork/                            ✅ infra (build.sh, docker-compose)
-  ✅ Sin infra privada                     ✅ TODOS los features en vuelo
-```
-
-### Flujo obligatorio al crear un PR
-
-```bash
-# 1. Creas la rama limpia y el commit del feature
-git checkout -b feature/xxx upstream/main
-git commit -m "feat(xxx): ..."
-git push origin feature/xxx
-
-# 2. ← PASO OBLIGATORIO — traer el commit a tu rama de desarrollo
-git checkout custom/postiz-dc
-git cherry-pick <sha-del-commit-del-feature>
-git push origin custom/postiz-dc
-```
-
-> **Si saltarte el paso 2:** tu `.fork/` y la infra privada NO tendrán el feature,
-> y el Beelink desplegará sin él. El cherry-pick es la forma de mantener los dos
-> mundos sincronizados sin contaminar ninguno.
-
-### Regla del archivo `.fork/PR-XXX.md`
-
-Cada PR **debe tener su `.md` antes de abrir el PR** en GitHub. El doc vive en
-`custom/postiz-dc` (junto con `.fork/STRATEGY.md`), nunca en la rama limpia.
-Plantilla: usa `PR-001-carousel-dnd.md` como referencia de estructura.
-
----
-
-## Ciclo de vida — los tres escenarios
-
-La estructura es siempre la misma: todo el trabajo Git en **Windows**, luego
-un `git pull + ./build.sh` en el homeserver para desplegar.
-
----
-
-### 1. Sincronizar upstream y redesplegar
-
-Cuándo: hay una nueva versión de Postiz y quieres sus mejoras.
-
-**Windows:**
-```bash
-git fetch upstream
-git rebase upstream/main custom/postiz-dc
-# Si tu PR ya fue mergeado: Git detecta el duplicate y lo salta solo.
-# Si hay conflicto: es código que tú escribiste → resolución trivial.
-git push origin custom/postiz-dc
-```
-
-**Homeserver:**
-```bash
-ssh dchomeserver
-git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
-./build.sh
-```
-
-Resultado: tienes lo último de upstream + todos tus features. Sin regresión.
-
----
-
-### 2. Añadir un nuevo feature y desplegarlo
-
-Cuándo: quieres una mejora nueva (con o sin intención de PR).
-
-**Windows:**
-```bash
-git checkout custom/postiz-dc
-# ... desarrollas el feature ...
-git commit -m "feat(xxx): descripción"
-git push origin custom/postiz-dc
-```
-
-**Homeserver:**
-```bash
-ssh dchomeserver
-git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
-./build.sh
-```
-
-Si luego decides subirlo como PR upstream (en Windows):
-```bash
-git checkout -b feature/xxx upstream/main
-git cherry-pick --no-commit <tus-shas>
-# filtrar archivos privados → commit limpio → PR
-```
-
----
-
-### 3. Verificar si un PR fue mergeado y sincronizar
-
-Cuándo: han pasado semanas, quieres saber si aceptaron tu contribución.
-
-**Windows:**
-```bash
-git fetch upstream
-git log upstream/main --oneline | head -30  # ¿aparece tu fix?
-git rebase upstream/main custom/postiz-dc   # tu commit desaparece solo
-git push origin custom/postiz-dc
-```
-
-**Homeserver:**
-```bash
-ssh dchomeserver
-git -C /opt/repos/postiz-fork pull origin custom/postiz-dc
-./build.sh
-```
-
----
-
-**Frecuencia recomendada:** rebasar antes de empezar cualquier feature nuevo,
-o al menos una vez al mes. A más tiempo sin rebasar, más probable que upstream
-haya tocado los mismos archivos → conflictos más largos.
-
----
-
-## Workflow de preparación de PR limpio
-
-El PR **siempre** nace de `upstream/main`, nunca de `custom/postiz-dc`.
-
-```bash
-git fetch upstream
-git checkout -b feature/<nombre> upstream/main
-
-# Cherry-pick sin commitear para poder filtrar archivos privados
-git cherry-pick --no-commit <sha1> <sha2> ...
-
-# Descartar cualquier archivo que no pertenezca al PR
-git restore --staged <archivo-no-relacionado>
-git restore <archivo-no-relacionado>
-
-# Verificar: solo deben aparecer los archivos del fix
-git diff --cached --stat
-
-# Commit único y atómico
-git commit -m "fix(...): descripción"
-
-# Push y abrir PR en GitHub
-git push origin feature/<nombre>
-```
-
-**Por qué `--no-commit` y no cherry-pick directo:**
-Los commits en `custom/postiz-dc` pueden mezclar cambios de producto con
-residuos de experimentos (e.g., `posts.service.ts` en PR-001). El paso de
-`restore` garantiza un diff 100% limpio antes de subir el PR.
-
----
-
-## Qué NO va a upstream (se queda en el fork)
-
-| Archivo | Razón |
-|---------|-------|
-| `postiz.env` | Secretos de producción |
-| `docker-compose.yml` | Configuración privada de la instancia |
-| `build.sh` | Script de homelab, específico de esta instalación |
-
----
-
-## Estado actual del fork
-
-```
-Rama producción:  custom/postiz-dc  (siempre)
-Docker build:     ./build.sh desde custom/postiz-dc
-upstream fetch:   ✅ configurado (git fetch upstream)
-
-Delta vs upstream (excl. infra privada):
-  → feature/carousel-dnd  → PR-001 en upstream (gitroomhq/postiz-app#1613)
-  → feature/media-folders → PR-002 en fork (dustin-calderon/postiz-app#1)
-
-PRs:
-  PR-001 carousel-dnd:    ✅ ABIERTO — https://github.com/gitroomhq/postiz-app/pull/1613
-  PR-002 media-folders:   ✅ ABIERTO — https://github.com/dustin-calderon/postiz-app/pull/1
-```
-
-Última actualización: 2026-06-19 — PR-002 abierto, cherry-pick a custom/postiz-dc aplicado.
+`docs/architecture/ARRANQUE_Y_SUPERVISION.md` → «Despliegue». Resumen:
+`git pull` en el Beelink, `build.sh` (construye `postiz-custom:local-<sha>` y deja
+el compose apuntando a ella), volcado de la base (el arranque hace
+`prisma db push --accept-data-loss`) y `docker compose … up -d postiz`.

@@ -2,29 +2,71 @@
 
 Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver todavía. Cada entrada dice por qué se aplaza, qué la haría urgente y cómo se cierra. Al cerrarla se borra de aquí: el commit que la resuelve es su registro.
 
+Contexto común a todas: Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access; solo entran el owner y su equipo, y el registro está cerrado (`DISABLE_REGISTRATION=true`). Access deja fuera dos rutas: `/uploads`, que nginx sirve como fichero estático porque las redes sociales descargan de ahí los medios, y `/api/public`, que exige la API key de la organización (la usa n8n). El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba con
+
+```bash
+for p in '/_next/image?url=%2Ffavicon.ico&w=64&q=75' /api/auth/can-register /api/enterprise/create-user; do
+  curl -s -o /dev/null -w "$p %{http_code} %{redirect_url}\n" "https://postiz.dustincalderon.com$p"; done
+```
+
+y las tres tienen que redirigir a `cloudflareaccess.com`.
+
 ---
 
-## Next vulnerable a GHSA-2xp9-vwfh-vxw4 (RCE por AVIF en el optimizador de imágenes)
+## Dependencias críticas que se despliegan y solo se arreglan saltando de versión mayor
 
-**Qué pasa.** El advisory [GHSA-2xp9-vwfh-vxw4](https://github.com/advisories/GHSA-2xp9-vwfh-vxw4) (crítico) es una ejecución remota de código en la API de optimización de imágenes de Next al procesar un AVIF, heredada de `libheif` a través de `sharp`. Afecta a `next >= 16.0.0, < 16.3.3` y `>= 10.0.0, < 15.5.24`. Este fork fija `next` en `16.2.6` (`package.json`, tanto la dependencia como `pnpm.overrides`), y es la única versión de `next` que resuelve `pnpm-lock.yaml`. Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access: solo entran el owner y su equipo. Access deja fuera dos rutas, cada una con su app de bypass: `/uploads`, porque las redes sociales descargan de ahí los medios, y `/api/public`, que pasa por `PublicAuthMiddleware` y exige API key (la usa n8n). El optimizador (`/_next/image`) queda detrás de Access.
+**Qué pasa.** Dos críticas de ejecución siguen abiertas en Dependabot y en el escáner de imágenes (trivy):
 
-**Por qué importa.** El Beelink ya fue comprometido el 13-09-2026 por una RCE de Next en otra aplicación sin parchear (`Instalar-Home-Server/docs/research/INCIDENTE-2026-09-13-MINERO-TICKETERA.md`; la decisión de aplazar esto está en su §5). No es un riesgo teórico en esta máquina.
+| Paquete | Aviso | Quién lo trae | Arreglo |
+|---|---|---|---|
+| `tar` 6.2.1 | GHSA-23hp-3jrh-7fpw / CVE-2026-59873 (DoS por gzip bomb) | `@mapbox/node-pre-gyp`, vía `bcrypt` y `canvas` | solo en 7.5.19 |
+| `happy-dom` 15.11.7 | GHSA-37j7-fg3j-429f / CVE-2025-61927 (escape del contexto VM) | `@wyw-in-js/transform`, vía `@pigment-css/react` | solo en 20.0.0 |
 
-**Por qué se aplaza (decisión del owner, 21-09-2026).** El registro de Postiz está cerrado. `apps/frontend/next.config.js` no declara `images.remotePatterns` ni `images.domains`, así que el optimizador solo acepta imágenes locales. Para que procese un AVIF malicioso, alguien tendría que subirlo antes. Subir exige sesión iniciada (`MediaController` pasa por `AuthMiddleware`) o una API key de la organización (la API pública pasa por `PublicAuthMiddleware`). El advisory lo llama «unauthenticated» porque, en general, basta con que el AVIF llegue a una fuente permitida. Aquí la única fuente permitida es la de las subidas.
+**Por qué no se arreglan con un override.** Forzar una versión mayor por debajo de quien la pide rompe su API sin aviso, y aquí no hay prueba que lo detectara antes de producción.
 
-**Qué la vuelve urgente.** Cualquiera de estas señales:
+**Por qué no son alcanzables aquí** (se despliegan, pero nada les llega):
 
-- Se abre el registro, o aparece otra vía para subir ficheros sin sesión.
-- Se configura el OAuth genérico (`POSTIZ_GENERIC_OAUTH`): `AuthService.canRegister` deja registrarse por ese proveedor aunque `DISABLE_REGISTRATION=true`. Se comprueba con `ssh dchomeserver 'docker exec postiz printenv POSTIZ_GENERIC_OAUTH'` (vacío = no configurado).
-- Se quita Access, o se abre sin login una ruta que llegue al optimizador (`/_next/image`). Se comprueba con `curl -s -o /dev/null -w '%{redirect_url}' 'https://postiz.dustincalderon.com/_next/image?url=%2Ffavicon.ico&w=64&q=75'`: tiene que redirigir a `cloudflareaccess.com`.
-- Aparece un exploit que no necesita subir el fichero ni tener sesión.
-- Sale una release de Postiz que ya trae un Next corregido.
+- `tar` 6.2.1 solo lo usa `node-pre-gyp` para desempaquetar los binarios nativos durante `pnpm install`, en el build. En ejecución, `bcrypt` solo le pide la ruta del binario ya instalado. Comprobado el 2026-09-23: después de `require("bcrypt")`, `tar` no está en `require.cache`. No hay ninguna vía por la que un tar ajeno llegue a desempaquetarse.
+- `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. No aparece en ningún bundle de ejecución (`apps/frontend/.next/server`, `apps/backend/dist`, `apps/orchestrator/dist`). En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm (se comprueba con `docker exec postiz sh -c 'for p in /proc/[0-9]*; do tr "\0" " " < $p/cmdline; echo; done'`).
 
-**Cómo se cierra.** Hay dos caminos:
+En Dependabot se descartan como `tolerable_risk` con este motivo. En trivy se aceptan en `Instalar-Home-Server/server/config/vulnerabilidades-aceptadas.json`, atadas a la imagen (`postiz-custom:local-<sha>`), así que cada build nuevo las vuelve a sacar y hay que juzgarlas otra vez.
 
-- Subir `next` en el fork a una versión corregida (`>= 16.3.3` en la rama 16), en la dependencia y en `pnpm.overrides`. Después se regenera el lockfile y se reconstruye con `build.sh`.
-- Rebasar `custom/postiz-dc` sobre una release de upstream que ya la traiga. En el momento de la decisión, ninguna la traía: `v2.23.0`, la última release, fija `16.2.6`, y `upstream/main` fija `16.3.1`, que también es vulnerable.
+**Qué la vuelve urgente.** Que algo en ejecución empiece a importar `tar` o `happy-dom` (una función de importar archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
 
-Se da por cerrada cuando `pnpm-lock.yaml` solo resuelve un `next` fuera de los rangos afectados y la imagen desplegada se ha construido desde ese commit.
+**Cómo se cierra.** Cuando quien los trae suba de mayor (`node-pre-gyp` 2.x usa `tar` 7; `@wyw-in-js/transform` actual usa `happy-dom` 20), o con la imagen de producción de la entrada siguiente, que los deja fuera.
 
-`Instalar-Home-Server/server/ops/check-apps-publicas-version.sh` avisa de las releases nuevas de Postiz, pero ese aviso puede cambiar de mecanismo. Por eso las señales de arriba hay que revisarlas aunque no llegue ningún aviso.
+---
+
+## La imagen de producción lleva herramientas de desarrollo que no ejecuta
+
+**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Por eso trivy encuentra críticas en código que no se ejecuta: `vitest` 3.1.4 (CVE-2026-47429), `handlebars` 4.7.8 de `ts-jest` (CVE-2026-33937), la stdlib de Go 1.23 dentro del binario de `esbuild` (CVE-2025-68121) y el `tar` que traen npm y pnpm (CVE-2026-59873). Ninguno corre en producción. pnpm solo ejecuta los scripts de arranque, y el único paquete que baja (`pnpm dlx prisma@6.5.0`) viene por TLS del registro de npm.
+
+**Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y hay que probarlo a fondo. No cabe en el cierre de vulnerabilidades del 2026-09-23. Estas cuatro se aceptan en `vulnerabilidades-aceptadas.json` atadas a la imagen.
+
+**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos, que hay que aceptar a mano otra vez. Es el precio de que las aceptaciones caduquen.
+
+**Qué la vuelve urgente.** Que ese coste se note: más de un build al mes, o que la lista crezca.
+
+**Cómo se cierra.** Un `Dockerfile` de producción que deje fuera las devDependencies y las herramientas de build, construido por `build.sh`, y el escáner de imágenes sin esos hallazgos.
+
+---
+
+## Arreglos de seguridad de upstream revisados y no portados
+
+Desde el 2026-09-23 esto es producto propio (`.fork/STRATEGY.md`): de `gitroomhq/postiz-app` solo se portan los arreglos de seguridad. Revisado hasta `v2.24.0` (el vigilante de versiones de Instalar-Home-Server compara con esa marca, en `apps-publicas.json`). Portados: `387d85da` (PSA-2026-NWZN9J), `9259cf24` (PSA-2026-P8W1J0 / CVE-2026-94455), `4c835138` (PSA-2026-TD98KY / CVE-2026-94456) y `79360622` (path traversal en `/api/uploads` de Next). Revisados y **no** portados:
+
+**Protección SSRF de salida** (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`, `c96935a0`). Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL. Sin eso, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores. Aquí eso exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio de este fork (streaming, `upload-from-url`), así que no es un cherry-pick. **Se vuelve urgente** si alguien fuera del equipo recibe una cuenta o una API key, o si se abre el registro. **Se cierra** portando el `ssrf.safe.dispatcher` de upstream a los puntos donde este fork hace peticiones a URLs que da el usuario.
+
+**Paquetes con avisos altos que upstream subió en `7a02bd6b`** (`multer`, entre otros). Son altas, no críticas, y quedan con el resto de altas en la entrada siguiente.
+
+**Credenciales generadas antes del 2026-09-23.** Las API keys y los secretos OAuth ya emitidos salieron de `Math.random`. Predecirlos exige reconstruir el estado del generador a partir de muchas salidas del mismo proceso, y ese proceso ya no existe. Además, ningún endpoint accesible sin Access las devolvía. No se rotan. **Se rotan** si hay indicio de que una se ha filtrado. La API key de la organización se regenera en la pantalla de API pública (`POST /user/api-key/rotate`), y luego hay que actualizarla en la credencial de n8n.
+
+---
+
+## Avisos altos y medios de Dependabot sin revisar
+
+**Qué pasa.** A 2026-09-23 hay unos 150 avisos altos y 150 medios de ejecución abiertos. Entre otros: `multer`, `nodemailer` y `sharp`, con PR de Dependabot abierto; `axios`, `undici`, `fast-uri`, `hono`, `js-yaml`, `nanoid` y `brace-expansion`. `check-dependencias-publicas.py` solo mira las críticas, a propósito, y nadie ha revisado estas una a una.
+
+**Por qué se aplaza.** El cierre del 2026-09-23 tenía un alcance acotado: las críticas antes de que los vigilantes empezaran a avisar el 30-09.
+
+**Cómo se cierra.** Revisando primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Para cada uno, subirlo dentro de su mayor o descartar el aviso en GitHub con su motivo. Después, los transitivos por quien los trae.
