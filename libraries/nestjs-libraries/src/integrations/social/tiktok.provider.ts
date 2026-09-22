@@ -6,6 +6,7 @@ import {
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import dayjs from 'dayjs';
+import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import {
   BadBody,
   SocialAbstract,
@@ -306,7 +307,7 @@ export class TiktokProvider extends SocialAbstract implements SocialProvider {
   }
 
   async generateAuthUrl() {
-    const state = Math.random().toString(36).substring(2);
+    const state = makeSecureId(16);
 
     return {
       url:
