@@ -30,7 +30,7 @@ flowchart LR
     subgraph N8N["n8n · orquestador, sin estado propio"]
         A["Sync<br/>cron 06:00 + botón"]
         B["Subflow<br/>una fila"]
-        D["Retirada y recuperación<br/>cron 06:20"]
+        D["Retirada y recuperación<br/>cron 06:20 y en cada sync"]
         C["Receptor de estado"]
     end
 
@@ -158,14 +158,14 @@ flowchart TD
     QDEL -->|no| QUP
     TRAS --> QUP{"¿subir<br/>assets?"}
 
-    QUP -->|"❌ postiz_media vacío<br/>o no cuadra"| EXP["Expandir assets<br/>un item por fichero"]
+    QUP -->|"otros ficheros<br/>u otro orden"| EXP["Expandir assets<br/>un item por fichero"]
     EXP --> UP["Beelink: normalizar y subir<br/>normalizar-video.sh, un asset por invocación<br/>imagen o video en techo ⇒ upload-from-url<br/>SOLO video fuera de techo ⇒ ffmpeg + multipart"]
     UP --> REC["Recolectar media<br/>respeta el ORDEN · N items ⇒ UNO<br/>no lanza nunca: cuenta n_fallos"]
     REC --> QOK{"¿subida OK?<br/>n_fallos == 0"}
     QOK -->|sí| GM["Notion: guardar ❌ postiz_media<br/>ESCRITURA 1"]
     GM --> MS["Media subida"]
 
-    QUP -->|"reutilizable"| MR["Media reutilizada<br/>no se resube nada"]
+    QUP -->|"mismos ficheros,<br/>mismo orden"| MR["Media reutilizada<br/>no se resube nada"]
 
     MS --> CONS["Construir POST<br/>__type=instagram-standalone"]
     MR --> CONS
@@ -202,26 +202,25 @@ pasada**: si venía reutilizado, borrarlo dejaría `❌ postiz_media` apuntando 
 ## 4. Retirada y recuperación — `rxVcGlxSZjzzI5ez`
 
 Reconciliar no es sólo crear lo que falta: es **retirar lo que ya no debe existir**.
-Va 20 minutos después del sync para que los `❌ postiz_post_id` ya estén escritos.
-
-> Desde el 2026-08-24 ese desfase dejó de ser lo que sostiene la corrección. Un post
-> reclama su fila **por dentro**, con `externalId`, así que la retirada ya no puede
-> llevarse un post recién creado cuya id todavía no se escribió en Notion. Los 20
-> minutos siguen siendo sensatos; ya no son imprescindibles.
+Corre a las 06:20 y dentro de cada pasada del sync, antes de que cree nada. Coincidir
+con el sync no es un problema: un post reclama su fila **por dentro**, con `externalId`,
+así que la retirada no puede llevarse un post recién creado cuya id todavía no se
+escribió en Notion.
 
 ```mermaid
 flowchart TD
     CR["⏰ Cron 06:20 Madrid"] --> GP["Postiz: GET ventana<br/>de hoy-30d a hoy+15d"]
     WM["🔗 Webhook manual"] --> GP
+    SY["🔁 Desde el sync<br/>cada pasada"] --> GP
     GP --> GN["Notion: filas vivas<br/>toda fila con Status puesto"]
     GN --> RECON{{"Reconciliar"}}
 
     RECON -->|"post que nadie reclama"| QR["¿retirar?"]
-    RECON -->|"fila Programado<br/>con fecha pasada"| QREC["¿recuperar?"]
+    RECON -->|"fila viva con post<br/>y fecha pasada"| QREC["¿recuperar?"]
     RECON -->|"nada"| NN["Nada que hacer"]
 
     QR --> DP["Postiz: DELETE post huérfano"]
-    QREC --> CE["Notion: corregir estado<br/>Publicado o Error"]
+    QREC --> CE["Notion: corregir estado<br/>Publicado o Error;<br/>Listo si se aplazó"]
 
     style RECON fill:#553c9a,stroke:#b794f4,color:#fff
     style DP fill:#742a2a,stroke:#fc8181,color:#fff
@@ -235,9 +234,9 @@ flowchart LR
     F1 -->|"WEB · hecho a mano"| S1["NO TOCAR"]
     F1 -->|sí| F2{"state<br/>QUEUE o DRAFT?"}
     F2 -->|"PUBLISHED · ERROR"| S2["NO TOCAR"]
-    F2 -->|sí| F3{"publica dentro<br/>de 2 h?"}
+    F2 -->|sí| F3{"publica dentro<br/>de 5 min?"}
     F3 -->|sí| S3["NO TOCAR<br/>margen de seguridad"]
-    F3 -->|no| F4{"alguna fila de Notion<br/>lo reclama?"}
+    F3 -->|no| F4{"alguna fila de Notion lo reclama?<br/>no, si es viva y su Fecha<br/>está a más de 15 días"}
     F4 -->|sí| S4["NO TOCAR"]
     F4 -->|no| DEL["retirar"]
 

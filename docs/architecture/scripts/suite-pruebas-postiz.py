@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Batería de pruebas del pipeline. No publica nada en Instagram."""
-import json, urllib.request, os, uuid, subprocess, time, sys, datetime, threading
+import json, urllib.request, os, re, uuid, subprocess, time, sys, datetime, threading
 
 TOK = os.environ["NOTION_API_KEY"]
 TOKEN = os.environ["N8N_SYNC_IG_TOKEN"]
@@ -83,6 +83,13 @@ def leer(pid):
     return {"Status": (p["Status"].get("select") or {}).get("name"),
             "post_id": t("❌ postiz_post_id"), "media": t("❌ postiz_media"),
             "error": t("❌ error_log"), "url": p["❌ release_url"].get("url")}
+
+def ficheros(pid):
+    """El id de cada fichero de `media` en Notion, en orden. Es lo que el sync
+    guarda como `src` en `❌ postiz_media` para saber si puede reutilizarlo."""
+    fs_ = api("https://api.notion.com/v1/pages/" + pid)["properties"]["media"]["files"]
+    return [re.findall(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                       f["file"]["url"].split("?")[0])[-1] for f in fs_]
 
 def borrar(pid):
     for b in ({"properties": {"Status": {"select": None}}}, {"archived": True}):
@@ -216,19 +223,60 @@ r2 = leer(pid)
 check("no vuelve a subir los ficheros", r2["media"] == media_antes, "(%.1fs)" % dt)
 check("crea un post nuevo", r2["post_id"] != pid_post)
 check("borra el anterior", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % pid_post) == "t")
+check("guarda qué ficheros subió, en su orden", [m.get("src") for m in json.loads(r2["media"])] == ficheros(pid))
+
+print(); print("=" * 62); print("4b · OTROS FICHEROS SE VUELVEN A SUBIR"); print("=" * 62)
+# Mismo número de ficheros, pero otros y en otro orden: si el sync solo contara
+# cuántos hay, reutilizaría los ya subidos y publicaría las láminas viejas.
+g1, g2 = subir("t2.jpg"), subir("t1.jpg")
+api("https://api.notion.com/v1/pages/" + pid, {"properties": {"media": {"files": [
+    {"type": "file_upload", "file_upload": {"id": g1}, "name": "t2.jpg"},
+    {"type": "file_upload", "file_upload": {"id": g2}, "name": "t1.jpg"}]}}}, m="PATCH")
+hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+r3 = leer(pid)
+check("con otros ficheros los vuelve a subir", r3["media"] != r2["media"] and r3["media"].count("path") == 2)
+check("y guarda los nuevos, en su orden", [m.get("src") for m in json.loads(r3["media"] or "[]")] == ficheros(pid))
 
 print(); print("=" * 62); print("5 · RETIRADA"); print("=" * 62)
 # Se comparan los posts WEB VIVOS antes y despues. La version anterior hacia
 # SELECT sobre todos los WEB en QUEUE —hoy son 7, seis ya borrados— y comparaba
 # las 7 lineas con "t", asi que no podia pasar nunca.
 web_antes = sql('SELECT id FROM "Post" WHERE "creationMethod"=\'WEB\' AND state=\'QUEUE\' AND "deletedAt" IS NULL ORDER BY id;')
+vigente = leer(pid)["post_id"]
+check("el post de la fila sigue vivo antes de retirar", sql('SELECT "deletedAt" IS NULL FROM "Post" WHERE id=\'%s\';' % vigente) == "t")
 api("https://api.notion.com/v1/pages/" + pid, {"properties": {"Status": {"select": None}}}, m="PATCH")
 hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
-check("retira el post huérfano", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % r2["post_id"]) == "t")
+check("retira el post huérfano", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % vigente) == "t")
 web_despues = sql('SELECT id FROM "Post" WHERE "creationMethod"=\'WEB\' AND state=\'QUEUE\' AND "deletedAt" IS NULL ORDER BY id;')
 check("NO toca los posts creados a mano (WEB)", web_antes == web_despues,
       "(%d vivos antes, %d después)" % (len(web_antes.split()), len(web_despues.split())))
 api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
+
+print(); print("=" * 62); print("5b · APLAZAR MÁS DE 15 DÍAS RETIRA EL POST"); print("=" * 62)
+# Una pieza ya en Postiz cuya Fecha pasa a más de 15 días: el sync no la toca
+# hasta que la nueva fecha entre en la ventana, así que su post es el de la
+# fecha vieja y, si la fila lo reclamara, saldría igual. Borrador a propósito:
+# no puede publicar nada.
+pid_a = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name": "AMORISMO VOL III"}},
+              "modo": {"select": {"name": "borrador"}},
+              "Fecha": {"date": {"start": d7 + "T20:00:00.000+02:00"}},
+              "copy": {"rich_text": [{"text": {"content": "Suite de pruebas: aplazada."}}]},
+              "media": {"files": [{"type": "file_upload", "file_upload": {"id": subir("t1.jpg")}, "name": "t1.jpg"}]}})
+esperar_indice([pid_a])
+hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+ra = leer(pid_a)
+check("la pieza está en Postiz antes de aplazarla", ra["Status"] == "En Postiz (borrador)" and bool(ra["post_id"]), "(%s)" % ra["Status"])
+d30 = (datetime.date.today() + datetime.timedelta(days=30)).isoformat() + "T20:00:00.000+02:00"
+api("https://api.notion.com/v1/pages/" + pid_a, {"properties": {"Fecha": {"date": {"start": d30}}}}, m="PATCH")
+q = {"page_size": 10, "filter": {"property": "Fecha", "date": {"after": (datetime.date.today() + datetime.timedelta(days=20)).isoformat()}}}
+for _ in range(12):  # el índice de consulta de Notion va por detrás de la escritura
+    if any(x["id"] == pid_a for x in api("https://api.notion.com/v1/databases/%s/query" % DB, q, m="POST")["results"]): break
+    time.sleep(2)
+hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})  # el sync lanza la retirada
+if ra["post_id"]:
+    check("aplazarla retira el post de la fecha vieja", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % ra["post_id"]) == "t")
+check("y la fila vuelve a Listo", leer(pid_a)["Status"] == "Listo", "(%s)" % leer(pid_a)["Status"])
+borrar(pid_a)
 
 print(); print("=" * 62); print("6 · RUTA DE ERROR EN LA SUBIDA"); print("=" * 62)
 # Un asset ilegible dentro de una fila de dos. Hasta el 2026-08-16 este era el
@@ -417,6 +465,27 @@ hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
 check("la retirada NO borra un post reclamado por identidad", _vivo(_reclamado))
 check("y si borra uno cuya identidad no tiene fila (control)", not _vivo(_suelto))
 borrar(_fila_ret)
+
+# --- Aprobada tarde: `modo` pasa a programar cuando la Fecha ya pasó. El post
+# sigue siendo el borrador y el sync ignora una fila con post y fecha pasada: sin
+# la recuperación, la fila se quedaría así para siempre sin decir nada.
+_fila_tarde = fila({"Status": {"select": {"name": "En Postiz (borrador)"}}, "modo": {"select": {"name": "programar"}},
+                    "Fecha": {"date": {"start": (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=2)).isoformat()}}})
+_hace2h = (datetime.datetime.utcnow() - datetime.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S")
+try:
+    _borrador_tarde = _post_directo(_fila_tarde, "aprobada tarde", _hace2h)
+except Exception as e:
+    _borrador_tarde = None
+    omite("aprobada tarde pasa a Error", "Postiz no dejó crear el borrador con fecha pasada: %s" % str(e)[:80])
+if _borrador_tarde:
+    api("https://api.notion.com/v1/pages/" + _fila_tarde,
+        {"properties": {"❌ postiz_post_id": {"rich_text": [{"text": {"content": _borrador_tarde}}]}}}, m="PATCH")
+    esperar_indice([_fila_tarde])
+    hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+    _rt = leer(_fila_tarde)
+    check("aprobada tarde pasa a Error y dice por qué", _rt["Status"] == "Error" and "borrador" in _rt["error"],
+          "(%s: %s)" % (_rt["Status"], _rt["error"][:60]))
+borrar(_fila_tarde)
 
 # --- Limpieza: por la API publica, el mismo borrado blando que la UI.
 for pid in [l for l in sql("""SELECT id FROM "Post" WHERE "deletedAt" IS NULL

@@ -374,7 +374,7 @@ El worker **sólo mira filas con `Plataforma` conteniendo Instagram**. Todo lo d
 | `modo` | Select: `borrador`·`programar` | equipo | **`type`** (§7.2.2) |
 | `Status` | Select | equipo → n8n | ✗ — el estado del pipeline (§8) |
 | `❌ postiz_post_id` | Text | **n8n** | — el candado |
-| `❌ postiz_media` | Text | **n8n** | — JSON `[{id, path}]`, mismo orden que `media`. Ver aviso |
+| `❌ postiz_media` | Text | **n8n** | — JSON `[{id, path, src}]`, mismo orden que `media`; `src` es el id del fichero en Notion |
 | `❌ error_log` | Text | **n8n** | — último error |
 
 Y tres cosas que **no** son propiedades nuevas:
@@ -630,9 +630,9 @@ Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La 
 | El archivo en Drive | `/var/log/postiz-archivo.log`, 8 semanas de rotación | [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 | Cada pasada de la réplica de carruseles, con las filas que mandó a `Error` | `~/.local/state/carrusel-ig/replicar.log` en el Beelink | `tail` del log; lo escribe `replicar.sh` |
 
-Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
+Al reintentar, el worker **reutiliza `❌ postiz_media` si son los mismos ficheros en el mismo orden**: compara el `src` guardado de cada uno con el id del fichero que hay hoy en `media`, que va en la ruta de su URL de Notion (la firma cambia en cada lectura; la ruta no). Si se sustituye o se reordena una lámina, los vuelve a subir todos. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida, sin publicar nunca un fichero viejo. Sin un id reconocible (un enlace externo) no reutiliza nunca.
 
-> Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `❌ postiz_media` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
+**Si una pieza ya programada pasa a `Error` por una edición que no valida** (la hora borrada al cambiar la `Fecha`, sin media…), la versión anterior sigue en Postiz y sale a su hora: la fila en `Error` sigue reclamando su post (§9.7). Se corrige la fila, o se vacía `Status` si no debe salir.
 
 ## 9. El worker de n8n — reconciliación, no cola
 
@@ -691,7 +691,7 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 | Dentro del margen de seguridad **y ya tiene `❌ postiz_post_id`** (§9.3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
 | `❌ postiz_post_id` vacío | Crear |
 | Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** |
-| `❌ postiz_media` con valor | No re-subir los assets |
+| `❌ postiz_media` con los mismos ficheros, en el mismo orden | No re-subir los assets |
 | `Fecha` sin hora | `Error` — nunca se adivina la hora |
 | `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
 
@@ -714,7 +714,7 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
            colaboradores ⇒ ni carrusel ni story            lo aplica Postiz (§9.2)
 2. resuelve `cuenta` ──► integration.id                  (§7.2.1)
 3. si tiene ❌ postiz_post_id y no está publicado ──► DELETE primero
-4. si `❌ postiz_media` está vacío:
+4. si `❌ postiz_media` no es de estos mismos ficheros, en este orden:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
       SSH al host ──► normalizar-video.sh <url>     (desde 2026-08-15)
         ├─ mide con ffprobe (~2 s, sin descargar)
@@ -888,7 +888,7 @@ n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, 
 > ### ⚠️ El webhook es el camino rápido, no el único
 > La entrega es best-effort y sin reintento (§4.4.1): si n8n está caído cuando Postiz publica, ese aviso **se pierde para siempre**.
 >
-> Por eso el cron de las 06:00 hace además una **pasada de recuperación**: para toda fila en `Programado` cuya `Fecha` ya pasó con margen, consulta el estado real en Postiz y corrige. Es barato —va incluido en el `GET` que ya hace la retirada (§9.7)— y es lo único que evita que una fila se quede en `Programado` para siempre.
+> Por eso la retirada (§9.7) hace además una **pasada de recuperación**: para toda fila viva (`Listo`, `Programado` o `En Postiz (borrador)`) con post, `modo` distinto de `borrador` y la `Fecha` pasada hace más de 30 minutos, consulta el estado real en Postiz y corrige: `Publicado` con su enlace si salió; `Error` con su motivo si falló, si Postiz ya no tiene el post o si seguía como borrador porque se aprobó tarde. Es barato —va incluido en el `GET` que ya hace la retirada— y es lo único que evita que una fila con la fecha pasada se quede como estaba para siempre: el sync ya no la toca porque tiene post.
 
 > **`❌ release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration}]` (`posts.service.ts:927`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Si el webhook no está montado, ese campo se queda vacío para siempre.
 
@@ -950,20 +950,22 @@ El subflow de §9.2 itera sobre las filas de Notion. Todo lo que desaparece de e
 |---|---|
 | Se borra la fila | El post se publica igualmente |
 | `Status` vuelve de `Listo` a vacío | El post se publica igualmente |
-| `publish_at` se mueve fuera de la ventana | Se publica en la fecha vieja |
+| La `Fecha` se mueve a más de 15 días | Se publica en la fecha vieja |
 
 El segundo es el más traicionero: la regla "`status` ∈ (Idea, Draft) → ignorar" hace exactamente lo contrario de lo que la gente espera. Alguien retira un post a borrador para repensarlo, y sale publicado.
 
-**La pasada:** tras sincronizar la ventana, pedir a Postiz lo que tiene programado en ese mismo rango y **borrar todo lo que no tenga una fila viva detrás**.
+**La pasada:** pedir a Postiz lo que tiene programado en la ventana y **borrar todo lo que no tenga detrás una fila que lo quiera**. Corre a las 06:20 y **dentro de cada pasada del sync** (cron y botón), antes de crear nada: así aplazar una pieza o vaciar su `Status` y pulsar `Sync now` la retira en el acto, no a la mañana siguiente.
 
 ```
 GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
    └─ FILTRAR por state en el propio n8n           ← ver aviso
    └─ FILTRAR por creationMethod === 'API'         ← ver aviso rojo
    └─ para cada post aún no publicado en la ventana:
-        ¿sigue habiendo una fila viva en Notion que lo reclame?
-          (viva = cualquier Status puesto, Publicado y Error incluidos)
+        ¿alguna fila de Notion lo reclama?
+          (cualquier Status puesto, Publicado y Error incluidos,
+           salvo una fila viva cuya Fecha está a más de 15 días)
           no ──► DELETE /public/v1/posts/:id
+                 y si su fila estaba en Programado o En Postiz ──► Listo
 ```
 
 > ### 🔴 Sin filtrar por `creationMethod`, la retirada borra el trabajo hecho a mano
@@ -1296,7 +1298,7 @@ De las tres, `▶ Publicar en IG` es la que enseña `modo`, y es donde el manual
 |---|---|---|
 | **Sync Instagram desde Notion** (cron 06:00 + botón) | `eKxZPM4zjwhNb3vf` | **Activo** |
 | **Sync IG — SUBFLOW (una fila)** | `A0XMq6dLdAWvwMPv` | **Activo** |
-| **Retirada y recuperación (IG)** (cron 06:20) | `rxVcGlxSZjzzI5ez` | **Activo** |
+| **Retirada y recuperación (IG)** (cron 06:20 y dentro de cada pasada del sync) | `rxVcGlxSZjzzI5ez` | **Activo** |
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | **Activo** |
 | **Carruseles · Replicar (IG)** (cron 05:00 + botón «Replicar») | `w4GOMzxTXzd26ybD` | **Activo**. Solo lanza por SSH `/opt/apps/carrusel-ig/replicar.sh`, que vuelve al instante; todo lo demás está en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md` |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | — |
@@ -1345,7 +1347,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
-> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), el estado en reposo y la limpieza de sus propios ficheros.
+> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios **y que vuelve a subirlos si son otros ficheros**, la retirada, **la pieza aplazada a más de 15 días**, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), **la pieza aprobada tarde** (§9.4), el estado en reposo y la limpieza de sus propios ficheros.
 >
 > **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >
