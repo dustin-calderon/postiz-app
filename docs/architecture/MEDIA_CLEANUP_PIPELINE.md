@@ -72,7 +72,7 @@ Lo anticipaba el propio documento del pipeline: *«Si algún día Postiz volvier
 Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04:00) hace **sólo volcados de bases de datos y configuración**, sin una sola mención a Postiz, y aquel día ningún cron ni timer de systemd tocaba `/mnt/seagate`. Ni los medios ni la base de datos de Postiz estaban respaldados.
 
 > ### ⚠️ Desde el 2026-08-04 sí hay dos crons sobre `/mnt/seagate` — y ninguno borra
-> Los instaló [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) §7.1: **`02:40`** el espejo del disco entero a Drive y **`02:55`** el archivador curado de lo publicado. Los dos **sólo leen y copian**: no borran nada de `/uploads`, ni tocan la base de datos, ni interfieren con el workflow de limpieza.
+> Los describe [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) §2: **`02:40`** el espejo del disco entero a Drive y **`02:55`** el archivador curado de lo publicado. Los dos **sólo leen y copian**: no borran nada de `/uploads`, ni tocan la base de datos, ni interfieren con el workflow de limpieza.
 >
 > ### ✅ Y desde el 2026-08-05 la base de datos **sí** se respalda
 > `backup-daily.sh` no mencionaba Postiz ni una vez: su bucle de `pg_dump` recorre las bases de `postgres_core`, y Postiz vive en **su propio contenedor** (`postiz-postgres`), así que nunca entraba. Se añadió un volcado propio, que corre en el mismo cron de las 04:00 y **sube a R2** como el resto.
@@ -81,7 +81,7 @@ Y no había red debajo: `/opt/homeserver/backup/backup-daily.sh` (cron de las 04
 >
 > Lo que sigue siendo cierto es la otra mitad: **los medios no entran en `backup-daily.sh`**. Su segunda copia existe porque la hace el espejo a Drive de las 02:40, no porque el backup del servidor los cubra.
 
-**3650 no es «desactivar la limpieza».** El workflow sigue vivo y las dos fases siguen corriendo; lo que deja de ocurrir es la purga automática por antigüedad. La Phase 2 —los blobs de lo que alguien borra a mano— es la que se usa a diario, y no depende de este número. Volver a bajarlo sólo tendrá sentido cuando exista una segunda copia real de cada fichero: es lo que persigue [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md).
+**3650 no es «desactivar la limpieza».** El workflow sigue vivo y las dos fases siguen corriendo; lo que deja de ocurrir es la purga automática por antigüedad. La Phase 2 —los blobs de lo que alguien borra a mano— es la que se usa a diario, y no depende de este número. Volver a bajarlo exige que cada fichero tenga una segunda copia real; esa copia es el espejo nocturno de [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) §3.
 
 ---
 

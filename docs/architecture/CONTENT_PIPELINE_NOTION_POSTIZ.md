@@ -9,7 +9,7 @@
 >
 > Este documento explica **por qué** cada decisión es como es. Aquél enseña **cómo funciona**. Si sólo vas a leer uno y quieres operar el sistema, empieza por los diagramas.
 >
-> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md) · [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md)
+> **Relacionado:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md) · [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md)
 >
 > ### ⚠️ Si el pipeline «no hace nada», mira primero si el backend está vivo
 > El 2026-08-04 la API estuvo 2 h 38 min caída detrás de un contenedor que se
@@ -246,7 +246,7 @@ Según [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md):
 >
 > **Aplicado: `MEDIA_RETENTION_DAYS = 3650`** (§14.4). El procedimiento no es obvio —el workflow lleva la retención como argumento y hay que terminarlo y relanzarlo en Temporal, no basta con reiniciar el contenedor—: está en [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md).
 
-La afirmación que sí se sostiene, acotada: **para el material que pasa por el pipeline**, la copia de Postiz es derivada y reconstruible desde Notion. Para todo lo anterior a agosto de 2026, no. La retención larga es el parche que compra tiempo; la solución de raíz es el archivo en Drive ([PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md)), que da una segunda copia navegable a lo publicado, venga de Notion o no.
+La afirmación que sí se sostiene, acotada: **para el material que pasa por el pipeline**, la copia de Postiz es derivada y reconstruible desde Notion. Para todo lo anterior a agosto de 2026, no. La retención larga es el parche que compra tiempo; la solución de raíz es el archivo en Drive ([ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md)), que da una segunda copia navegable a lo publicado, venga de Notion o no.
 
 ---
 
@@ -281,7 +281,7 @@ Verificado en la base de datos de producción: las tres integraciones tienen `pr
 > que su BD conserva el nombre viejo. **No es un bug de datos ni hay que editar la BD a mano:** se
 > corrige reconectando la integración de Instagram desde la UI de Postiz. Mientras no se reconecte,
 > cualquier informe o `post.txt` generado desde esta tabla arrastrará el nombre retirado — que es
-> justo lo que pasa en `PLAN_ARCHIVO_DRIVE.md` §`post.txt`.
+> justo lo que pasa en `ARCHIVO_DRIVE.md` §`post.txt`.
 
 *(Existe además una integración de TikTok, `cmqjs6xnx0001q07q9aohapuv`, fuera del alcance de este documento.)*
 
@@ -1105,7 +1105,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `Status`, única — antes eran dos y se fusionaron (§7.2) |
 | Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
-| Archivo en Drive | **Espejo a las 02:40 y archivador a las 02:55**, que escribe `❌ drive_url`. Fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
+| Archivo en Drive | **Espejo a las 02:40 y archivador a las 02:55**, que escribe `❌ drive_url`. Fuera del camino de publicación → [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 | Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Duplicados | **`externalId` en el fork**, con cerrojo de transacción — no con índice único, por el borrado blando (§9.6). Implementado y verificado con grupo de control el 2026-08-24 |
@@ -1211,7 +1211,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
-**11 propiedades del pipeline** (§7.2): `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. `❌ drive_url` la escribe el archivador de Drive ([PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md)).
+**11 propiedades del pipeline** (§7.2): `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. `❌ drive_url` la escribe el archivador de Drive ([ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md)).
 
 > ### ⚠️ Las descripciones de propiedad no se escriben por la API REST — y se borran solas
 >
@@ -1322,7 +1322,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 | `/opt/homeserver/.env` | **`N8N_SYNC_IG_BUTTON_PATH`** añadido — ruta secreta del botón de Notion |
 | `/opt/homeserver/postiz/postiz.env` | **`MAX_URL_UPLOAD_BYTES=1073741824`** añadido — 1 GiB (§9.2) |
 | `/opt/homeserver/postiz/postiz.env` | **`MEDIA_RETENTION_DAYS=3650`** añadido (§4.7). Copia: `postiz.env.bak-20260804-retention`. **No basta con reiniciar el contenedor**: hubo que terminar y relanzar el workflow en Temporal — ver [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) |
-| Google Drive | Remoto rclone **`gdrive-work`** (cuenta de Workspace) + dos carpetas destino, verificadas con escritura real → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
+| Google Drive | Remoto rclone **`gdrive-work`** (cuenta de Workspace) + dos carpetas destino → [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 
 Todos verificados presentes. `API_LIMIT=300`, `STORAGE_PROVIDER=local`, `TZ` vacío y `CLOUDFLARE_BUCKET_URL` sin barra final, también.
 
