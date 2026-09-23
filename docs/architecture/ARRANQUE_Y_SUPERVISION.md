@@ -151,7 +151,9 @@ healthcheck:
 
 Vive en `/opt/homeserver/postiz/docker-compose.yml` (copia previa:
 `docker-compose.yml.bak-20260805-healthcheck`). Se usa `node -e` porque la
-imagen no trae `wget` ni `curl`.
+imagen no trae `wget` ni `curl`. El compose, su `.bak` y `postiz.env` llevan
+contraseñas y van en `600`, como el `.env` del homeserver. `build.sh` los edita
+con `sed -i`, que conserva el modo.
 
 > **`autoheal` no reinicia este contenedor.** Corre con
 > `AUTOHEAL_CONTAINER_LABEL=autoheal` y `postiz` no lleva esa etiqueta. Un
