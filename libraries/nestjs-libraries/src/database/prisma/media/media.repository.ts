@@ -3,10 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
 import { MoveMediaDto } from '@gitroom/nestjs-libraries/dtos/media/move.media.dto';
-import { RenameFolderDto } from '@gitroom/nestjs-libraries/dtos/media/rename.folder.dto';
-
-/** Path separator for virtual hierarchical folders (e.g. "Brand/SubFolder"). */
-const FOLDER_SEP = '/';
+import {
+  RenameFolderDto,
+  renamedFolderPath,
+} from '@gitroom/nestjs-libraries/dtos/media/rename.folder.dto';
 
 /** Sentinel value used in the query-string to request only unfoldered items. */
 const ROOT_FOLDER_SENTINEL = '__root__';
@@ -125,25 +125,23 @@ export class MediaRepository {
    *   - the folder itself: "Citem"          → "NewBrand"
    *   - nested folders:    "Citem/Diseños"  → "NewBrand/Diseños" (any depth)
    *
-   * Which folders are affected is decided here, comparing values: the exact
-   * name, or the name followed by the separator. Prisma's `startsWith` is a
-   * LIKE that does not escape `_` or `%`, so it only narrows the lookup; left
-   * alone it would let "A_B" reach "AxB/…".
+   * Which folders are affected, and where each one goes, is decided by
+   * `renamedFolderPath` — the same function the media view uses to follow the
+   * open folder, so both apply one rule. It compares values; Prisma's
+   * `startsWith` is a LIKE that does not escape `_` or `%`, so here it only
+   * narrows the lookup (left alone it would let "A_B" reach "AxB/…").
    *
-   * Only the prefix is swapped ("Design/Design" → "Art/Design"). Rows are
-   * updated by id, and only while they are still in the folder they were read
-   * from, so no row is renamed twice when a new path equals an old one
-   * ("A" → "A/B" while "A/B" exists), nor pulled back after a concurrent move.
-   * All updates run in one transaction: every row is renamed or none is.
+   * Rows are updated by id, and only while they are still in the folder they
+   * were read from, so no row is renamed twice when a new path equals an old
+   * one ("A" → "A/B" while "A/B" exists), nor pulled back after a concurrent
+   * move. All updates run in one transaction: every row is renamed or none is.
    */
   async renameFolder(org: string, dto: RenameFolderDto): Promise<{ count: number }> {
     const oldTrimmed = dto.oldName.trim();
-    const newTrimmed = dto.newName.trim();
-    if (oldTrimmed === newTrimmed) {
+    if (oldTrimmed === dto.newName.trim()) {
       return { count: 0 };
     }
 
-    const nestedPrefix = `${oldTrimmed}${FOLDER_SEP}`;
     const candidates = await this._media.model.media.findMany({
       where: {
         organizationId: org,
@@ -153,12 +151,13 @@ export class MediaRepository {
       select: { id: true, folder: true },
     });
 
-    const idsByFolder = new Map<string, string[]>();
+    const renames = new Map<string, { target: string; ids: string[] }>();
     for (const { id, folder } of candidates) {
-      if (folder !== oldTrimmed && !folder.startsWith(nestedPrefix)) {
+      const target = renamedFolderPath(folder, dto.oldName, dto.newName);
+      if (target === null) {
         continue;
       }
-      idsByFolder.set(folder, [...(idsByFolder.get(folder) ?? []), id]);
+      renames.set(folder, { target, ids: [...(renames.get(folder)?.ids ?? []), id] });
     }
 
     // Cast to PrismaClient: PrismaRepository<'media'>.model is typed as
@@ -166,10 +165,10 @@ export class MediaRepository {
     // full PrismaService which extends PrismaClient (and therefore has $transaction).
     const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
     const results = await prisma.$transaction(
-      [...idsByFolder].map(([folder, ids]) =>
+      [...renames].map(([folder, { target, ids }]) =>
         prisma.media.updateMany({
           where: { id: { in: ids }, folder },
-          data: { folder: newTrimmed + folder.slice(oldTrimmed.length) },
+          data: { folder: target },
         })
       )
     );
