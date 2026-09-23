@@ -58,7 +58,7 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada despliegue es una imagen nueva, y estos hallazgos vuelven a salir esa noche. Los juzga otra vez el triage del Beelink (`revalidar-veredictos.prompt.md` en Instalar-Home-Server), repitiendo las comprobaciones de este documento: es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** Cada despliegue es una imagen nueva, y estos hallazgos vuelven a salir en la pasada nocturna de `check-imagenes-publicas.py`. Cuando el escáner los manda al bus, el triage del Beelink los juzga otra vez (`revalidar-veredictos.prompt.md` en Instalar-Home-Server), repitiendo las comprobaciones de este documento: es el precio de que las aceptaciones caduquen.
 
 **Qué la vuelve urgente.** Que la lista crezca, o que un hallazgo cambie de versión y ya no se pueda volver a aceptar con las mismas comprobaciones.
 

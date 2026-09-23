@@ -1,6 +1,10 @@
 # Las PR de seguridad de Dependabot se fusionan solas cuando pasan la puerta.
 # Al fusionar, el Beelink las despliega.
 #
+# Depende de dos ajustes del repo, que cambia el owner: permitir el auto-merge,
+# y proteger custom/postiz-dc exigiendo `puerta` sobre una PR al día con la
+# base. Sin el primero, el paso de fusionar falla y la PR se queda abierta.
+#
 # La regla de la flota es no fusionar una PR de Dependabot tal cual, porque su
 # lockfile se resolvió contra la rama del día en que nació y puede devolver un
 # paquete a una versión vulnerable con el CI en verde (Instalar-Home-Server,

@@ -152,8 +152,8 @@ healthcheck:
 Vive en `/opt/homeserver/postiz/docker-compose.yml` (copia previa:
 `docker-compose.yml.bak-20260805-healthcheck`). Se usa `node -e` porque la
 imagen no trae `wget` ni `curl`. El compose, su `.bak` y `postiz.env` llevan
-contraseñas y van en `600`, como el `.env` del homeserver. `build.sh` los edita
-con `sed -i`, que conserva el modo.
+contraseñas y van en `600`, como el `.env` del homeserver. `build.sh` y
+`desplegar.sh` cambian la imagen del compose con `sed -i`, que conserva el modo.
 
 > **`autoheal` no reinicia este contenedor.** Corre con
 > `AUTOHEAL_CONTAINER_LABEL=autoheal` y `postiz` no lleva esa etiqueta. Un
@@ -183,7 +183,7 @@ Lo que importa de su salida:
 | `sentry_cpu_profiler` cargado | «no, en ninguno»: **no debe estar** en ningún proceso node |
 | API y frontend por nginx | `HTTP 200` en `/api/auth/can-register`, `307` en `/` |
 | datos | los mismos recuentos de `Media`, `Post` y ficheros que antes del despliegue |
-| workflows vivos | los `postWorkflow…` de los posts programados siguen `Running`; «NO SE PUDO CONSULTAR» es un fallo, no un «no hay» |
+| workflows vivos | `missing-post-workflow` y `refresh-due-tokens-workflow`, que el backend rearranca en cada arranque, y los `postWorkflow…` de los posts programados, todos `Running`; «NO SE PUDO CONSULTAR» es un fallo, no un «no hay» |
 
 Un arranque sano llega a `Backend is running` en **~12 s** desde que pm2 lanza
 el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
@@ -227,8 +227,9 @@ ssh dchomeserver 'nohup /opt/homeserver/postiz/desplegar.sh >> /opt/homeserver/o
 - **`build.sh`** ([copia versionada](./scripts/build.sh)) construye
   `postiz-custom:local-<sha>`. Una etiqueta por commit hace que los veredictos
   de `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) caduquen con cada
-  imagen: `check-imagenes-publicas.py` los vuelve a sacar esa noche y el triage
-  los juzga otra vez, con las comprobaciones de `docs/DEUDA_TECNICA.md`.
+  imagen: `check-imagenes-publicas.py` los vuelve a sacar en su pasada nocturna
+  y, cuando los manda al bus, el triage los juzga otra vez con las
+  comprobaciones de `docs/DEUDA_TECNICA.md`.
 - **El volcado va antes del `up -d` y se queda.** El arranque aplica el esquema
   con `prisma db push --accept-data-loss`, así que volver a la imagen anterior
   no deshace un cambio de esquema. Cómo se restaura, en la cabecera de

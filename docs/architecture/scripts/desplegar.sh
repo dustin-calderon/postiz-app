@@ -6,9 +6,10 @@
 #   desplegar.sh --si-hay-cambios   solo si cambió algo que entra en la imagen
 #                                   (lo que lanza el cron cada 10 minutos)
 #
-# Fusionar a custom/postiz-dc es el GO: la rama la protege la puerta del CI, y
-# lo que llega a ella se despliega aquí. El detalle y la vuelta atrás a mano,
-# en docs/architecture/ARRANQUE_Y_SUPERVISION.md, «Despliegue».
+# Fusionar a custom/postiz-dc es el GO: lo que llega a la rama se despliega
+# aquí, así que antes tiene que pasar la puerta del CI (.github/workflows/ci.yml).
+# El detalle y la vuelta atrás a mano, en
+# docs/architecture/ARRANQUE_Y_SUPERVISION.md, «Despliegue».
 #
 # Copia viva: /opt/homeserver/postiz/desplegar.sh. Es una copia, y no el script
 # del clon, para que un push al repo no pueda ejecutar nada en el host sin que

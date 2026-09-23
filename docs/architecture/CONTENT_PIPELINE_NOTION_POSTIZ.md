@@ -1081,9 +1081,9 @@ El equipo debe saberlo para que nadie se alarme al no encontrar en Postiz algo q
 ### 9.10 Cuando un workflow falla
 
 Un fallo que el propio workflow maneja se ve en Notion: la fila pasa a `Error`
-con su `❌ error_log`. Un fallo que **no** maneja (Notion no contesta a la
-consulta de las 06:00, un nodo de código que revienta) paraba la ejecución, y
-solo quedaba en el historial de n8n, donde nadie lo miraba.
+con su `❌ error_log`. Uno que **no** maneja (Notion no contesta a la consulta
+de las 06:00, un nodo de código que revienta) para la ejecución entera, y de
+ese se encargan los reintentos y el aviso:
 
 - **Reintentos.** Todo nodo HTTP que llama a Notion o a Postiz se reintenta 3
   veces, con 5 s entre intentos. `POST /public/v1/posts` también: lleva el

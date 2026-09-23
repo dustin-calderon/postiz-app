@@ -3,6 +3,10 @@
 # triage/<origen> con el arreglo de una incidencia. Esto las abre como PR contra
 # custom/postiz-dc, con el mensaje de su último commit como descripción, para
 # que se aprueben desde GitHub con la puerta a la vista. Fusionar despliega.
+#
+# Necesita el ajuste del repo «Allow GitHub Actions to create and approve pull
+# requests», que cambia el owner: sin él, `gh pr create` falla y la rama se
+# queda sin PR.
 name: Ramas propuestas
 
 on:
