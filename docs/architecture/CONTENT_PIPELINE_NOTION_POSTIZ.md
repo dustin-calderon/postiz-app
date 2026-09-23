@@ -603,7 +603,22 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 
 ### 8.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo` vaciando `❌ error_log`.
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo`; el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha, y con él el sync la ignora (§9.2).
+
+**Qué dice `❌ error_log`, y de quién es el fallo.** Lo lee una persona, así que dice el porqué y qué hacer; el detalle técnico (el JSON de Postiz, el stack de axios) se queda en la ejecución de n8n.
+
+| Lo escribe | Forma | El fallo es de |
+|---|---|---|
+| `Planificar` (sync) | los motivos de la validación, separados por `·` («sin copy · sin media») | la fila |
+| `Recolectar media` (subflow) | «Subiendo los assets a Postiz: `<fichero>`: `<motivo>`», con el motivo de `normalizar-video.sh` o el mensaje con el que Postiz rechazó el fichero | casi siempre el fichero |
+| `Formatear error` (subflow), si Postiz contesta con `provider` | «Postiz rechazó la pieza: `<mensaje de Postiz>`. Corrígelo en la fila…» | la fila: es la validación del contenido (`PostValidationException`, §4.5) |
+| `Formatear error`, cualquier otra respuesta | «Postiz respondió `<código>`: `<mensaje>`. No es un fallo de la fila…» | el sistema (la petición, la API key, el límite) |
+| `Formatear error`, sin respuesta | «Postiz no respondió (`<error de red>`). No es un fallo de la fila…» | el sistema |
+| `Formatear error de subida`, si el SSH falla | «n8n no pudo ejecutar la subida en el servidor…» | el sistema |
+| `Interpretar payload` (receptor) | «Postiz dio error al publicar: `<cause.failure.message>`…» | Instagram o Postiz, al publicar |
+| `Reconciliar` (retirada, 06:20) | textos fijos de la recuperación | — |
+
+Esos nodos viven en n8n, no en git. La batería de pruebas (§14.3) comprueba la subida con un fichero ilegible y el rechazo de Postiz con un copy de más de 2200 caracteres.
 
 Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
@@ -1283,7 +1298,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 
 > ### La batería de pruebas — `/opt/homeserver/n8n-workflows/suite-pruebas-postiz.py`
 >
-> **39 comprobaciones contra producción sin publicar nada en Instagram.** Se ejecuta con el entorno del servidor cargado:
+> **Comprobaciones contra producción sin publicar nada en Instagram.** Se ejecuta con el entorno del servidor cargado:
 >
 > ```
 > set -a; . /opt/homeserver/.env; set +a; python3 /opt/homeserver/n8n-workflows/suite-pruebas-postiz.py
@@ -1297,7 +1312,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
-> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, **la ruta de error de la subida**, el estado en reposo y la limpieza de sus propios ficheros.
+> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios, la retirada, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), el estado en reposo y la limpieza de sus propios ficheros.
 >
 > **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >
