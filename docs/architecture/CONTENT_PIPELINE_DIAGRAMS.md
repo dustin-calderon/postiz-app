@@ -68,7 +68,9 @@ Postiz nunca escribe en Notion. Dos escritores serían ninguna verdad.
 ## 2. El planificador — `eKxZPM4zjwhNb3vf`
 
 Tres disparadores, un solo camino. El botón **no** manda una fila: relee la cola entera,
-igual que el cron. Una sola implementación no puede divergir de sí misma.
+igual que el cron. Una sola implementación no puede divergir de sí misma. Y las pasadas van
+de una en una: antes de leer, cada una espera a que terminen las anteriores, porque dos a la
+vez deciden con lo que leyeron al empezar y pueden pisarse.
 
 Lo único que difiere es **cuándo responde cada entrada**, no lo que hace: la ruta del botón
 contesta `202` al instante porque Notion corta la petición a los pocos segundos y descarta el
@@ -86,11 +88,19 @@ flowchart TD
 
     R202["Responder 202<br/>~140 ms · la pasada sigue por detrás"]
 
-    CRON --> LEER
-    WH1 --> LEER
+    TURNO{"¿pasadas anteriores en marcha?<br/>turno-sync.sh por SSH"}
+    ESPERA["Esperar 10 s"]
+
+    CRON --> TURNO
+    WH1 --> TURNO
     WH2 --> R202
-    R202 --> LEER
+    R202 --> TURNO
+    TURNO -->|"ninguna"| LEER
+    TURNO -->|"alguna"| ESPERA
+    ESPERA --> TURNO
     LEER --> PLAN
+
+    PLAN -->|"una vez, antes de crear"| RET["Retirada y recuperación<br/>subworkflow · §4"]
 
     PLAN -->|"crear · recrear"| LOOP["Recorrer filas<br/>batch = 1"]
     PLAN -->|"ERROR"| MARCAR["Notion: marcar Error<br/>Status=Error + motivo"]

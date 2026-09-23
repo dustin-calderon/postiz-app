@@ -38,6 +38,9 @@ def de_n8n(cuerpo):
 def sql(q):
     return subprocess.check_output(['docker','exec','postiz-postgres','psql','-U','postiz','-d','postiz_db','-tAc',q]).decode().strip()
 
+def n8n_sql(q):
+    return subprocess.check_output(['docker','exec','postgres_core','psql','-U','postgres','-d','n8n_db','-tAc',q]).decode().strip()
+
 def check(nombre, cond, detalle=""):
     (ok if cond else fail).append(nombre)
     print("  %s %s %s" % ("PASA " if cond else "FALLA", nombre, detalle))
@@ -119,6 +122,32 @@ dt_btn = time.time() - t_btn
 check("botón de Notion responde al instante", c == 202 and '"ok":true' in r and dt_btn < 5,
       "(%d, %.2fs)" % (c, dt_btn))
 c, _ = hit(W + RECV, "[]"); check("receptor acepta payload vacío", c == 200, "(%d)" % c)
+
+print(); print("=" * 62); print("1b · LAS PASADAS DEL SYNC VAN DE UNA EN UNA"); print("=" * 62)
+# Dos pasadas a la vez deciden cada una con lo que leyeron al empezar y pueden
+# pisarse. El sync pregunta su turno al Beelink (turno-sync.sh) antes de leer
+# Notion: si alguien conectara un disparador directo a la lectura, todo seguiría
+# funcionando y las pasadas volverían a solaparse sin ningún error. Se lanzan dos
+# con 3 s de diferencia: en fila, la segunda acaba una pasada entera después.
+SYNC_WF = "eKxZPM4zjwhNb3vf"
+desde = n8n_sql("""SELECT coalesce(max(id), 0) FROM execution_entity WHERE "workflowId"='%s';""" % SYNC_WF)
+hilos = []
+for _ in range(2):
+    hilos.append(threading.Thread(target=hit, args=(W + "postiz-sync-ig",), kwargs={"hdr": {"X-Sync-Token": TOKEN}}))
+    hilos[-1].start(); time.sleep(3)
+for h in hilos: h.join()  # la segunda puede volver con un 524 de Cloudflare: la pasada sigue en n8n
+for _ in range(60):
+    if n8n_sql("""SELECT count(*) FROM execution_entity WHERE "workflowId"='%s' AND id > %s
+                  AND status IN ('new','running','waiting');""" % (SYNC_WF, desde)) == "0": break
+    time.sleep(5)
+pasadas = [l.split("|") for l in n8n_sql("""SELECT status, extract(epoch FROM "startedAt"), extract(epoch FROM "stoppedAt")
+    FROM execution_entity WHERE "workflowId"='%s' AND id > %s ORDER BY id;""" % (SYNC_WF, desde)).splitlines() if l]
+if len(pasadas) != 2:
+    omite("la segunda pasada espera a la primera", "hubo %d pasadas, no las 2 de la prueba" % len(pasadas))
+else:
+    (e1, i1, f1), (e2, i2, f2) = [(e, float(i), float(f)) for e, i, f in pasadas]
+    check("la segunda pasada espera a la primera", e1 == e2 == "success" and f2 - f1 > (f1 - i1) / 2,
+          "(%s y %s; la 2ª acaba %.0f s después, la 1ª duró %.0f s)" % (e1, e2, f2 - f1, f1 - i1))
 
 print(); print("=" * 62); print("2 · VALIDACIONES QUE DEBEN DAR Error"); print("=" * 62)
 casos = [

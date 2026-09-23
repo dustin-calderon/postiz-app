@@ -663,7 +663,7 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 | URL | Auth | Respuesta | |
 |---|---|---|---|
 | `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **`202` al instante** | **← la que usa el botón** |
-| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada | para scripts y `curl` |
+| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada (o `524` de Cloudflare si espera turno más de ~100 s: la pasada termina igual) | para scripts y `curl` |
 
 El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, relee el calendario por su cuenta.
 
@@ -672,9 +672,11 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 >
 > El nodo del botón usa `responseMode: responseNode` y responde **`202`** en ~140 ms; la pasada sigue por detrás. El resultado autoritativo se escribe donde siempre: en la fila de Notion (`Status`, `❌ error_log`).
 >
-> **La ruta con cabecera NO cambia: sigue siendo síncrona a propósito.** Los scripts y la batería de pruebas disparan y leen el resultado en la misma llamada; volverla asíncrona obligaría a reescribir la única red de seguridad real para resolver un problema que sólo tiene Notion. No rompe la regla de «nunca dos implementaciones»: los dos webhooks entran al **mismo** `Notion: leer cola` y hacen exactamente el mismo trabajo — lo que difiere es el contrato de transporte de cada llamante.
+> **La ruta con cabecera NO cambia: sigue siendo síncrona a propósito.** Los scripts y la batería de pruebas disparan y leen el resultado en la misma llamada; volverla asíncrona obligaría a reescribir la única red de seguridad real para resolver un problema que sólo tiene Notion. No rompe la regla de «nunca dos implementaciones»: los dos webhooks entran al **mismo** turno y a la misma `Notion: leer cola`, y hacen exactamente el mismo trabajo — lo que difiere es el contrato de transporte de cada llamante.
 >
-> **Dos pasadas solapadas no duplican nada**, pero sí pueden escribir con datos viejos (§14.5). Con respuesta inmediata es fácil lanzar dos a la vez. El margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`, y la identidad externa (§9.6) hace que la segunda creación de una fila nueva devuelva el post de la primera.
+> **Las pasadas van de una en una, en el orden en que llegan.** Con respuesta inmediata es fácil lanzar varias a la vez, y dos pasadas a la vez deciden cada una con lo que leyeron al empezar: el `Error` de una puede pisar el resultado de otra posterior, y una edición hecha con otra pasada en marcha puede no llegar a Postiz. Por eso, antes de leer Notion, cada pasada pregunta al Beelink cuántas pasadas anteriores siguen en marcha ([`turno-sync.sh`](./scripts/turno-sync.sh), por la clave SSH restringida) y espera de 10 en 10 s mientras no sean 0. El límite de concurrencia de n8n no sirve: es de toda la instancia. Una ejecución de más de 30 minutos no cuenta, para que una colgada no pare el sync para siempre. Si no se puede saber el turno, la pasada falla y avisa el bus (§9.10); no sigue a ciegas.
+>
+> Duplicar tampoco puede, y no por el turno: el margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`, y la identidad externa (§9.6) hace que la segunda creación de una fila nueva devuelva el post de la primera.
 
 > La variante con cabecera sería algo mejor —un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no— y la UI de Notion **sí** admite encabezados personalizados. Cambiarlo es editar la automatización del botón; no urge, porque la ruta viaja cifrada bajo HTTPS.
 
@@ -1094,6 +1096,7 @@ ese se encargan los reintentos y el aviso:
   la respuesta, la segunda devuelve el mismo post y no lanza otra publicación.
   En un nodo con salida de error, n8n agota los intentos antes de tomarla. La
   subida por SSH **no** se reintenta: repetirla subiría el fichero dos veces.
+  La consulta del turno por SSH, que solo lee, sí.
 - **Aviso.** Los cinco workflows del pipeline (sync, subflow, retirada,
   receptor y réplica de carruseles) tienen de *error workflow* «Bus de
   incidencias · fallos de n8n y caídas de Kuma». Ese workflow encola el fallo
@@ -1144,7 +1147,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | ~~5~~ | ~~Qué pasa si el sync entero falla~~ | — | **Resuelta:** cada nodo HTTP se reintenta 3 veces y, si aun así falla, el bus de incidencias avisa con el workflow, el nodo y el error (§9.10) |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
-| 8 | Que las pasadas del sync no se solapen | — | Cada pasada esperaría a las anteriores del mismo workflow, que n8n lista por su API (`GET /executions?workflowId=…&status=running`); su límite de concurrencia es de toda la instancia. Exige guardar en n8n una credencial con una clave de su propia API. El problema, en §14.5 |
+| ~~8~~ | ~~Que las pasadas del sync no se solapen~~ | — | **Resuelta:** cada pasada espera su turno (§9.1). La consulta va por la clave SSH restringida y no por la API de n8n, para no guardar en n8n una clave que lo abre entero |
 
 **Resueltas:**
 
@@ -1167,7 +1170,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 | Quién aprueba una fila `Por replicar` | **Una persona, María**, cambiando `modo` a `programar`. La réplica la deja siempre en `borrador` (§7.2) |
 
-> **Ninguna de las abiertas bloquea el uso diario.** La #7 es una incógnita que se despejará sola en la primera publicación con colaboradores; la #8 importa cuando se edita y se pulsa `Sync now` en varias filas seguidas.
+> **La abierta no bloquea el uso diario.** La #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
 
 ## 12. Riesgos
 
@@ -1346,13 +1349,13 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > **Desde el 2026-08-16 también `normalizar-video.sh`**, por el mismo motivo y con la misma regla: es la puerta por la que pasa todo el media y sólo existía en `/opt/homeserver/postiz/`. No lleva secretos —el `ORG` es un id, y la `apiKey` la lee de la base al ejecutarse—, así que puede ir al repositorio tal cual.
 >
-> **`n8n-ssh-wrapper.sh` también está en `scripts/`**, con la misma regla: es el comando forzado (`authorized_keys`) de la clave SSH de n8n, así que decide qué puede ejecutar n8n en el host si sus credenciales caen. Permite exactamente dos cosas: `normalizar-video.sh <url>` y `/opt/apps/carrusel-ig/replicar.sh` sin argumentos.
+> **`n8n-ssh-wrapper.sh` también está en `scripts/`**, con la misma regla: es el comando forzado (`authorized_keys`) de la clave SSH de n8n, así que decide qué puede ejecutar n8n en el host si sus credenciales caen. Lo que permite, y por qué cada cosa, lo dice su cabecera.
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
-> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios **y que vuelve a subirlos si son otros ficheros**, la retirada, **la pieza aplazada a más de 15 días**, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), **la pieza aprobada tarde** (§9.4), el estado en reposo y la limpieza de sus propios ficheros.
+> Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), **que las pasadas van de una en una** (§9.1), el reintento que reutiliza los medios **y que vuelve a subirlos si son otros ficheros**, la retirada, **la pieza aplazada a más de 15 días**, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), **la pieza aprobada tarde** (§9.4), el estado en reposo y la limpieza de sus propios ficheros.
 >
-> **Se lanza cuando nadie está editando el calendario.** Sus pasadas son pasadas completas del sync sobre las filas reales, así que se solapan con las de quien esté trabajando y pueden dejarle filas en `Error` (§14.5, pasadas solapadas).
+> **Se lanza cuando nadie está pulsando `Sync now`.** Sus pasadas son pasadas completas del sync sobre las filas reales y esperan su turno detrás de las de quien esté trabajando (§9.1); si esperan más de ~100 s, Cloudflare devuelve `524` antes de que la pasada termine y la batería leería el resultado antes de tiempo.
 >
 > **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >
@@ -1403,7 +1406,6 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | **Más de 100 filas accionables en el sync** | La consulta del sync no pagina: **falla a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Lee solo los estados vivos, que no se acumulan. La de la retirada, que sí crece, pagina (§9.7) |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
 | **Ficheros sustituidos** | Al cambiar o reordenar los ficheros de una fila ya subida, el sync sube los nuevos; los anteriores quedan en Postiz sin post, y ninguna limpieza recoge un fichero que nunca se publicó ([MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)) |
-| **Pasadas del sync solapadas** | Cada `Sync now` lanza una pasada completa, así que pulsarlo en varias filas seguidas las solapa. Cada pasada decide con lo que leyó al empezar: si la fila cambia entretanto, su `Error` puede pisar el resultado de una pasada posterior (la fila queda en `Error` con la pieza programada), y una edición hecha con otra pasada en marcha puede no llegar a Postiz hasta la siguiente. Pendiente (§11, #8) |
 | **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus de incidencias (§9.10). Lo ya programado en Postiz sigue en pie; lo editado ese día no llega hasta la siguiente pasada o el botón |
 
 > **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en la subida parcial y en los ficheros sustituidos de arriba.
