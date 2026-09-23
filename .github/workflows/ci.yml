@@ -1,0 +1,43 @@
+# La puerta de custom/postiz-dc. Lo que llega a esta rama se despliega solo en
+# el Beelink (docs/architecture/ARRANQUE_Y_SUPERVISION.md, «Despliegue»), así
+# que lo que no pasa por aquí no debería fusionarse.
+#
+# Corre en cada push, a cualquier rama: el resultado se ata al commit, y una PR
+# lo enseña aunque la haya abierto un workflow (las PR que abre GITHUB_TOKEN no
+# disparan `pull_request`). Es lo mismo que construye Dockerfile.dev, más los tests.
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  puerta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # La versión de pnpm sale de `packageManager` y la de Node de `volta`,
+      # las dos de package.json: las mismas que usa la imagen.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm test
+
+      - run: pnpm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
