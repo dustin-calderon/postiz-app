@@ -16,12 +16,15 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 ---
 
-## Credenciales generadas con `Math.random`: hay que rotarlas
+## Credenciales generadas con `Math.random`: se decide no rotarlas
 
-**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
+**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que **ese mismo proceso** generara. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
 
-**Cómo se cierra.** Regenerando las API keys que había antes del despliegue de `8fb61ee4` (pantalla de API pública de cada organización, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. La incidencia `postiz-api-keys` del bus de Instalar-Home-Server guarda la huella de cada una y el comando que la calcula; el triage la da por resuelta cuando ninguna coincide. `updatedAt` no sirve de prueba: cambia con cualquier edición de la organización.
+**Por qué no se rotan.** Esa última condición es la que manda, y las fechas la cierran. Las tres claves vivas se crearon con sus organizaciones —dos el 2026-06-02 y una el 2026-07-28—, y `Math.random` se siembra de nuevo cada vez que arranca el proceso. Los procesos que las fabricaron murieron hace meses: el contenedor reinicia con cada despliegue. Recoger salidas de `/t` hoy reconstruye el generador de hoy, que nunca generó esas claves, y la ventana no se puede volver a abrir porque `/t` ya pide Access. Para que estuvieran comprometidas alguien tendría que haber estado recogiendo salidas en esos dos momentos concretos, contra una instalación recién levantada.
 
+Sigue sin poderse demostrar que nadie lo hiciera: esto acota la probabilidad, no la lleva a cero. Rotar cuesta poco y es defendible; lo que no es defendible es pedirlo cada semana como si fuera una exposición viva.
+
+**Qué la reabre.** Un post, un canal conectado o una llamada a `/api/public/v1` que no reconozcas; o descubrir que alguna de estas tres claves se generó después de la última vez que arrancó el proceso que corre ahora. Las huellas y el comando que las calcula están en la incidencia `postiz-api-keys` del bus de Instalar-Home-Server.
 ---
 
 ## Dependencias críticas que se despliegan y solo se arreglan saltando de versión mayor
