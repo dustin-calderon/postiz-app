@@ -19,14 +19,6 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 ---
 
-## Renombrar una carpeta de medios falla siempre
-
-**Qué pasa.** `renameFolder` (`media.repository.ts`) usa SQL crudo con `substring(folder FROM $n)`, Prisma manda `$n` como `bigint` y Postgres 17 no tiene `substring(text, bigint)`: todo `PUT /media/rename-folder` devuelve 500 y el frontend no lo avisa. Además, su `LIKE` no escapa `_` ni `%`, así que, si ejecutara, alcanzaría carpetas ajenas.
-
-**Cómo se cierra.** Ya está arreglado en `custom/postiz-dc` (PR #5: Prisma en vez de SQL crudo, las carpetas elegidas comparando valores, en una transacción). Se cierra al desplegarlo: producción sigue con la imagen anterior hasta entonces.
-
----
-
 ## Credenciales generadas con `Math.random`: hay que rotarlas
 
 **Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t`, sin login, devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
