@@ -36,7 +36,7 @@ import { GetNotificationsDto } from '@gitroom/nestjs-libraries/dtos/notification
 import { Readable } from 'stream';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer, stream: fileTypeStream } = require('file-type');
+const { fileTypeFromBuffer: fromBuffer, fileTypeStream } = require('file-type');
 
 const PUBLIC_API_ALLOWED_MIME = new Set<string>([
   'image/jpeg',

@@ -8,7 +8,7 @@ import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { Readable } from 'stream';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer } = require('file-type');
+const { fileTypeFromBuffer: fromBuffer } = require('file-type');
 
 // Same allow-list as the public API /upload-from-url route.
 const ALLOWED_MIME = new Set<string>([

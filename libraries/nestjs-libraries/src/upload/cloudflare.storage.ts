@@ -10,7 +10,7 @@ import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/we
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { parseDataUrl } from '@gitroom/nestjs-libraries/upload/data.url';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer } = require('file-type');
+const { fileTypeFromBuffer: fromBuffer } = require('file-type');
 
 const ALLOWED_MIME_TYPES = new Set<string>([
   'image/jpeg',

@@ -15,7 +15,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer } = require('file-type');
+const { fileTypeFromBuffer: fromBuffer } = require('file-type');
 
 const ALLOWED_EXT_TO_MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
