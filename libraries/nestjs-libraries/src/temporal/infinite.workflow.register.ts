@@ -7,12 +7,16 @@ export class InfiniteWorkflowRegister implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     if (!!process.env.RUN_CRON) {
+      // It holds no state between passes, so each start replaces the running
+      // execution: after a deploy it runs the code just deployed, and the old
+      // missingPostWorkflow gives way to its V2 under the same id.
       try {
         await this._temporalService.client
           ?.getRawClient()
-          ?.workflow?.start('missingPostWorkflow', {
+          ?.workflow?.start('missingPostWorkflowV2', {
             workflowId: 'missing-post-workflow',
             taskQueue: 'main',
+            workflowIdConflictPolicy: 'TERMINATE_EXISTING',
           });
       } catch (err) {}
 
