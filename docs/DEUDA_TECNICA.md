@@ -108,4 +108,4 @@ gh api --paginate 'repos/dustin-calderon/postiz-app/dependabot/alerts?state=open
         | "\(.security_advisory.severity) \(.dependency.package.name) \(.dependency.relationship)"' | sort | uniq -c | sort -rn
 ```
 
-**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Para cada uno, subirlo dentro de su mayor o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.
+**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. `axios` se arregla dentro de su versión mayor. Los otros tres solo se arreglan saltando de mayor (en `sharp`, que es `0.x`, el número del medio hace de mayor), así que hay que probar su API antes de subirlos o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.
