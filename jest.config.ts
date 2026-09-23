@@ -1,5 +1,5 @@
-import { getJestProjects } from '@nx/jest';
-
-export default {
-  projects: getJestProjects(),
+const config = {
+  projects: ['<rootDir>/libraries/nestjs-libraries'],
 };
+
+export default config;
