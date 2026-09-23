@@ -153,11 +153,15 @@ export class MediaRepository {
 
     const renames = new Map<string, { target: string; ids: string[] }>();
     for (const { id, folder } of candidates) {
-      const target = renamedFolderPath(folder, dto.oldName, dto.newName);
-      if (target === null) {
+      const known = renames.get(folder);
+      if (known) {
+        known.ids.push(id);
         continue;
       }
-      renames.set(folder, { target, ids: [...(renames.get(folder)?.ids ?? []), id] });
+      const target = renamedFolderPath(folder, dto.oldName, dto.newName);
+      if (target !== null) {
+        renames.set(folder, { target, ids: [id] });
+      }
     }
 
     // Cast to PrismaClient: PrismaRepository<'media'>.model is typed as
