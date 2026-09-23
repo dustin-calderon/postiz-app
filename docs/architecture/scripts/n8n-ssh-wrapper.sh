@@ -50,6 +50,9 @@ if [ "$#" -eq 4 ] && [ "$1" = "$ALERTAR" ]; then
   case "$3" in *[!a-z0-9-]*) deny ;; esac
   case "$4" in *[!A-Za-z0-9+/=]*) deny ;; esac
   mensaje=$(printf '%s' "$4" | base64 -d 2>/dev/null) || deny
+  # Sin esto, la incidencia diria que la lanzo una sesion SSH, y el triage trata
+  # lo que sale de una sesion SSH como sospechoso de prueba a mano.
+  export ALERTAR_QUIEN="n8n · workflow «Bus de incidencias» por su clave SSH restringida"
   [ "$2" = encolar ] && exec "$ALERTAR" encolar "$3" "$mensaje"
   exec "$ALERTAR" "$3" "$mensaje"
 fi
