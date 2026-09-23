@@ -37,7 +37,8 @@ Cada dato vive en un solo sitio:
 | Qué seguridad no se porta, y por qué | `docs/DEUDA_TECNICA.md` |
 
 Las dependencias no dependen de upstream: las vigila Dependabot en este repo, y
-las críticas se arreglan aquí (`pnpm.overrides`) o se descartan con su motivo.
+cada aviso se arregla aquí (subiendo la dependencia o con un `pnpm.overrides` de
+suelo) o se descarta en GitHub con su motivo.
 
 ## Despliegue
 

@@ -49,7 +49,7 @@ docker exec postiz-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c
 - `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. Esto no tiene que imprimir nada:
   `docker exec postiz sh -c 'grep -rl happy-dom /app/apps/frontend/.next/server /app/apps/backend/dist /app/apps/orchestrator/dist'`
 
-En Dependabot están descartadas como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` atadas a la imagen, así que cada build nuevo las vuelve a sacar y se juzgan otra vez con estas dos comprobaciones.
+En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` atadas a la imagen, así que cada build nuevo las vuelve a sacar y se juzgan otra vez con estas dos comprobaciones.
 
 **Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
 
@@ -94,18 +94,3 @@ En Dependabot están descartadas como `tolerable_risk` con este motivo. En trivy
 **Qué la vuelve urgente.** Que el lint tenga que hacer de puerta (CI, o antes de desplegar). Hoy no puede.
 
 **Cómo se cierra.** Borrar `usePageVisibility`, excluir `apps/frontend/public/` y decidir si las reglas de React Compiler son error o aviso. Luego, limpiar las devDependencies y los `.eslintrc.json` que sobran, y arreglar lo que quede hasta que `npx eslint apps libraries` salga con 0.
-
----
-
-## Avisos altos y medios de Dependabot sin revisar
-
-**Qué pasa.** `check-dependencias-publicas.py` solo mira las críticas, a propósito. Las altas y medias de ejecución no se han revisado una a una:
-
-```bash
-# la severidad se filtra en jq: con severity=high,medium la API corta la paginación en 100
-gh api --paginate 'repos/dustin-calderon/postiz-app/dependabot/alerts?state=open&scope=runtime&per_page=100' \
-  --jq '.[] | select(.security_advisory.severity == "high" or .security_advisory.severity == "medium")
-        | "\(.security_advisory.severity) \(.dependency.package.name) \(.dependency.relationship)"' | sort | uniq -c | sort -rn
-```
-
-**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. `axios` se arregla dentro de su versión mayor. Los otros tres solo se arreglan saltando de mayor (en `sharp`, que es `0.x`, el número del medio hace de mayor), así que hay que probar su API antes de subirlos o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.
