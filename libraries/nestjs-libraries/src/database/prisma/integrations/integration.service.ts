@@ -241,6 +241,13 @@ export class IntegrationService {
     return this._integrationRepository.setBetweenRefreshSteps(id);
   }
 
+  getIntegrationsToRefresh(providers: string[], expiringBefore: Date) {
+    return this._integrationRepository.getIntegrationsToRefresh(
+      providers,
+      expiringBefore
+    );
+  }
+
   async refreshTokens() {
     const integrations = await this._integrationRepository.needsToBeRefreshed();
     for (const integration of integrations) {
