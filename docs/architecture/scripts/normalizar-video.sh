@@ -168,7 +168,11 @@ main() {
   MID=$(printf '%s' "$RESP" | jq -r '.id // empty' 2>/dev/null)
   MP=$(printf '%s' "$RESP" | jq -r '.path // empty' 2>/dev/null)
   if [ -z "$MID" ] || [ -z "$MP" ]; then
-    echo "Postiz no devolvio un media valido: $(printf '%s' "$RESP" | head -c 300)" >&2
+    # Postiz contesta {msg} o {message} (a veces una lista); lo que va al
+    # error_log de la fila es ese texto, no el JSON entero.
+    MOTIVO=$(printf '%s' "$RESP" | jq -r '(.msg // .message // empty)
+      | if type == "array" then join("; ") else tostring end' 2>/dev/null)
+    echo "Postiz no devolvio un media valido: ${MOTIVO:-$(printf '%s' "$RESP" | head -c 300)}" >&2
     exit 1
   fi
 
