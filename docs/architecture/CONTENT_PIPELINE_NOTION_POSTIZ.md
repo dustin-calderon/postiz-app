@@ -603,7 +603,7 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 
 ### 8.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo`; el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha, y con él el sync la ignora (§9.2).
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo`; el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha; con él el sync la ignora, y la recuperación dice qué fue de su post (§9.4).
 
 **Qué dice `❌ error_log`, y de quién es el fallo.** Lo lee una persona, así que dice el porqué y qué hacer; el detalle técnico (el JSON de Postiz, el stack de axios) se queda en la ejecución de n8n.
 
@@ -616,7 +616,8 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 | `Formatear error`, sin respuesta | «Postiz no respondió (`<error de red>`). No es un fallo de la fila…» | el sistema |
 | `Formatear error de subida`, si el SSH falla | «n8n no pudo ejecutar la subida en el servidor…» | el sistema |
 | `Interpretar payload` (receptor) | «Postiz dio error al publicar: `<cause.failure.message>`…» | Instagram o Postiz, al publicar |
-| `Reconciliar` (recuperación, 06:20), cuando el aviso de Postiz se perdió | «Postiz dio error al publicar, pero su aviso con el motivo no llegó…» o «Postiz ya no tiene este post…»: el motivo no viaja en `GET /posts` | Instagram o Postiz, al publicar |
+| `Reconciliar` (recuperación, §9.4), con la `Fecha` ya pasada | «Postiz dio error al publicar, pero su aviso con el motivo no llegó…» o «Postiz ya no tiene este post…»: el motivo no viaja en `GET /posts` | Instagram o Postiz, al publicar |
+| `Reconciliar`, si en Postiz seguía el borrador | «La Fecha pasó y en Postiz seguía como borrador…» | la aprobación, que llegó sin tiempo |
 | `planificar.py` (réplica de carruseles, en Instalar-Home-Server), en una fila `Por replicar` | «URL tiene que ser el enlace de un post de Instagram…» o «cuenta origen tiene que ser el nombre de la cuenta…» | la fila |
 
 Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La batería de pruebas (§14.3) comprueba la subida con un fichero ilegible y el rechazo de Postiz con un copy de más de 2200 caracteres.
@@ -673,7 +674,7 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 >
 > **La ruta con cabecera NO cambia: sigue siendo síncrona a propósito.** Los scripts y la batería de pruebas disparan y leen el resultado en la misma llamada; volverla asíncrona obligaría a reescribir la única red de seguridad real para resolver un problema que sólo tiene Notion. No rompe la regla de «nunca dos implementaciones»: los dos webhooks entran al **mismo** `Notion: leer cola` y hacen exactamente el mismo trabajo — lo que difiere es el contrato de transporte de cada llamante.
 >
-> **Dos pasadas solapadas no duplican nada.** Con respuesta inmediata es fácil lanzar dos a la vez. El margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`, y la identidad externa (§9.6) hace que la segunda creación de una fila nueva devuelva el post de la primera.
+> **Dos pasadas solapadas no duplican nada**, pero sí pueden escribir con datos viejos (§14.5). Con respuesta inmediata es fácil lanzar dos a la vez. El margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`, y la identidad externa (§9.6) hace que la segunda creación de una fila nueva devuelva el post de la primera.
 
 > La variante con cabecera sería algo mejor —un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no— y la UI de Notion **sí** admite encabezados personalizados. Cambiarlo es editar la automatización del botón; no urge, porque la ruta viaja cifrada bajo HTTPS.
 
@@ -1143,6 +1144,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | ~~5~~ | ~~Qué pasa si el sync entero falla~~ | — | **Resuelta:** cada nodo HTTP se reintenta 3 veces y, si aun así falla, el bus de incidencias avisa con el workflow, el nodo y el error (§9.10) |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
+| 8 | Que las pasadas del sync no se solapen | — | Cada pasada esperaría a las anteriores del mismo workflow, que n8n lista por su API (`GET /executions?workflowId=…&status=running`); su límite de concurrencia es de toda la instancia. Exige guardar en n8n una credencial con una clave de su propia API. El problema, en §14.5 |
 
 **Resueltas:**
 
@@ -1165,7 +1167,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | Hora del cron | **06:00 Europe/Madrid** (§9.1) |
 | Quién aprueba una fila `Por replicar` | **Una persona, María**, cambiando `modo` a `programar`. La réplica la deja siempre en `borrador` (§7.2) |
 
-> **Ninguna de las abiertas bloquea el uso diario.** La #5 sólo importa el día que Notion esté caído a las 06:00; la #7 es una incógnita que se despejará sola en la primera publicación con colaboradores.
+> **Ninguna de las abiertas bloquea el uso diario.** La #7 es una incógnita que se despejará sola en la primera publicación con colaboradores; la #8 importa cuando se edita y se pulsa `Sync now` en varias filas seguidas.
 
 ## 12. Riesgos
 
@@ -1398,9 +1400,11 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | **Colaboradores en `graph.instagram.com`** | Se envían, pero no está comprobado que Meta los acepte en la API de Instagram Login. Deuda aceptada (§11, decisión #7) |
 | **Más de 100 filas accionables en el sync** | La consulta del sync no pagina: **falla a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Lee solo los estados vivos, que no se acumulan. La de la retirada, que sí crece, pagina (§9.7) |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
+| **Ficheros sustituidos** | Al cambiar o reordenar los ficheros de una fila ya subida, el sync sube los nuevos; los anteriores quedan en Postiz sin post, y ninguna limpieza recoge un fichero que nunca se publicó ([MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)) |
+| **Pasadas del sync solapadas** | Cada `Sync now` lanza una pasada completa, así que pulsarlo en varias filas seguidas las solapa. Cada pasada decide con lo que leyó al empezar: si la fila cambia entretanto, su `Error` puede pisar el resultado de una pasada posterior (la fila queda en `Error` con la pieza programada), y una edición hecha con otra pasada en marcha puede no llegar a Postiz hasta la siguiente. Pendiente (§11, #8) |
 | **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus de incidencias (§9.10). Lo ya programado en Postiz sigue en pie; lo editado ese día no llega hasta la siguiente pasada o el botón |
 
-> **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en el caso parcial de arriba.
+> **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en la subida parcial y en los ficheros sustituidos de arriba.
 
 
 ### 14.6 El webhook de Postiz — cómo está configurado

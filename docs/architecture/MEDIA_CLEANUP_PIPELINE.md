@@ -177,7 +177,7 @@ El filtro del **Step 2 es positivo**: sólo es candidato lo que aparece en un `P
 
 El pipeline Notion → Postiz sube cada asset con `POST /public/v1/upload-from-url` **antes** de crear el post. Si la creación falla después (validación de Instagram, red, throttle), el fichero queda subido y sin dueño.
 
-Lo mitiga que el worker guarda `❌ postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar, así que un mismo asset no se duplica por reintento. Queda basura sólo cuando la fila se abandona sin corregirse.
+Lo mitiga que el worker guarda `❌ postiz_media` en cuanto sube y **reutiliza** ese valor al reintentar mientras los ficheros de la fila sean los mismos, así que un mismo asset no se duplica por reintento.
 
 **✅ Resuelto para el caso que lo generaba** (2026-08-04): se añadió **`DELETE /public/v1/media/:id`** a la API pública del fork y el worker borra lo que acaba de subir si el `POST /posts` falla, vaciando además `❌ postiz_media` para que el reintento vuelva a subir.
 
@@ -190,6 +190,7 @@ Verificado con un fallo real: 30 medios vivos antes y después.
 | Caso | Por qué se deja |
 |---|---|
 | Subida parcial de un carrusel (asset 1 sube, asset 2 falla) | El primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
+| Los ficheros anteriores de una fila cuyos ficheros cambian | El sync sube los nuevos y los anteriores quedan sin post. Borrarlos exige saber que ningún post vivo los usa |
 | Media subida por un cliente de API que simplemente la abandona | Ya no es nuestro caso; y un barrido genérico por «sin referencia en ningún Post» es peligroso con los FK guards |
 
 ### ⚠️ Corrección: los «11 huérfanos permanentes» no existían

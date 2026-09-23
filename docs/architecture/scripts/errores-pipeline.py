@@ -13,7 +13,7 @@ Columnas: fecha · origen · ejecución · fila o post · motivo. Orígenes:
   SYNC        validación de `Planificar` (la fila no pasa)
   SUBFLOW     `Formatear error` / `Formatear error de subida` (Postiz o la subida)
   RECEPTOR    Postiz avisó de que no publicó
-  RECUPERA    la pasada de las 06:20 corrigió un estado
+  RECUPERA    la recuperación (06:20 y en cada sync) corrigió un estado
   EJECUCION   el workflow entero falló (token, red): no llegó a escribir en Notion
 
 Depende del formato interno de n8n (`execution_data.data` en flatted, con

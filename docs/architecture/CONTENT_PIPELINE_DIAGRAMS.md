@@ -305,8 +305,11 @@ stateDiagram-v2
     EnPostiz: En Postiz (borrador)
 
     Programado --> Publicado: 🤖 webhook o recuperación
+    Programado --> Listo: 🤖 aplazada a más de 15 días
+    EnPostiz --> Listo: 🤖 aplazada a más de 15 días
+    EnPostiz --> Error: 🤖 aprobada cuando ya había pasado la fecha
     Programado --> Error: 🤖 falló la publicación
-    Listo --> Error: 🤖 no pasó las validaciones
+    Listo --> Error: 🤖 no pasó las validaciones, o su fecha pasó sin publicarse
     EnPostiz --> Programado: 🤖 al cambiar modo
 
     Error --> Listo: 👤 se corrige y se reenvía
@@ -378,16 +381,16 @@ sequenceDiagram
 | `POST /posts` rechazado (copy largo, media inválido…)                | subflow                      | `Error` + motivo           | **Borra el media que acaba de subir** |
 | Instagram rechaza al publicar                                        | `postWorkflowV106`           | `Error` vía webhook        | El media sobrevive para el reintento  |
 | Falla el primer comentario tras publicar                             | receptor                     | **`Publicado`** + aviso    | —                                     |
-| n8n caído cuando Postiz publica                                      | pasada de recuperación 06:20 | `Publicado` o `Error`      | —                                     |
+| n8n caído cuando Postiz publica                                      | recuperación (06:20 y en cada sync) | `Publicado` o `Error` | —                                  |
 | Token de Instagram caducado                                          | `refreshNeeded` → webhook    | `Error`                    | —                                     |
-| Notion caído a las 06:00                                             | _nadie_                      | queda como estaba          | ⚠️**decisión abierta**                |
+| Notion caído a las 06:00                                             | bus de incidencias           | queda como estaba          | la siguiente pasada lo recoge         |
 
 ```mermaid
 flowchart LR
     F(["algo falla"]) --> Q1{"¿el webhook<br/>llegó?"}
     Q1 -->|sí| INST["Notion se entera<br/>al instante"]
     Q1 -->|"no · entrega best-effort<br/>sin reintento"| Q2{"¿la fecha<br/>ya pasó?"}
-    Q2 -->|sí| REC["la recuperación de las 06:20<br/>lo corrige"]
+    Q2 -->|sí| REC["la recuperación<br/>(06:20 y en cada sync)<br/>lo corrige"]
     Q2 -->|no| ESP["sigue en Programado<br/>hasta que pase la fecha"]
 
     style INST fill:#22543d,stroke:#68d391,color:#fff
