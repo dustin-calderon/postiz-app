@@ -161,13 +161,8 @@ con `sed -i`, que conserva el modo.
 > reinicios. Si algún día se quiere que se auto-reinicie, hay que añadir la
 > etiqueta a propósito.
 
-**Quién avisa si cae:** el monitor `Postiz` de Uptime Kuma, con el aviso de
-Telegram de los demás monitores (Instalar-Home-Server,
-`docs/guides/UPTIME_KUMA_SETUP.md`). Pide cada 60 s
-`https://postiz.dustincalderon.com/api/public/v1/is-connected` sin credenciales y
-espera `401`: así recorre Cloudflare, el túnel, nginx y el backend. Cualquier
-otra respuesta, como un `502` con el backend caído o un `302` a Access si
-alguien cierra el bypass, cuenta como caída.
+**Quién avisa si cae:** el monitor `Postiz` de Uptime Kuma, por Telegram. Qué
+pide y por qué, en `docs/guides/UPTIME_KUMA_SETUP.md` de Instalar-Home-Server.
 
 ---
 

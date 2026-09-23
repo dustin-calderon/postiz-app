@@ -2,10 +2,7 @@
 
 Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver todavía. Cada entrada dice por qué se aplaza, qué la haría urgente y cómo se cierra. Al cerrarla se borra de aquí: el commit que la resuelve es su registro.
 
-**Contexto común a todas.** Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access, con el registro cerrado (`DISABLE_REGISTRATION=true`). Qué queda fuera de Access y por qué lo dice su entrada en `Instalar-Home-Server/server/config/apps-publicas.json`. Hay dos excepciones:
-
-- `/uploads`: nginx lo sirve como fichero estático.
-- `/api/public/v1/*`: llega al backend sin login y exige la API key de la organización (`PublicAuthMiddleware`). El resto de `/api/public` (`PublicController`) pide Access como todo lo demás: lo llama el frontend.
+**Contexto común a todas.** Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access, con el registro cerrado (`DISABLE_REGISTRATION=true`). Las rutas que quedan fuera de Access, y por qué, son las `rutas_abiertas` de su entrada en `Instalar-Home-Server/server/config/apps-publicas.json`, que `check-exposicion.py` compara con Cloudflare cada noche. De ellas, la única que llega al backend es `/api/public/v1`, y exige la API key de la organización (`PublicAuthMiddleware`).
 
 El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba así:
 
@@ -23,11 +20,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 **Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
 
-**Cómo se cierra.** Regenerando cada API key creada antes del despliegue de `8fb61ee4` (pantalla de API pública, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. Se listan con:
-
-```bash
-docker exec postiz-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select name, \"updatedAt\" from \"Organization\" where \"apiKey\" is not null"'
-```
+**Cómo se cierra.** Regenerando las API keys que había antes del despliegue de `8fb61ee4` (pantalla de API pública de cada organización, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. La incidencia `postiz-api-keys` del bus de Instalar-Home-Server guarda la huella de cada una y el comando que la calcula; el triage la da por resuelta cuando ninguna coincide. `updatedAt` no sirve de prueba: cambia con cualquier edición de la organización.
 
 ---
 
@@ -63,7 +56,7 @@ En Dependabot, sus avisos (críticos, altos y medios) están descartados como `t
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos y hay que aceptarlos a mano otra vez: es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos y hay que juzgarlos otra vez (paso 3 del despliegue, en `docs/architecture/ARRANQUE_Y_SUPERVISION.md`): es el precio de que las aceptaciones caduquen.
 
 **Qué la vuelve urgente.** Que ese coste se note: más de un build al mes, o que la lista crezca.
 
