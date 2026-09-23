@@ -407,8 +407,12 @@ for pid in [l for l in sql("""SELECT id FROM "Post" WHERE "deletedAt" IS NULL
 
 print(); print("=" * 62); print("7 · ESTADO EN REPOSO"); print("=" * 62)
 c, r1 = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
-if '"object":"page"' in r1:
-    omite("sync no hace nada", "calendario con filas reales en ventana")
+# Las filas de la suite ya estan archivadas: cualquier fila que aparezca en la
+# respuesta es real. Una escritura en Notion (`"object":"page"`) o una fila que
+# el planificador reporta (`"page_id"`, p. ej. «fuera de ventana») dicen que el
+# calendario tiene contenido, y entonces «no hace nada» no se puede afirmar.
+if '"object":"page"' in r1 or '"page_id"' in r1:
+    omite("sync no hace nada", "calendario con filas reales")
 else:
     check("sync no hace nada", "nada que hacer" in r1)
 c, r2 = hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
