@@ -25,6 +25,7 @@ import { VideoFrame } from '@gitroom/react/helpers/video.frame';
 import { useUppyUploader } from '@gitroom/frontend/components/media/new.uploader';
 import dynamic from 'next/dynamic';
 import { useUser } from '@gitroom/frontend/components/layout/user.context';
+import { renamedFolderPath } from '@gitroom/nestjs-libraries/dtos/media/rename.folder.dto';
 import { AiImage } from '@gitroom/frontend/components/launches/ai.image';
 import { DropFiles } from '@gitroom/frontend/components/layout/drop.files';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
@@ -381,10 +382,15 @@ export const MediaBox: FC<{
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ oldName: oldPath, newName: newPath }),
         });
-        // If the user is currently viewing the renamed folder (or a sub-path of
-        // it), update activeFolder to the new path so the SWR key stays valid.
-        if (activeFolder && activeFolder.startsWith(oldPath)) {
-          setActiveFolder(activeFolder.replace(oldPath, newPath));
+        // If the user is currently viewing a folder the rename reached (the
+        // folder itself or one below it), follow it to its new path so the SWR
+        // key stays valid. Same rule as the backend, so `Citem2` stays put
+        // when `Citem` is renamed.
+        const renamedActiveFolder = activeFolder
+          ? renamedFolderPath(activeFolder, oldPath, newPath)
+          : null;
+        if (renamedActiveFolder !== null) {
+          setActiveFolder(renamedActiveFolder);
         }
         await Promise.all([mutateFolders(), mutate()]);
       } catch (err) {
