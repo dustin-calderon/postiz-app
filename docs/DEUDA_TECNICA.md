@@ -59,7 +59,7 @@ En Dependabot están descartadas como `tolerable_risk` con este motivo. En trivy
 
 ## La imagen de producción lleva herramientas de desarrollo que no ejecuta
 
-**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: herramientas de tests (`vitest`, `ts-jest`), el runtime de Go dentro de `esbuild`, y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm. pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
+**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: el runtime de Go dentro de `esbuild` y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm. pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
