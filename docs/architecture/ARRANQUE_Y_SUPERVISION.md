@@ -208,6 +208,11 @@ o un `.md`, hace el despliegue entero:
 5. si en 10 minutos no queda sano, vuelve solo a la imagen que corría y
    comprueba que esa sí lo esté.
 
+Un commit que falla (build, volcado o arranque) no se reintenta en la pasada
+siguiente: una imagen que no arranca tumbaría Postiz cada 10 minutos. Se
+intenta con el próximo commit, o a mano. `desplegar.sh` lo recuerda en
+`/opt/homeserver/postiz/.desplegar-fallido`.
+
 Un despliegue bueno se cuenta por Telegram, con el commit y la imagen de
 antes. Uno malo va al bus de incidencias (`postiz-despliegue`), que lo
 diagnostica. El log, en `/opt/homeserver/ops/desplegar-postiz.log`.
