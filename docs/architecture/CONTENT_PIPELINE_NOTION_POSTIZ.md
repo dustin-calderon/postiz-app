@@ -1352,6 +1352,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), el reintento que reutiliza los medios **y que vuelve a subirlos si son otros ficheros**, la retirada, **la pieza aplazada a más de 15 días**, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), **la pieza aprobada tarde** (§9.4), el estado en reposo y la limpieza de sus propios ficheros.
 >
+> **Se lanza cuando nadie está editando el calendario.** Sus pasadas son pasadas completas del sync sobre las filas reales, así que se solapan con las de quien esté trabajando y pueden dejarle filas en `Error` (§14.5, pasadas solapadas).
+>
 > **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >
 > Tres cosas que hay que respetar al tocarla, porque las tres ya dieron un resultado falso:
