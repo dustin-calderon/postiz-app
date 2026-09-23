@@ -64,7 +64,7 @@ export PATH="$T/bin:$PATH" ESTADO="$T/estado" DESPLEGAR_REPO="$T/repo" \
 
 corriendo() { echo "postiz-custom:local-$1" > "$T/estado/imagen"
   printf 'services:\n  postiz:\n    image: postiz-custom:local-%s\n' "$1" > "$T/postiz/docker-compose.yml"
-  rm -f "$T/estado/avisos" "$T/estado/ups" "$T/estado/rotas" "$T/estado/build-falla"; }
+  rm -f "$T/estado/avisos" "$T/estado/ups" "$T/estado/rotas" "$T/estado/build-falla" "$T/postiz/.desplegar-fallido"; }
 es() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "MAL  $1: esperaba «$3», hay «$2»"; fallos=$((fallos+1)); fi; }
 aviso() { cat "$T/estado/avisos" 2>/dev/null; }
 
@@ -109,6 +109,26 @@ bash "$SCRIPT" --si-hay-cambios; rc=$?
 es "sale con error" "$rc" "1"
 es "sin despliegue" "$(cat "$T/estado/ups" 2>/dev/null)" ""
 aviso | grep -q "build.sh falló" && echo "ok   avisa del build" || { echo "MAL  no avisa del build"; fallos=$((fallos+1)); }
+
+echo "-- 7. Un commit que ya falló no se vuelve a intentar en la pasada siguiente"
+corriendo "$BASE"; echo "local-$NUEVO" > "$T/estado/rotas"
+bash "$SCRIPT" --si-hay-cambios > /dev/null
+rm -f "$T/estado/avisos" "$T/estado/ups"
+bash "$SCRIPT" --si-hay-cambios; rc=$?
+es "no vuelve a desplegar" "$(cat "$T/estado/ups" 2>/dev/null)" ""
+es "no vuelve a avisar" "$(aviso)" ""
+es "sale bien" "$rc" "0"
+
+echo "-- 8. Un commit nuevo sí se intenta"
+OTRO=$(commit apps/c.ts "arreglo del arreglo")
+bash "$SCRIPT" --si-hay-cambios > /dev/null
+es "despliega el nuevo" "$(cat "$T/estado/imagen")" "postiz-custom:local-$OTRO"
+
+echo "-- 9. A mano, el commit que falló se reintenta"
+corriendo "$BASE"; echo "$OTRO" > "$T/postiz/.desplegar-fallido"
+bash "$SCRIPT" > /dev/null
+es "lo despliega" "$(cat "$T/estado/imagen")" "postiz-custom:local-$OTRO"
+es "y olvida el fallo" "$(cat "$T/postiz/.desplegar-fallido" 2>/dev/null)" ""
 
 echo
 [ "$fallos" -eq 0 ] && echo "TODO BIEN" || { echo "$fallos FALLOS"; exit 1; }

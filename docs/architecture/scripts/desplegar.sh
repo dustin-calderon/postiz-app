@@ -32,6 +32,9 @@ VOLCAR="$OPS/backup/volcar-app.sh"
 VOLCADOS=${DESPLEGAR_VOLCADOS:-/opt/homeserver/ops/volcados-actualizacion}
 ESPERA_MAX=${DESPLEGAR_ESPERA_MAX:-600}   # s para quedar sano; el healthcheck da 120 de arranque
 PAUSA=${DESPLEGAR_PAUSA:-15}
+# El último commit que falló. El cron no lo reintenta: una imagen que no arranca
+# tumbaría Postiz cada 10 minutos, y un build roto se repetiría con su aviso.
+FALLIDO="$DIR/.desplegar-fallido"
 
 log() { echo "[$(date '+%F %T')] $*"; }
 
@@ -45,6 +48,7 @@ CORRE=${ANTERIOR#local-}
 
 if [ "${1:-}" = "--si-hay-cambios" ]; then
   [ "$CORRE" = "$OBJETIVO" ] && exit 0
+  [ "$(cat "$FALLIDO" 2>/dev/null)" = "$OBJETIVO" ] && exit 0
   # Lo que no cambia el código que corre no justifica reiniciar Postiz. Si el
   # commit que corre no está en el historial, se despliega: no se puede saber.
   if git -C "$REPO" cat-file -e "$CORRE^{commit}" 2>/dev/null &&
@@ -56,9 +60,11 @@ fi
 
 fallo() {
   log "FALLO: $1"
+  echo "$OBJETIVO" > "$FALLIDO"
   "$ALERTAR" --stdin postiz-despliegue <<EOF
 🔴 Postiz: el despliegue de $OBJETIVO falló
 $1
+El cron no lo reintenta: lo hará con el próximo commit, o a mano con $DIR/desplegar.sh.
 Log: /opt/homeserver/ops/desplegar-postiz.log
 EOF
   exit 1
@@ -128,4 +134,5 @@ $(git -C "$REPO" log -1 --format=%s "origin/$RAMA")
 Antes corría $ANTERIOR.${DIFIEREN:+
 Las copias vivas de$DIFIEREN en $DIR difieren de las del repo.}
 EOF
+rm -f "$FALLIDO"
 log "desplegado $NUEVA"
