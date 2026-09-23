@@ -130,6 +130,14 @@ print(); print("=" * 62); print("1b · LAS PASADAS DEL SYNC VAN DE UNA EN UNA");
 # funcionando y las pasadas volverían a solaparse sin ningún error. Se lanzan dos
 # con 3 s de diferencia: en fila, la segunda acaba una pasada entera después.
 SYNC_WF = "eKxZPM4zjwhNb3vf"
+def pasadas_en_marcha(desde_id=0):
+    return n8n_sql("""SELECT count(*) FROM execution_entity WHERE "workflowId"='%s' AND id > %s
+                      AND status IN ('new','running','waiting');""" % (SYNC_WF, desde_id))
+# La del botón de la sección 1 sigue por detrás: con ella en marcha, la primera
+# pasada de la prueba esperaría su turno y su duración no sería la de una pasada.
+for _ in range(60):
+    if pasadas_en_marcha() == "0": break
+    time.sleep(5)
 desde = n8n_sql("""SELECT coalesce(max(id), 0) FROM execution_entity WHERE "workflowId"='%s';""" % SYNC_WF)
 hilos = []
 for _ in range(2):
@@ -137,8 +145,7 @@ for _ in range(2):
     hilos[-1].start(); time.sleep(3)
 for h in hilos: h.join()  # la segunda puede volver con un 524 de Cloudflare: la pasada sigue en n8n
 for _ in range(60):
-    if n8n_sql("""SELECT count(*) FROM execution_entity WHERE "workflowId"='%s' AND id > %s
-                  AND status IN ('new','running','waiting');""" % (SYNC_WF, desde)) == "0": break
+    if pasadas_en_marcha(desde) == "0": break
     time.sleep(5)
 pasadas = [l.split("|") for l in n8n_sql("""SELECT status, extract(epoch FROM "startedAt"), extract(epoch FROM "stoppedAt")
     FROM execution_entity WHERE "workflowId"='%s' AND id > %s ORDER BY id;""" % (SYNC_WF, desde)).splitlines() if l]
@@ -146,8 +153,14 @@ if len(pasadas) != 2:
     omite("la segunda pasada espera a la primera", "hubo %d pasadas, no las 2 de la prueba" % len(pasadas))
 else:
     (e1, i1, f1), (e2, i2, f2) = [(e, float(i), float(f)) for e, i, f in pasadas]
-    check("la segunda pasada espera a la primera", e1 == e2 == "success" and f2 - f1 > (f1 - i1) / 2,
-          "(%s y %s; la 2ª acaba %.0f s después, la 1ª duró %.0f s)" % (e1, e2, f2 - f1, f1 - i1))
+    # En fila, la 2ª acaba una pasada entera después de la 1ª; solapadas, unos
+    # 3 s después. Con pasadas de pocos segundos (calendario casi vacío) las dos
+    # cosas se parecen demasiado para afirmar nada.
+    if f1 - i1 < 30:
+        omite("la segunda pasada espera a la primera", "la pasada duró %.0f s: muy poco para distinguir" % (f1 - i1))
+    else:
+        check("la segunda pasada espera a la primera", e1 == e2 == "success" and f2 - f1 > (f1 - i1) / 2,
+              "(%s y %s; la 2ª acaba %.0f s después, la 1ª duró %.0f s)" % (e1, e2, f2 - f1, f1 - i1))
 
 print(); print("=" * 62); print("2 · VALIDACIONES QUE DEBEN DAR Error"); print("=" * 62)
 casos = [
