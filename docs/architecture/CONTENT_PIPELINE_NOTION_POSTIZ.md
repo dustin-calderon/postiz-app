@@ -990,7 +990,7 @@ Eso cierra la última ventana que quedaba: la pasada de retirada corriendo mient
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de los próximos 5 minutos se retira automáticamente.
 
 > ### La lista de filas se lee entera o no se retira nada
-> Las filas que reclaman crecen sin tope, porque las `Publicado` se quedan. `Notion: filas vivas` pagina (`start_cursor`, hasta 50 páginas de 100) y ordena por `created_time`: sin orden, Notion no garantiza ninguno, y una fila editada entre dos páginas podría no leerse y su post parecería huérfano. `Reconciliar` junta las páginas y **se niega a seguir** si alguna no es una lista o si la última aún dice `has_more`: con una lista a medias borraría posts legítimos. Probado con páginas de 10 contra las de 100 (mismas filas, mismas acciones) y con el tope de páginas forzado (se detiene).
+> Las filas que reclaman crecen sin tope, porque las `Publicado` se quedan. `Notion: filas vivas` pagina (`start_cursor`, hasta 50 páginas de 100) y ordena por `created_time`: sin orden, Notion no garantiza ninguno, y una fila editada entre dos páginas podría no leerse y su post parecería huérfano. `Reconciliar` junta las páginas y **se niega a seguir** si alguna no es una lista o si la última aún dice `has_more`: con una lista a medias borraría posts legítimos.
 
 ### 9.8 El cuerpo exacto de `POST /public/v1/posts`
 
