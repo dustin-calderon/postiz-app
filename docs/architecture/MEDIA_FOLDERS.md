@@ -68,7 +68,7 @@ contenido de sus subcarpetas.
 
 ### El renombrado es en cascada, por prefijo
 
-Renombrar `Citem` a `NewBrand` actualiza, en una sola sentencia `UPDATE`:
+Renombrar `Citem` a `NewBrand` actualiza:
 
 - los medios con `folder = 'Citem'`, que pasan a `'NewBrand'`;
 - los medios cuyo `folder` empieza por `'Citem/'`, que pasan a `'NewBrand'`
@@ -76,12 +76,18 @@ Renombrar `Citem` a `NewBrand` actualiza, en una sola sentencia `UPDATE`:
   a cualquier profundidad).
 
 El prefijo lleva la barra, así que `"Citem2"` no se toca al renombrar `"Citem"`.
-Pero el prefijo se compara con `LIKE` sin escapar: un `_` o un `%` en el nombre
-viejo actúa como comodín, y el renombrado puede alcanzar carpetas ajenas
-(renombrar `A_B` también cambia `AxB/…`).
-El valor nuevo se construye con `CASE` + `substring`, no con `REPLACE`: `REPLACE`
-sustituiría todas las apariciones del nombre, y `'Design/Design'` acabaría en
-`'Art/Art'`.
+Qué carpetas entran se decide en el código, comparando valores (igualdad o
+`startsWith` de JavaScript), no con un patrón `LIKE`: un `_` o un `%` en el
+nombre es un carácter más, y renombrar `A_B` no alcanza a `AxB/…`. El
+`startsWith` de Prisma sí es un `LIKE` sin escapar, así que en la consulta sólo
+acota qué filas se leen.
+
+Sólo se sustituye el prefijo: `'Design/Design'` pasa a `'Art/Design'`, no a
+`'Art/Art'`. Cada medio se actualiza por su id y sólo si sigue en la carpeta en
+que se leyó, así que ninguno se renombra dos veces aunque una ruta nueva
+coincida con una vieja (`A` → `A/B` con `A/B` ya existente), y un medio movido
+a la vez por otra petición no vuelve atrás. Todas las actualizaciones van en
+una transacción: se renombran todas o ninguna.
 
 Ambos nombres se recortan (`trim`) antes de comparar; si quedan iguales, la
 operación no hace nada. No se comprueba si el nombre de destino ya existe: si
@@ -160,9 +166,9 @@ pasar `undefined`. El valor se guarda tal cual llega, sin recortar. Responde
 
 Los dos son cadenas de al menos un carácter y rutas **completas**: para renombrar
 la subcarpeta `Diseños` a `Arte`, se manda `"Citem/Diseños"` → `"Citem/Arte"`.
-Aplica la cascada descrita arriba. Responde `{ count: 0 }` si los nombres son
-iguales tras recortarlos y `{ count: 1 }` en cualquier otro caso: el número **no**
-refleja las filas afectadas, y el frontend no lo lee.
+Aplica la cascada descrita arriba. Responde `{ count }` con los medios
+renombrados: `0` si los nombres son iguales tras recortarlos o si no hay ningún
+medio en esa carpeta. El frontend no lo lee.
 
 ### El formato del nombre no se valida
 
@@ -245,8 +251,9 @@ son preferencias de la sesión y no tocan el backend.
 | Un campo de texto en `Media`, sin tabla `Folder` | No hay estado que mantener sincronizado: la lista de carpetas se deriva de los medios, y una carpeta vacía desaparece sola. El precio es que no pueden existir carpetas vacías en el servidor. |
 | La jerarquía como ruta con `/` | Una sola columna basta para cualquier profundidad, y el cliente arma el árbol partiendo la cadena, sin más consultas. |
 | `__root__` como valor centinela de `?folder=` | En una query string no se puede distinguir «sin filtro» de «carpeta nula»: parámetro ausente significa todo, `__root__` significa sólo lo que no tiene carpeta. |
-| Renombrar con una sola sentencia SQL | `updateMany` de Prisma sólo escribe valores fijos, y la cascada necesita calcular cada ruta nueva a partir de la vieja. Una sentencia única cambia todas las filas a la vez, sin estados intermedios. |
-| `CASE` + `substring` en lugar de `REPLACE` | `REPLACE` cambia todas las apariciones del nombre dentro de la ruta; sólo hay que cambiar el prefijo. |
+| Renombrar con Prisma: un `updateMany` por carpeta afectada, en una transacción | `updateMany` sólo escribe un valor fijo, y cada carpeta tiene su ruta nueva; hay tantas actualizaciones como carpetas distintas, no como medios. La transacción las hace todas o ninguna, sin SQL crudo. |
+| Elegir las carpetas en el código, no con `LIKE` | Un `LIKE` convierte `_` y `%` del nombre en comodines y alcanzaría carpetas ajenas (`A_B` casaría con `AxB/…`). Comparar los valores no depende de escapar nada. |
+| Sustituir sólo el prefijo | Un `REPLACE` cambiaría todas las apariciones del nombre dentro de la ruta. |
 | Filtro exacto por carpeta | Una carpeta muestra lo que tiene dentro y nada más, y la consulta es una igualdad sobre una columna indexada. |
 | La carpeta nueva, sólo en el navegador hasta su primer medio | Es la consecuencia directa de no tener tabla: no se escriben filas de relleno para que la carpeta exista. |
 | La carpeta de subida se lee de un `ref` | El uploader de Uppy se crea una sola vez (`useMemo` sin dependencias). Leer la carpeta activa de un `ref` en `file-added` evita recrearlo en cada cambio de carpeta. |
@@ -263,6 +270,7 @@ son preferencias de la sesión y no tocan el backend.
 | DTO de mover | `libraries/nestjs-libraries/src/dtos/media/move.media.dto.ts` |
 | DTO de renombrar | `libraries/nestjs-libraries/src/dtos/media/rename.folder.dto.ts` |
 | Consultas: `getFolders`, `moveMedia`, `renameFolder`, filtro de `getMedia`, saneado en `saveFile` | `libraries/nestjs-libraries/src/database/prisma/media/media.repository.ts` |
+| Pruebas de `renameFolder` (`pnpm test`) | `libraries/nestjs-libraries/src/database/prisma/media/media.repository.spec.ts` |
 | Servicio (delega en el repositorio) | `libraries/nestjs-libraries/src/database/prisma/media/media.service.ts` |
 | Endpoints y lectura de `folder` en las subidas | `apps/backend/src/api/routes/media.controller.ts` |
 | `MediaBox`: árbol, carpeta pendiente, selección, mover, renombrar, vistas y zoom | `apps/frontend/src/components/media/media.component.tsx` |
