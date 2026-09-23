@@ -18,6 +18,9 @@ import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 
+// Meta retires each Graph API version about two years after its release, and a
+// call to a retired version is served by the next oldest one. v25.0 is
+// available until 2028-07-29: https://developers.facebook.com/docs/graph-api/changelog/versions
 export const META_GRAPH_API_VERSION = 'v25.0';
 
 @Rules(
