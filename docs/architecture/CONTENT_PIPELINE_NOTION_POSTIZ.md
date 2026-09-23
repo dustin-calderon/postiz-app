@@ -1206,7 +1206,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 | **`upload-from-url` por streaming** | `public.integrations.controller.ts` + `local.storage.ts` (`uploadStream`) + `upload.interface.ts` |
 | Este documento | `docs/architecture/` |
 
-**Cómo se despliega:** commit y push a `origin/custom/postiz-dc`, `git pull` en `/opt/repos/postiz-fork`, `bash /opt/homeserver/postiz/build.sh` y `docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d postiz`.
+**Cómo se despliega:** commit y push a `origin/custom/postiz-dc`, `git pull` en `/opt/repos/postiz-fork`, `bash /opt/homeserver/postiz/build.sh` y `docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d --no-deps postiz`.
 
 > ### ⚠️ Tocar un `post.workflow.vX` con ejecuciones en vuelo rompe los replays
 > Temporal reproduce el historial de una ejecución contra la definición actual del workflow. Por eso la convención del proyecto es **un fichero por versión**, y por eso `V105` sigue exportada aunque ya no se arranque.

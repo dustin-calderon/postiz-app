@@ -46,5 +46,5 @@ docker images "$IMAGE_NAME" --format "{{.Tag}}" | \
 echo "=== Build completado: ${IMAGE_NAME}:${IMAGE_TAG} ==="
 echo ""
 echo "SIGUIENTE PASO: para aplicar la nueva imagen al container en ejecucion, corre:"
-echo "  docker compose -f ${COMPOSE} up -d postiz"
+echo "  docker compose -f ${COMPOSE} up -d --no-deps postiz"
 echo "Vuelta atras: poner 'image: ${IMAGE_NAME}:${ANTERIOR}' en ${COMPOSE} y repetir el up -d."

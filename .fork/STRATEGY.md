@@ -59,4 +59,5 @@ portados») y en los commits con `(cherry picked from commit …)`.
 `docs/architecture/ARRANQUE_Y_SUPERVISION.md` → «Despliegue». Resumen:
 `git pull` en el Beelink, `build.sh` (construye `postiz-custom:local-<sha>` y deja
 el compose apuntando a ella), volcado de la base (el arranque hace
-`prisma db push --accept-data-loss`) y `docker compose … up -d postiz`.
+`prisma db push --accept-data-loss`) y `docker compose … up -d --no-deps postiz` (sin `--no-deps` recrea también
+postgres, redis y Temporal).

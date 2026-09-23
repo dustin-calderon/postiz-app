@@ -187,7 +187,7 @@ el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
 # 2. en el servidor
 ssh dchomeserver 'cd /opt/repos/postiz-fork && git pull --ff-only origin custom/postiz-dc'
 ssh dchomeserver 'bash /opt/homeserver/postiz/build.sh'                              # ~5 min
-ssh dchomeserver 'docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d postiz'
+ssh dchomeserver 'docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d --no-deps postiz'
 ssh dchomeserver 'bash /opt/homeserver/postiz/verifica-arranque.sh'
 ```
 
@@ -197,6 +197,10 @@ caducan solos al reconstruir. `build.sh` ([copia](./scripts/build.sh)) construye
 esa etiqueta, cambia a ella la línea `image:` del compose y conserva la que había
 como punto de retorno; borra los demás `local-<sha>`, pero **no** toca tags con
 otro prefijo, así que un `rollback-*` puesto a mano también sobrevive.
+
+**`--no-deps` no es opcional.** Sin él, Compose recrea también postgres, redis,
+elasticsearch y Temporal si su configuración ha cambiado desde que se crearon.
+El 2026-09-23, un `up -d --dry-run postiz` sin `--no-deps` los recreaba todos.
 
 **El arranque migra la base de datos** (`prisma db push --accept-data-loss` en
 `pm2-run`): volver a la imagen anterior no deshace un cambio de esquema. Antes
