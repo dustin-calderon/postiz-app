@@ -2,14 +2,14 @@
 
 Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver todavía. Cada entrada dice por qué se aplaza, qué la haría urgente y cómo se cierra. Al cerrarla se borra de aquí: el commit que la resuelve es su registro.
 
-Contexto común a todas: Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access; solo entran el owner y su equipo, y el registro está cerrado (`DISABLE_REGISTRATION=true`). Access deja fuera dos rutas: `/uploads`, que nginx sirve como fichero estático porque las redes sociales descargan de ahí los medios, y `/api/public`, que exige la API key de la organización (la usa n8n). El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba con
+Contexto común a todas: Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access; solo entran el owner y su equipo, y el registro está cerrado (`DISABLE_REGISTRATION=true`). Access deja fuera dos rutas. La primera es `/uploads`, que nginx sirve como fichero estático porque las redes sociales descargan de ahí los medios. La segunda, `/api/public/*` entera, llega al backend sin login. Allí solo `/api/public/v1/*` exige la API key de la organización (`PublicAuthMiddleware`; la usa n8n). El resto de `PublicController` responde a cualquiera: `GET /posts/:id` y `/posts/:id/comments` (vista previa), `POST /t` (seguimiento), `GET /stream`, `POST /modify-subscription` y `POST /agent`, que no hace nada sin `AGENT_API_KEY`, sin definir aquí. El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba con
 
 ```bash
 for p in '/_next/image?url=%2Ffavicon.ico&w=64&q=75' /api/auth/can-register /api/enterprise/create-user; do
   curl -s -o /dev/null -w "$p %{http_code} %{redirect_url}\n" "https://postiz.dustincalderon.com$p"; done
 ```
 
-y las tres tienen que redirigir a `cloudflareaccess.com`.
+y las tres tienen que redirigir a `cloudflareaccess.com`, mientras que `curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/public/v1/is-connected` tiene que dar `401` (llega al backend y pide la API key).
 
 ---
 
@@ -55,11 +55,11 @@ En Dependabot se descartan como `tolerable_risk` con este motivo. En trivy se ac
 
 Desde el 2026-09-23 esto es producto propio (`.fork/STRATEGY.md`): de `gitroomhq/postiz-app` solo se portan los arreglos de seguridad. Revisado hasta `v2.24.0` (el vigilante de versiones de Instalar-Home-Server compara con esa marca, en `apps-publicas.json`). Portados: `387d85da` (PSA-2026-NWZN9J), `9259cf24` (PSA-2026-P8W1J0 / CVE-2026-94455), `4c835138` (PSA-2026-TD98KY / CVE-2026-94456) y `79360622` (path traversal en `/api/uploads` de Next). Revisados y **no** portados:
 
-**Protección SSRF de salida** (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`, `c96935a0`). Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL. Sin eso, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores. Aquí eso exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio de este fork (streaming, `upload-from-url`), así que no es un cherry-pick. **Se vuelve urgente** si alguien fuera del equipo recibe una cuenta o una API key, o si se abre el registro. **Se cierra** portando el `ssrf.safe.dispatcher` de upstream a los puntos donde este fork hace peticiones a URLs que da el usuario.
+**Protección SSRF de salida** (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`). Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL. Sin eso, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores. Aquí eso exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio de este fork (streaming, `upload-from-url`), así que no es un cherry-pick. **Se vuelve urgente** si alguien fuera del equipo recibe una cuenta o una API key, o si se abre el registro. **Se cierra** portando `getSsrfSafeDispatcher` y `getSsrfSafeAxios` de upstream y aplicándolos donde este fork pide URLs que da el usuario. El `ssrfSafeDispatcher` base ya está aquí: lo usa `/public/stream`.
 
 **Paquetes con avisos altos que upstream subió en `7a02bd6b`** (`multer`, entre otros). Son altas, no críticas, y quedan con el resto de altas en la entrada siguiente.
 
-**Credenciales generadas antes del 2026-09-23.** Las API keys y los secretos OAuth ya emitidos salieron de `Math.random`. Predecirlos exige reconstruir el estado del generador a partir de muchas salidas del mismo proceso, y ese proceso ya no existe. Además, ningún endpoint accesible sin Access las devolvía. No se rotan. **Se rotan** si hay indicio de que una se ha filtrado. La API key de la organización se regenera en la pantalla de API pública (`POST /user/api-key/rotate`), y luego hay que actualizarla en la credencial de n8n.
+**Credenciales generadas antes del 2026-09-23: hay que rotarlas.** Las API keys de organización salieron de `Math.random`. Además, `POST /api/public/t`, sin login, devuelve en la cookie `track` un `makeId(10)`: diez salidas de ese mismo generador por petición. Es el vector de PSA-2026-TD98KY. Quien las hubiera recogido en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Inventario del 2026-09-23: 0 apps OAuth, 0 autorizaciones OAuth y 3 API keys de organización (Test, y dos de CITEM). Desde `8fb61ee4` las credenciales nuevas salen de `crypto`, y lo que `/t` filtre ya no sirve para predecir nada. **Se cierra** regenerando las tres después del despliegue (pantalla de API pública, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa.
 
 ---
 

@@ -20,12 +20,14 @@ COMPOSE="/opt/homeserver/postiz/docker-compose.yml"
 IMAGE_NAME="postiz-custom"
 SHORT_SHA=$(git -C "$REPO_DIR" rev-parse --short HEAD)
 IMAGE_TAG="local-${SHORT_SHA}"
-ANTERIOR=$(sed -nE "s|^[[:space:]]*image: ${IMAGE_NAME}:([^[:space:]]+).*|\1|p" "$COMPOSE")
+# La vuelta atrás es la imagen que CORRE, no la que dice el compose: si se
+# construye dos veces sin `up -d` en medio, el compose ya apunta a la anterior.
+ANTERIOR=$(docker inspect -f '{{.Config.Image}}' postiz 2>/dev/null | sed -nE "s|^${IMAGE_NAME}:||p")
 
 echo "=== Postiz Custom Build ==="
 echo "Branch : $(git -C "$REPO_DIR" branch --show-current)"
 echo "Commit : ${SHORT_SHA}"
-echo "Tag    : ${IMAGE_NAME}:${IMAGE_TAG} (el compose corre ahora ${IMAGE_NAME}:${ANTERIOR})"
+echo "Tag    : ${IMAGE_NAME}:${IMAGE_TAG} (el contenedor corre ahora ${IMAGE_NAME}:${ANTERIOR})"
 
 docker build -f "${REPO_DIR}/Dockerfile.dev" -t "${IMAGE_NAME}:${IMAGE_TAG}" "${REPO_DIR}"
 

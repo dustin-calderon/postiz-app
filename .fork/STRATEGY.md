@@ -27,8 +27,14 @@ numeración de upstream. De upstream solo se traen **arreglos de seguridad**.
    upstream con `version.revisado` de la entrada `postiz` en
    `server/config/apps-publicas.json`: la última release cuyos arreglos de
    seguridad ya se han mirado. Si hay una más nueva, avisa al bus.
-2. Se leen las notas de la release y los commits de seguridad desde la marca
+2. La fuente principal son los avisos publicados por upstream:
+   `gh api --paginate 'repos/gitroomhq/postiz-app/security-advisories?per_page=100'`.
+   Los rangos de versión que declaran no son fiables (escriben `2.4.0` por
+   `2.24.0`), así que cada aviso se coteja con nuestro código, no con el número.
+   Después vienen las notas de la release y, como apoyo, los commits
    (`git log --no-merges -i -E --grep="secur|ssrf|cve|vuln|xss|traversal|inject|harden" <revisado>..<nueva>`).
+   El grep solo no basta: el arreglo de PSA-2026-NWZN9J se llama «feat: remove
+   lifetime».
 3. Cada uno se **porta**, con `git cherry-pick -x` si entra y a mano si no,
    manteniendo nuestro código y aplicando solo su cambio, o se **descarta**
    escribiendo por qué en `docs/DEUDA_TECNICA.md`, con lo que lo reabriría.
@@ -39,7 +45,12 @@ las críticas se arreglan aquí (`pnpm.overrides`) o se descartan con su motivo.
 
 ## Qué se ha revisado
 
-Hasta `v2.24.0`, el 2026-09-23. Lo portado y lo descartado está en
+Hasta `v2.24.0`, el 2026-09-23. Ese día se cotejaron con este código los 19
+avisos publicados por upstream. Los arreglados en `2.21.8` o antes ya estaban
+en la base (`v2.21.9`). Dos sin versión corregida también estaban cubiertos:
+GHSA-jxg2 (hash de la contraseña en el JWT, `jwt()` lo borra desde `30e8b777`)
+y GHSA-f7jj (DNS rebinding, `ssrfSafeDispatcher` fija la resolución). Los
+cuatro posteriores se portaron. Lo portado y lo descartado está en
 `docs/DEUDA_TECNICA.md` («Arreglos de seguridad de upstream revisados y no
 portados») y en los commits con `(cherry picked from commit …)`.
 
