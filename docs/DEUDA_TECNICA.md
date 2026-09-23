@@ -1,72 +1,97 @@
-# Deuda técnica del fork
+# Deuda técnica
 
 Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver todavía. Cada entrada dice por qué se aplaza, qué la haría urgente y cómo se cierra. Al cerrarla se borra de aquí: el commit que la resuelve es su registro.
 
-Contexto común a todas: Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access; solo entran el owner y su equipo, y el registro está cerrado (`DISABLE_REGISTRATION=true`). Access deja fuera dos rutas. La primera es `/uploads`, que nginx sirve como fichero estático porque las redes sociales descargan de ahí los medios. La segunda, `/api/public/*` entera, llega al backend sin login. Allí solo `/api/public/v1/*` exige la API key de la organización (`PublicAuthMiddleware`; la usa n8n). El resto de `PublicController` responde a cualquiera: `GET /posts/:id` y `/posts/:id/comments` (vista previa), `POST /t` (seguimiento), `GET /stream`, `POST /modify-subscription` y `POST /agent`, que no hace nada sin `AGENT_API_KEY`, sin definir aquí. El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba con
+**Contexto común a todas.** Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access, con el registro cerrado (`DISABLE_REGISTRATION=true`). Qué queda fuera de Access y por qué lo dice su entrada en `Instalar-Home-Server/server/config/apps-publicas.json`. Hay dos excepciones:
+
+- `/uploads`: nginx lo sirve como fichero estático.
+- `/api/public/*`: llega entero al backend sin login. Allí solo `/api/public/v1/*` exige la API key de la organización (`PublicAuthMiddleware`). El resto de `PublicController` (`apps/backend/src/api/routes/public.controller.ts`) responde a cualquiera.
+
+El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba así:
 
 ```bash
 for p in '/_next/image?url=%2Ffavicon.ico&w=64&q=75' /api/auth/can-register /api/enterprise/create-user; do
   curl -s -o /dev/null -w "$p %{http_code} %{redirect_url}\n" "https://postiz.dustincalderon.com$p"; done
+# las tres: 302 a cloudflareaccess.com
+curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/public/v1/is-connected
+# 401: llega al backend y pide la API key
 ```
 
-y las tres tienen que redirigir a `cloudflareaccess.com`, mientras que `curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/public/v1/is-connected` tiene que dar `401` (llega al backend y pide la API key).
+---
+
+## Credenciales generadas con `Math.random`: hay que rotarlas
+
+**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t`, sin login, devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
+
+**Cómo se cierra.** Regenerando cada API key creada antes del despliegue de `8fb61ee4` (pantalla de API pública, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. Se listan con:
+
+```bash
+docker exec postiz-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select name, \"updatedAt\" from \"Organization\" where \"apiKey\" is not null"'
+```
 
 ---
 
 ## Dependencias críticas que se despliegan y solo se arreglan saltando de versión mayor
 
-**Qué pasa.** Dos críticas de ejecución siguen abiertas en Dependabot y en el escáner de imágenes (trivy):
+**Qué pasa.** Dependabot y trivy señalan dos críticas de ejecución que no tienen arreglo dentro de la versión mayor que se usa:
 
 | Paquete | Aviso | Quién lo trae | Arreglo |
 |---|---|---|---|
-| `tar` 6.2.1 | GHSA-23hp-3jrh-7fpw / CVE-2026-59873 (DoS por gzip bomb) | `@mapbox/node-pre-gyp`, vía `bcrypt` y `canvas` | solo en 7.5.19 |
-| `happy-dom` 15.11.7 | GHSA-37j7-fg3j-429f / CVE-2025-61927 (escape del contexto VM) | `@wyw-in-js/transform`, vía `@pigment-css/react` | solo en 20.0.0 |
+| `tar` 6.x | GHSA-23hp-3jrh-7fpw / CVE-2026-59873 | `@mapbox/node-pre-gyp`, vía `bcrypt` y `canvas` | solo en `tar` 7 |
+| `happy-dom` 15.x | GHSA-37j7-fg3j-429f / CVE-2025-61927 | `@wyw-in-js/transform`, vía `@pigment-css/react` | solo en `happy-dom` 20 |
 
 **Por qué no se arreglan con un override.** Forzar una versión mayor por debajo de quien la pide rompe su API sin aviso, y aquí no hay prueba que lo detectara antes de producción.
 
-**Por qué no son alcanzables aquí** (se despliegan, pero nada les llega):
+**Por qué no son alcanzables** (se despliegan, pero nada les llega):
 
-- `tar` 6.2.1 solo lo usa `node-pre-gyp` para desempaquetar los binarios nativos durante `pnpm install`, en el build. En ejecución, `bcrypt` solo le pide la ruta del binario ya instalado. Comprobado el 2026-09-23: después de `require("bcrypt")`, `tar` no está en `require.cache`. No hay ninguna vía por la que un tar ajeno llegue a desempaquetarse.
-- `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. No aparece en ningún bundle de ejecución (`apps/frontend/.next/server`, `apps/backend/dist`, `apps/orchestrator/dist`). En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm (se comprueba con `docker exec postiz sh -c 'for p in /proc/[0-9]*; do tr "\0" " " < $p/cmdline; echo; done'`).
+- `tar` solo lo usa `node-pre-gyp` para desempaquetar binarios nativos durante `pnpm install`. En ejecución, `bcrypt` solo le pide la ruta del binario ya instalado. Esto tiene que imprimir `false`:
+  `docker exec -w /app/apps/backend postiz node -e 'require("bcrypt"); console.log(Object.keys(require.cache).some(k => /node_modules\/tar\//.test(k)))'`
+- `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. Esto no tiene que imprimir nada:
+  `docker exec postiz sh -c 'grep -rl happy-dom /app/apps/frontend/.next/server /app/apps/backend/dist /app/apps/orchestrator/dist'`
 
-En Dependabot se descartan como `tolerable_risk` con este motivo. En trivy se aceptan en `Instalar-Home-Server/server/config/vulnerabilidades-aceptadas.json`, atadas a la imagen (`postiz-custom:local-<sha>`), así que cada build nuevo las vuelve a sacar y hay que juzgarlas otra vez.
+En Dependabot están descartadas como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` atadas a la imagen, así que cada build nuevo las vuelve a sacar y se juzgan otra vez con estas dos comprobaciones.
 
-**Qué la vuelve urgente.** Que algo en ejecución empiece a importar `tar` o `happy-dom` (una función de importar archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
+**Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
 
-**Cómo se cierra.** Cuando quien los trae suba de mayor (`node-pre-gyp` 2.x usa `tar` 7; `@wyw-in-js/transform` actual usa `happy-dom` 20), o con la imagen de producción de la entrada siguiente, que los deja fuera.
+**Cómo se cierra.** Cuando quien los trae suba de mayor (`node-pre-gyp` 2 usa `tar` 7; `@wyw-in-js/transform` 2.5 usa `happy-dom` 20), o con la imagen de producción de la entrada siguiente.
 
 ---
 
 ## La imagen de producción lleva herramientas de desarrollo que no ejecuta
 
-**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Por eso trivy encuentra críticas en código que no se ejecuta: `vitest` 3.1.4 (CVE-2026-47429), `handlebars` 4.7.8 de `ts-jest` (CVE-2026-33937), la stdlib de Go 1.23 dentro del binario de `esbuild` (CVE-2025-68121) y el `tar` que traen npm y pnpm (CVE-2026-59873). Además, desde `next` 16.3 la imagen guarda los 502 MB de la caché de Turbopack (`apps/frontend/.next/cache`), que solo sirve para volver a compilar. Ninguno corre en producción. pnpm solo ejecuta los scripts de arranque, y el único paquete que baja (`pnpm dlx prisma@6.5.0`) viene por TLS del registro de npm.
+**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: herramientas de tests (`vitest`, `ts-jest`), el runtime de Go dentro de `esbuild`, y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm. pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
 
-**Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y hay que probarlo a fondo. No cabe en el cierre de vulnerabilidades del 2026-09-23. Estas cuatro se aceptan en `vulnerabilidades-aceptadas.json` atadas a la imagen.
+**Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos, que hay que aceptar a mano otra vez. Es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos y hay que aceptarlos a mano otra vez: es el precio de que las aceptaciones caduquen.
 
 **Qué la vuelve urgente.** Que ese coste se note: más de un build al mes, o que la lista crezca.
 
-**Cómo se cierra.** Un `Dockerfile` de producción que deje fuera las devDependencies y las herramientas de build, construido por `build.sh`, y el escáner de imágenes sin esos hallazgos.
+**Cómo se cierra.** Un `Dockerfile` de producción sin devDependencies ni herramientas de build, construido por `build.sh`, y el escáner de imágenes sin esos hallazgos.
 
 ---
 
-## Arreglos de seguridad de upstream revisados y no portados
+## Protección SSRF de salida de upstream, sin portar
 
-Desde el 2026-09-23 esto es producto propio (`.fork/STRATEGY.md`): de `gitroomhq/postiz-app` solo se portan los arreglos de seguridad. Revisado hasta `v2.24.0` (el vigilante de versiones de Instalar-Home-Server compara con esa marca, en `apps-publicas.json`). Portados: `387d85da` (PSA-2026-NWZN9J), `9259cf24` (PSA-2026-P8W1J0 / CVE-2026-94455), `4c835138` (PSA-2026-TD98KY / CVE-2026-94456) y `79360622` (path traversal en `/api/uploads` de Next). Revisados y **no** portados:
+**Qué pasa.** Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`). Aquí solo está el `ssrfSafeDispatcher` base, que usa `/public/stream`. Sin el resto, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores.
 
-**Protección SSRF de salida** (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`). Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL. Sin eso, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores. Aquí eso exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio de este fork (streaming, `upload-from-url`), así que no es un cherry-pick. **Se vuelve urgente** si alguien fuera del equipo recibe una cuenta o una API key, o si se abre el registro. **Se cierra** portando `getSsrfSafeDispatcher` y `getSsrfSafeAxios` de upstream y aplicándolos donde este fork pide URLs que da el usuario. El `ssrfSafeDispatcher` base ya está aquí: lo usa `/public/stream`.
+**Por qué se aplaza.** Exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio (streaming, `upload-from-url`), así que no es un cherry-pick.
 
-**Paquetes con avisos altos que upstream subió en `7a02bd6b`** (`multer`, entre otros). Son altas, no críticas, y quedan con el resto de altas en la entrada siguiente.
+**Qué la vuelve urgente.** Que alguien fuera del equipo reciba una cuenta o una API key, o que se abra el registro.
 
-**Credenciales generadas antes del 2026-09-23: hay que rotarlas.** Las API keys de organización salieron de `Math.random`. Además, `POST /api/public/t`, sin login, devuelve en la cookie `track` un `makeId(10)`: diez salidas de ese mismo generador por petición. Es el vector de PSA-2026-TD98KY. Quien las hubiera recogido en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Inventario del 2026-09-23: 0 apps OAuth, 0 autorizaciones OAuth y 3 API keys de organización (Test, y dos de CITEM). Desde `8fb61ee4` las credenciales nuevas salen de `crypto`, y lo que `/t` filtre ya no sirve para predecir nada. **Se cierra** regenerando las tres después del despliegue (pantalla de API pública, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa.
+**Cómo se cierra.** Portando `getSsrfSafeDispatcher` y `getSsrfSafeAxios` y aplicándolos donde este código pide URLs que da el usuario.
 
 ---
 
 ## Avisos altos y medios de Dependabot sin revisar
 
-**Qué pasa.** A 2026-09-23 hay unos 150 avisos altos y 150 medios de ejecución abiertos. Entre otros: `multer`, `nodemailer` y `sharp`, con PR de Dependabot abierto; `axios`, `undici`, `fast-uri`, `hono`, `js-yaml`, `nanoid` y `brace-expansion`. `check-dependencias-publicas.py` solo mira las críticas, a propósito, y nadie ha revisado estas una a una.
+**Qué pasa.** `check-dependencias-publicas.py` solo mira las críticas, a propósito. Las altas y medias de ejecución no se han revisado una a una:
 
-**Por qué se aplaza.** El cierre del 2026-09-23 tenía un alcance acotado: las críticas antes de que los vigilantes empezaran a avisar el 30-09.
+```bash
+# la severidad se filtra en jq: con severity=high,medium la API corta la paginación en 100
+gh api --paginate 'repos/dustin-calderon/postiz-app/dependabot/alerts?state=open&scope=runtime&per_page=100' \
+  --jq '.[] | select(.security_advisory.severity == "high" or .security_advisory.severity == "medium")
+        | "\(.security_advisory.severity) \(.dependency.package.name) \(.dependency.relationship)"' | sort | uniq -c | sort -rn
+```
 
-**Cómo se cierra.** Revisando primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Para cada uno, subirlo dentro de su mayor o descartar el aviso en GitHub con su motivo. Después, los transitivos por quien los trae.
+**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Los tres primeros tienen PR de Dependabot abierto. Para cada uno, subirlo dentro de su mayor o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.

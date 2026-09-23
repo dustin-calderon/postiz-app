@@ -1,63 +1,42 @@
 # Estrategia — `dustin-calderon/postiz-app`
 
 > **Origen:** `https://github.com/gitroomhq/postiz-app` (remote `upstream`)
-> **Repo:** `https://github.com/dustin-calderon/postiz-app`, rama `custom/postiz-dc` (la de por defecto)
-> **Producción:** Beelink, `/opt/repos/postiz-fork` → `/opt/homeserver/postiz/build.sh`
-> **Decisión vigente:** 2026-09-23, del owner
+> **Producción:** rama `custom/postiz-dc` (la de por defecto) → Beelink, `/opt/repos/postiz-fork`
 
----
+## Producto propio
 
-## Producto propio, no fork que sigue a upstream
+Este código nació de `gitroomhq/postiz-app`, pero es nuestro. No se rebasa sobre
+upstream ni sigue su numeración, y lo decidió el owner el 2026-09-23. Las razones
+no caducan con una release:
 
-Hasta junio de 2026 este repo era un *patch stack*: pocos commits propios que se
-rebasaban sobre cada release de upstream. Eso dejó de ser verdad. Sobre `v2.21.9`
-se apilaron 127 commits propios (carpetas de medios, limpieza automática, subida
-por streaming, identidad externa del post, webhooks de fallo, el workflow de
-Temporal `postWorkflowV106`, el pipeline con Notion y n8n…). Rebasarlos sobre
-`v2.24.0` daba 32 archivos en conflicto, un `schema.prisma` con 882 líneas nuevas
-arriba y un `postWorkflowV106` de upstream con el mismo nombre que el nuestro y
-distinto código, que habría roto los posts ya programados en Temporal.
+- **Tiene funciones propias** que tocan el núcleo: carpetas de medios, limpieza
+  automática, subida por streaming, identidad externa del post, webhooks de
+  fallo y el pipeline con Notion y n8n. Cada rebase sería un proyecto entero de
+  resolver conflictos.
+- **Los workflows de Temporal comparten nombres con los de upstream.** Upstream
+  publicó su propio `postWorkflowV106`, con otro código que el nuestro. Traer uno
+  de sus workflows exige ponerle un nombre que no exista aquí; si no, rompe los
+  posts ya programados.
 
-Desde el 2026-09-23 este código es **nuestro**: no se rebasa ni se sigue la
-numeración de upstream. De upstream solo se traen **arreglos de seguridad**.
+## Qué se trae de upstream
 
-## Cómo se traen los arreglos de seguridad
+**Siempre, los arreglos de seguridad** que alcancen este código. **El resto** de
+arreglos, mejoras y funciones **solo se propone**, y lo decide el owner.
 
-1. `check-apps-publicas-version.sh` (Instalar-Home-Server) compara las releases de
-   upstream con `version.revisado` de la entrada `postiz` en
-   `server/config/apps-publicas.json`: la última release cuyos arreglos de
-   seguridad ya se han mirado. Si hay una más nueva, avisa al bus.
-2. La fuente principal son los avisos publicados por upstream:
-   `gh api --paginate 'repos/gitroomhq/postiz-app/security-advisories?per_page=100'`.
-   Los rangos de versión que declaran no son fiables (escriben `2.4.0` por
-   `2.24.0`), así que cada aviso se coteja con nuestro código, no con el número.
-   Después vienen las notas de la release y, como apoyo, los commits
-   (`git log --no-merges -i -E --grep="secur|ssrf|cve|vuln|xss|traversal|inject|harden" <revisado>..<nueva>`).
-   El grep solo no basta: el arreglo de PSA-2026-NWZN9J se llama «feat: remove
-   lifetime».
-3. Cada uno se **porta**, con `git cherry-pick -x` si entra y a mano si no,
-   manteniendo nuestro código y aplicando solo su cambio, o se **descarta**
-   escribiendo por qué en `docs/DEUDA_TECNICA.md`, con lo que lo reabriría.
-4. Se sube `version.revisado` en el registro.
+Lo hace el triage del Beelink cuando el vigilante de versiones avisa de una
+release nueva, siguiendo `Instalar-Home-Server/server/ops/actualizar-app-publica.prompt.md`
+(sección «Apps `revisado`»): deja una rama `upstream/<release>` y un informe.
+Cada dato vive en un solo sitio:
+
+| Qué | Dónde |
+|---|---|
+| Hasta qué release está revisado | `version.revisado` de la entrada `postiz` en `Instalar-Home-Server/server/config/apps-publicas.json` |
+| Qué se portó | `git log --grep "cherry picked from"`, y los ports a mano, que lo dicen en su mensaje |
+| Qué se revisó y no se porta, y por qué | `docs/DEUDA_TECNICA.md` |
 
 Las dependencias no dependen de upstream: las vigila Dependabot en este repo, y
 las críticas se arreglan aquí (`pnpm.overrides`) o se descartan con su motivo.
 
-## Qué se ha revisado
-
-Hasta `v2.24.0`, el 2026-09-23. Ese día se cotejaron con este código los 19
-avisos publicados por upstream. Los arreglados en `2.21.8` o antes ya estaban
-en la base (`v2.21.9`). Dos sin versión corregida también estaban cubiertos:
-GHSA-jxg2 (hash de la contraseña en el JWT, `jwt()` lo borra desde `30e8b777`)
-y GHSA-f7jj (DNS rebinding, `ssrfSafeDispatcher` fija la resolución). Los
-cuatro posteriores se portaron. Lo portado y lo descartado está en
-`docs/DEUDA_TECNICA.md` («Arreglos de seguridad de upstream revisados y no
-portados») y en los commits con `(cherry picked from commit …)`.
-
 ## Despliegue
 
-`docs/architecture/ARRANQUE_Y_SUPERVISION.md` → «Despliegue». Resumen:
-`git pull` en el Beelink, `build.sh` (construye `postiz-custom:local-<sha>` y deja
-el compose apuntando a ella), volcado de la base (el arranque hace
-`prisma db push --accept-data-loss`) y `docker compose … up -d --no-deps postiz` (sin `--no-deps` recrea también
-postgres, redis y Temporal).
+`docs/architecture/ARRANQUE_Y_SUPERVISION.md`, sección «Despliegue».

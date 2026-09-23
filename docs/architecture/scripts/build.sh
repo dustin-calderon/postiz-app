@@ -32,7 +32,7 @@ echo "Tag    : ${IMAGE_NAME}:${IMAGE_TAG} (el contenedor corre ahora ${IMAGE_NAM
 docker build -f "${REPO_DIR}/Dockerfile.dev" -t "${IMAGE_NAME}:${IMAGE_TAG}" "${REPO_DIR}"
 
 # El compose pasa a la imagen nueva. El contenedor en marcha no cambia hasta el
-# `up -d`, igual que cuando construir movía postiz-custom:local.
+# `up -d --no-deps postiz`.
 sed -i -E "s|^([[:space:]]*image: ${IMAGE_NAME}:)[^[:space:]]+|\1${IMAGE_TAG}|" "$COMPOSE"
 
 # Se borran SOLO los tags local-<sha> viejos, nunca la imagen nueva ni la que

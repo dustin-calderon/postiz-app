@@ -184,37 +184,29 @@ el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
 
 ```bash
 # 1. en local: commit y push a origin/custom/postiz-dc
-# 2. en el servidor
+# 2. en el servidor, en este orden
 ssh dchomeserver 'cd /opt/repos/postiz-fork && git pull --ff-only origin custom/postiz-dc'
-ssh dchomeserver 'bash /opt/homeserver/postiz/build.sh'                              # ~5 min
+ssh dchomeserver 'bash /opt/homeserver/postiz/build.sh'
+ssh dchomeserver '/opt/repos/instalar-home-server/server/ops/backup/volcar-app.sh postiz \
+  > /opt/homeserver/ops/volcados-actualizacion/postiz-$(date +%F-%H%M).dump'
 ssh dchomeserver 'docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d --no-deps postiz'
 ssh dchomeserver 'bash /opt/homeserver/postiz/verifica-arranque.sh'
 ```
 
-El contenedor corre `postiz-custom:local-<sha>`, nunca una etiqueta reutilizada:
-así los veredictos de `vulnerabilidades-aceptadas.json` (Instalar-Home-Server)
-caducan solos al reconstruir. `build.sh` ([copia](./scripts/build.sh)) construye
-esa etiqueta, cambia a ella la línea `image:` del compose y conserva la que había
-como punto de retorno; borra los demás `local-<sha>`, pero **no** toca tags con
-otro prefijo, así que un `rollback-*` puesto a mano también sobrevive.
-
-**`--no-deps` no es opcional.** Sin él, Compose recrea también postgres, redis,
-elasticsearch y Temporal si su configuración ha cambiado desde que se crearon.
-El 2026-09-23, un `up -d --dry-run postiz` sin `--no-deps` los recreaba todos.
-
-**El arranque migra la base de datos** (`prisma db push --accept-data-loss` en
-`pm2-run`): volver a la imagen anterior no deshace un cambio de esquema. Antes
-del `up -d` se vuelca la base, y el volcado se queda:
-
-```bash
-ssh dchomeserver '/opt/repos/instalar-home-server/server/ops/backup/volcar-app.sh postiz \
-  > /opt/homeserver/ops/volcados-actualizacion/postiz-$(date +%F-%H%M).dump'
-```
-
-Cómo se restaura, en la cabecera de ese script.
-
-Vuelta atrás: poner en la línea `image:` del compose la etiqueta anterior, que
-`build.sh` imprime al terminar, y repetir el `up -d`.
+- **`build.sh`** ([copia versionada](./scripts/build.sh)) construye
+  `postiz-custom:local-<sha>` y deja el compose apuntando a ella. Una etiqueta
+  por commit hace que los veredictos de `vulnerabilidades-aceptadas.json`
+  (Instalar-Home-Server) caduquen al reconstruir.
+- **El volcado va antes del `up -d` y se queda.** El arranque aplica el esquema
+  con `prisma db push --accept-data-loss`, así que volver a la imagen anterior
+  no deshace un cambio de esquema. Cómo se restaura, en la cabecera de
+  `volcar-app.sh`.
+- **`--no-deps` no es opcional.** Sin él, Compose también recrea postgres,
+  redis, elasticsearch y Temporal si su configuración difiere de la de cuando
+  se crearon. `up -d --dry-run postiz` enseña qué recrearía; con `--no-deps`,
+  solo `postiz`.
+- **Vuelta atrás:** poner en la línea `image:` del compose la etiqueta que
+  `build.sh` imprime al terminar y repetir el `up -d --no-deps postiz`.
 
 > **Recrear el contenedor no cambia la retención de medios.** `workflow.start`
 > con un `workflowId` ya vivo lanza `WorkflowExecutionAlreadyStarted` y el
