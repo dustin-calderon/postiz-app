@@ -1,12 +1,25 @@
-# El triage del Beelink propone cambios en ramas: revision/<release> con lo que
-# trae de upstream (Instalar-Home-Server, actualizar-app-publica.prompt.md) y
-# triage/<origen> con el arreglo de una incidencia. Esto las abre como PR contra
-# custom/postiz-dc, con el mensaje de su último commit como descripción, para
-# que se aprueben desde GitHub con la puerta a la vista. Fusionar despliega.
+# El triage del Beelink propone cambios en ramas: revision/<release> con los
+# arreglos de seguridad que trae de upstream (Instalar-Home-Server,
+# actualizar-app-publica.prompt.md) y triage/<origen> con el arreglo de una
+# incidencia. Esto las abre como PR contra custom/postiz-dc, con el mensaje de
+# su último commit como descripción, y las deja fusionarse solas cuando la
+# puerta pasa, si el cambio es de los que no necesitan a Dustin. Fusionar
+# despliega, y el despliegue vuelve atrás solo si la imagen no queda sana.
 #
-# Necesita el ajuste del repo «Allow GitHub Actions to create and approve pull
-# requests», que cambia el owner: sin él, `gh pr create` falla y la rama se
-# queda sin PR.
+# Nunca se fusiona sola una PR que toque:
+#   · el esquema de la base: el arranque lo aplica con `prisma db push`, y
+#     volver a la imagen anterior no lo deshace;
+#   · un workflow de Temporal ya publicado: cambiarlo rompe los que ya corren
+#     (CLAUDE.md del repo); uno nuevo sí vale;
+#   · dependencias, la CI o la imagen: las dependencias van por Dependabot.
+# Y una de triage/, además, si toca la autenticación o los permisos, o cambia
+# más de 200 líneas: un arreglo de incidencia es pequeño. Las revision/ traen
+# arreglos de seguridad, que es justo lo que tienen que tocar.
+# Cuando no se fusiona sola, la PR lo dice en un comentario y espera.
+#
+# Necesita tres ajustes del repo, que cambia el owner: «Allow GitHub Actions to
+# create and approve pull requests» (sin él, `gh pr create` falla), permitir el
+# auto-merge y proteger custom/postiz-dc exigiendo `puerta`.
 name: Ramas propuestas
 
 on:
@@ -16,7 +29,7 @@ on:
       - 'triage/**'
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -24,14 +37,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - run: |
-          if [ -n "$(gh pr list --head "$RAMA" --state open --json number --jq '.[].number')" ]; then
-            echo "La PR de $RAMA ya existe"; exit 0
+      - name: Abrir la PR
+        run: |
+          if [ -z "$(gh pr list --head "$RAMA" --state open --json number --jq '.[].number')" ]; then
+            git log -1 --format=%B > cuerpo.md
+            gh pr create --base custom/postiz-dc --head "$RAMA" \
+              --title "$(git log -1 --format=%s)" --body-file cuerpo.md
           fi
-          git log -1 --format=%B > cuerpo.md
-          gh pr create --base custom/postiz-dc --head "$RAMA" \
-            --title "$(git log -1 --format=%s)" --body-file cuerpo.md
+        env:
+          RAMA: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fusionar sola si no necesita a Dustin
+        run: |
+          base=origin/custom/postiz-dc
+          nombres=$(git diff --name-only "$base"...HEAD)
+          modificados=$(git diff --name-only --diff-filter=MDR "$base"...HEAD)
+          motivos=""
+          grep -q 'schema\.prisma$' <<<"$nombres" && motivos+="· cambia el esquema de la base"$'\n'
+          grep -q '^apps/orchestrator/src/workflows/' <<<"$modificados" && motivos+="· cambia un workflow de Temporal ya publicado"$'\n'
+          grep -qE '(^|/)(package\.json|pnpm-lock\.yaml|Dockerfile[^/]*)$|^\.github/' <<<"$nombres" && motivos+="· toca dependencias, la CI o la imagen"$'\n'
+          if [[ "$RAMA" == triage/* ]]; then
+            grep -qiE '(^|[/._-])(o?auth|permissions?)([/._-]|$)' <<<"$nombres" && motivos+="· toca la autenticación o los permisos"$'\n'
+            lineas=$(git diff --numstat "$base"...HEAD | awk '{s+=$1+$2} END {print s+0}')
+            [ "$lineas" -le 200 ] || motivos+="· cambia ${lineas} líneas (más de 200)"$'\n'
+          fi
+          if [ -n "$motivos" ]; then
+            gh pr merge "$RAMA" --disable-auto 2>/dev/null || true
+            printf 'No se fusiona sola:\n%s\nEspera a que alguien la revise.\n' "$motivos" | gh pr comment "$RAMA" --body-file -
+          else
+            gh pr merge "$RAMA" --auto --squash
+          fi
         env:
           RAMA: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
