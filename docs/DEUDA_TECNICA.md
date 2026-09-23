@@ -23,7 +23,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 **Qué pasa.** `renameFolder` (`media.repository.ts`) usa SQL crudo con `substring(folder FROM $n)`, Prisma manda `$n` como `bigint` y Postgres 17 no tiene `substring(text, bigint)`: todo `PUT /media/rename-folder` devuelve 500 y el frontend no lo avisa. Además, su `LIKE` no escapa `_` ni `%`, así que, si ejecutara, alcanzaría carpetas ajenas.
 
-**Cómo se cierra.** Con la PR #5 (Prisma en vez de SQL crudo, las carpetas elegidas comparando valores, en una transacción), desplegada.
+**Cómo se cierra.** Ya está arreglado en `custom/postiz-dc` (PR #5: Prisma en vez de SQL crudo, las carpetas elegidas comparando valores, en una transacción). Se cierra al desplegarlo: producción sigue con la imagen anterior hasta entonces.
 
 ---
 
