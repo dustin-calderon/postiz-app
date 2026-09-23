@@ -76,11 +76,11 @@ Renombrar `Citem` a `NewBrand` actualiza:
   a cualquier profundidad).
 
 El prefijo lleva la barra, así que `"Citem2"` no se toca al renombrar `"Citem"`.
-Qué carpetas entran se decide en el código, comparando valores (igualdad o
-`startsWith` de JavaScript), no con un patrón `LIKE`: un `_` o un `%` en el
-nombre es un carácter más, y renombrar `A_B` no alcanza a `AxB/…`. El
-`startsWith` de Prisma sí es un `LIKE` sin escapar, así que en la consulta sólo
-acota qué filas se leen.
+Qué carpetas entran y a qué ruta va cada una lo decide `renamedFolderPath`, la
+misma función que usa la vista. Compara valores, no un patrón `LIKE`, así que
+un `_` o un `%` en el nombre es un carácter más: renombrar `A_B` no alcanza a
+`AxB/…`. El `startsWith` de Prisma sí es un `LIKE` sin escapar, y en la
+consulta sólo acota qué filas se leen.
 
 Sólo se sustituye el prefijo: `'Design/Design'` pasa a `'Art/Design'`, no a
 `'Art/Art'`. Cada medio se actualiza por su id y sólo si sigue en la carpeta en
@@ -254,7 +254,6 @@ son preferencias de la sesión y no tocan el backend.
 | La jerarquía como ruta con `/` | Una sola columna basta para cualquier profundidad, y el cliente arma el árbol partiendo la cadena, sin más consultas. |
 | `__root__` como valor centinela de `?folder=` | En una query string no se puede distinguir «sin filtro» de «carpeta nula»: parámetro ausente significa todo, `__root__` significa sólo lo que no tiene carpeta. |
 | Renombrar con Prisma: un `updateMany` por carpeta afectada, en una transacción | `updateMany` sólo escribe un valor fijo, y cada carpeta tiene su ruta nueva; hay tantas actualizaciones como carpetas distintas, no como medios. La transacción las hace todas o ninguna, sin SQL crudo. |
-| Elegir las carpetas en el código, no con `LIKE` | Un `LIKE` convierte `_` y `%` del nombre en comodines y alcanzaría carpetas ajenas (`A_B` casaría con `AxB/…`). Comparar los valores no depende de escapar nada. |
 | Sustituir sólo el prefijo | Un `REPLACE` cambiaría todas las apariciones del nombre dentro de la ruta. |
 | Filtro exacto por carpeta | Una carpeta muestra lo que tiene dentro y nada más, y la consulta es una igualdad sobre una columna indexada. |
 | La carpeta nueva, sólo en el navegador hasta su primer medio | Es la consecuencia directa de no tener tabla: no se escriben filas de relleno para que la carpeta exista. |

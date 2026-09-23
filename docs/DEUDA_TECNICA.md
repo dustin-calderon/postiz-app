@@ -91,6 +91,20 @@ En Dependabot están descartadas como `tolerable_risk` con este motivo. En trivy
 
 ---
 
+## El lint de la raíz no pasa sobre el código existente
+
+**Qué pasa.** La configuración carga (ESLint 9), pero `npx eslint apps libraries`, desde la raíz, sale con errores de código que ya existía. Casi todos son reglas de React Compiler que `eslint-plugin-react-hooks` 7 trae como error dentro de `next/core-web-vitals`. Además:
+
+- `apps/frontend/public/f.js` es un bundle estático, y nada lo excluye del lint.
+- `usePageVisibility` (`libraries/react-shared-libraries/src/helpers/use.is.visible.tsx`) no lo usa nadie. Incumple `rules-of-hooks`, y su limpieza no quita los listeners de `blur` y `focus`.
+- La raíz declara devDependencies de lint que `eslint.config.mjs` no importa (`@typescript-eslint/*` 7, `eslint-plugin-react`, `eslint-plugin-react-hooks` 4, `eslint-plugin-import`, `eslint-plugin-jsx-a11y`). ESLint 9 ignora `libraries/nestjs-libraries/.eslintrc.json` y `libraries/react-shared-libraries/.eslintrc.json`.
+
+**Qué la vuelve urgente.** Que el lint tenga que hacer de puerta (CI, o antes de desplegar). Hoy no puede.
+
+**Cómo se cierra.** Borrar `usePageVisibility`, excluir `apps/frontend/public/` y decidir si las reglas de React Compiler son error o aviso. Luego, limpiar las devDependencies y los `.eslintrc.json` que sobran, y arreglar lo que quede hasta que `npx eslint apps libraries` salga con 0.
+
+---
+
 ## Avisos altos y medios de Dependabot sin revisar
 
 **Qué pasa.** `check-dependencias-publicas.py` solo mira las críticas, a propósito. Las altas y medias de ejecución no se han revisado una a una:
