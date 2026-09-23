@@ -616,9 +616,10 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 | `Formatear error`, sin respuesta | «Postiz no respondió (`<error de red>`). No es un fallo de la fila…» | el sistema |
 | `Formatear error de subida`, si el SSH falla | «n8n no pudo ejecutar la subida en el servidor…» | el sistema |
 | `Interpretar payload` (receptor) | «Postiz dio error al publicar: `<cause.failure.message>`…» | Instagram o Postiz, al publicar |
-| `Reconciliar` (retirada, 06:20) | textos fijos de la recuperación | — |
+| `Reconciliar` (recuperación, 06:20), cuando el aviso de Postiz se perdió | «Postiz dio error al publicar, pero su aviso con el motivo no llegó…» o «Postiz ya no tiene este post…»: el motivo no viaja en `GET /posts` | Instagram o Postiz, al publicar |
+| `planificar.py` (réplica de carruseles, en Instalar-Home-Server), en una fila `Por replicar` | «URL tiene que ser el enlace de un post de Instagram…» o «cuenta origen tiene que ser el nombre de la cuenta…» | la fila |
 
-Esos nodos viven en n8n, no en git. La batería de pruebas (§14.3) comprueba la subida con un fichero ilegible y el rechazo de Postiz con un copy de más de 2200 caracteres.
+Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La batería de pruebas (§14.3) comprueba la subida con un fichero ilegible y el rechazo de Postiz con un copy de más de 2200 caracteres.
 
 **El historial de errores, para aprender de ellos.** `❌ error_log` solo guarda el último de cada fila, así que el historial vive en otros sitios:
 
@@ -627,6 +628,7 @@ Esos nodos viven en n8n, no en git. La batería de pruebas (§14.3) comprueba la
 | Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n, **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server) | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
 | Los fallos al publicar | Tabla `Errors` de Postiz (`postiz_db`) | `SELECT "createdAt", platform, message FROM "Errors" ORDER BY 1;` |
 | El archivo en Drive | `/var/log/postiz-archivo.log`, 8 semanas de rotación | [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
+| Cada pasada de la réplica de carruseles, con las filas que mandó a `Error` | `~/.local/state/carrusel-ig/replicar.log` en el Beelink | `tail` del log; lo escribe `replicar.sh` |
 
 Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
@@ -1080,11 +1082,12 @@ con su `❌ error_log`. Un fallo que **no** maneja (Notion no contesta a la
 consulta de las 06:00, un nodo de código que revienta) paraba la ejecución, y
 solo quedaba en el historial de n8n, donde nadie lo miraba.
 
-- **Reintentos.** Las llamadas que se pueden repetir sin efecto doble (todas
-  las de Notion, y los `GET` y `DELETE` a Postiz) se reintentan 3 veces, con 5 s
-  entre intentos. `POST /public/v1/posts` y la subida por SSH **no** se
-  reintentan: si la primera llegó y solo se perdió la respuesta, repetirla
-  publicaría o subiría dos veces.
+- **Reintentos.** Todo nodo HTTP que llama a Notion o a Postiz se reintenta 3
+  veces, con 5 s entre intentos. `POST /public/v1/posts` también: lleva el
+  `externalId` de la fila (§9.6), así que si la primera llegó y solo se perdió
+  la respuesta, la segunda devuelve el mismo post y no lanza otra publicación.
+  En un nodo con salida de error, n8n agota los intentos antes de tomarla. La
+  subida por SSH **no** se reintenta: repetirla subiría el fichero dos veces.
 - **Aviso.** Los cinco workflows del pipeline (sync, subflow, retirada,
   receptor y réplica de carruseles) tienen de *error workflow* «Bus de
   incidencias · fallos de n8n y caídas de Kuma». Ese workflow llama a
@@ -1131,7 +1134,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta, y el tope dejó de ser un problema.** No son 300 MB sino **1 GiB** (`MAX_URL_UPLOAD_BYTES`), y ya no protege memoria —el streaming la hace constante— sino el disco (§9.2). Probado con 672 MB |
 | ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `❌ release_url` aparte |
 | ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
-| 5 | Qué pasa si el sync entero falla | — | Notion caído a las 06:00: reintentos + alerta distinta. **Sigue abierta** |
+| ~~5~~ | ~~Qué pasa si el sync entero falla~~ | — | **Resuelta:** cada nodo HTTP se reintenta 3 veces y, si aun así falla, el bus de incidencias avisa con el workflow, el nodo y el error (§9.10) |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
 
@@ -1387,9 +1390,9 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | Límite | Consecuencia |
 |---|---|
 | **Colaboradores en `graph.instagram.com`** | Se envían, pero no está comprobado que Meta los acepte en la API de Instagram Login. Deuda aceptada (§11, decisión #7) |
-| **Más de 100 filas accionables** | Ninguna de las dos consultas a Notion pagina. **Fallan a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Con el filtro por estados vivos, hoy el margen es enorme |
+| **Más de 100 filas en una consulta** | Ni el sync ni la retirada paginan: **fallan a las claras** si `has_more` es `true`, en vez de trabajar con media lista. El sync lee solo los estados vivos y va sobrado. **La retirada no**: lee toda fila de Instagram con `Status`, `Publicado` incluidas (§9.7), y esas crecen con cada pieza. Al pasar de 100, la retirada y la recuperación dejan de correr y avisa el bus de incidencias (§9.10). Hay que paginar esa consulta antes |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
-| **Notion caído a la hora del cron** | No hay reintento ni alerta distinta. Decisión abierta (§11) |
+| **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus de incidencias (§9.10). Lo ya programado en Postiz sigue en pie; lo editado ese día no llega hasta la siguiente pasada o el botón |
 
 > **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en el caso parcial de arriba.
 
