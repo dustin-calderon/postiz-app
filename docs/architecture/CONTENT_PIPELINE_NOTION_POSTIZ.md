@@ -679,8 +679,6 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 
 > ### Zona horaria: los instantes viajan con offset; la visualización manda Madrid
 > El pipeline es correcto con cualquier offset ISO (`+02:00`, `Z`…): Postiz publica el instante real. Pero **lo que se ve en Notion es el literal escrito**, así que una automatización que escriba `Fecha` en UTC muestra «11:40» cuando el instante es las 13:40 de Madrid — pasó el 2026-08-15 y confunde a quien aprueba. Convención: las filas creadas en la UI ya van en la zona del usuario; toda escritura por API debe mandar `{"start": "<hora local sin offset>", "time_zone": "Europe/Madrid"}` — Notion la normaliza al offset correcto (DST incluido) y el validador la acepta.
->
-> No es teórico: hoy **1 de cada 100 filas** con fecha tiene hora.
 
 > **Sobre el margen y `❌ error_log`:** saltar por el margen de seguridad no es un error, es el sistema funcionando. Escribirlo en `❌ error_log` dejaría un mensaje de avería en una fila sana y acabaría entrenando al equipo a ignorar ese campo. Se reporta en la ejecución de n8n; la fila se recoge sola en la siguiente pasada.
 
