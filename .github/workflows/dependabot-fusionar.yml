@@ -1,0 +1,39 @@
+# Las PR de seguridad de Dependabot se fusionan solas cuando pasan la puerta.
+# Al fusionar, el Beelink las despliega.
+#
+# La regla de la flota es no fusionar una PR de Dependabot tal cual, porque su
+# lockfile se resolvió contra la rama del día en que nació y puede devolver un
+# paquete a una versión vulnerable con el CI en verde (Instalar-Home-Server,
+# PLAN_APPS_PUBLICAS_PARCHEADAS.md §4.5). Aquí lo impiden dos cosas:
+#
+#   · dependency-review compara la PR con la rama base y falla si trae un
+#     paquete con un aviso conocido, de la severidad que sea;
+#   · la protección de la rama exige la puerta en verde sobre una PR al día
+#     con la base, y Dependabot la rehace al día en su pasada semanal.
+#
+# Un salto de versión mayor nunca se fusiona solo: se queda abierta para Dustin.
+name: Dependabot
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fusionar:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: low
+
+      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
