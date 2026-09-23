@@ -121,14 +121,20 @@ export class MediaRepository {
   }
 
   /**
-   * Renames every media item whose folder path starts with `oldName`.
+   * Renames a folder together with every folder nested under it:
+   *   - the folder itself: "Citem"          → "NewBrand"
+   *   - nested folders:    "Citem/Diseños"  → "NewBrand/Diseños" (any depth)
    *
-   * Handles both flat and hierarchical paths:
-   *   - exact match:  "Citem"          → "NewBrand"
-   *   - prefix match: "Citem/Diseños"  → "NewBrand/Diseños"
+   * Which folders are affected is decided here, comparing values: the exact
+   * name, or the name followed by the separator. Prisma's `startsWith` is a
+   * LIKE that does not escape `_` or `%`, so it only narrows the lookup; left
+   * alone it would let "A_B" reach "AxB/…".
    *
-   * Uses a single raw SQL REPLACE() to atomically update all affected rows.
-   * Prisma.sql tagged-template ensures full parametrization — no injection risk.
+   * Only the prefix is swapped ("Design/Design" → "Art/Design"). Rows are
+   * updated by id, and only while they are still in the folder they were read
+   * from, so no row is renamed twice when a new path equals an old one
+   * ("A" → "A/B" while "A/B" exists), nor pulled back after a concurrent move.
+   * All updates run in one transaction: every row is renamed or none is.
    */
   async renameFolder(org: string, dto: RenameFolderDto): Promise<{ count: number }> {
     const oldTrimmed = dto.oldName.trim();
@@ -137,40 +143,38 @@ export class MediaRepository {
       return { count: 0 };
     }
 
-    // REPLACE(folder, oldName, newName) handles both:
-    //   "Citem"         → "NewBrand"
-    //   "Citem/Diseños" → "NewBrand/Diseños"
-    // The WHERE clause restricts to exact match OR prefix match to avoid
-    // accidentally renaming unrelated folders that happen to share a prefix
-    // (e.g. "Citem2" when renaming "Citem").
-    const prefix = `${oldTrimmed}${FOLDER_SEP}`;
+    const nestedPrefix = `${oldTrimmed}${FOLDER_SEP}`;
+    const candidates = await this._media.model.media.findMany({
+      where: {
+        organizationId: org,
+        deletedAt: null,
+        folder: { startsWith: oldTrimmed },
+      },
+      select: { id: true, folder: true },
+    });
+
+    const idsByFolder = new Map<string, string[]>();
+    for (const { id, folder } of candidates) {
+      if (folder !== oldTrimmed && !folder.startsWith(nestedPrefix)) {
+        continue;
+      }
+      idsByFolder.set(folder, [...(idsByFolder.get(folder) ?? []), id]);
+    }
+
     // Cast to PrismaClient: PrismaRepository<'media'>.model is typed as
     // Pick<PrismaService, 'media'> for DI ergonomics, but at runtime it IS the
-    // full PrismaService which extends PrismaClient (and therefore has $queryRaw).
+    // full PrismaService which extends PrismaClient (and therefore has $transaction).
     const prisma = this._media.model as unknown as import('@prisma/client').PrismaClient;
-    // Use CASE WHEN instead of REPLACE to avoid corrupting nested paths.
-    // REPLACE('Design/Design', 'Design', 'Art') → 'Art/Art' (wrong!)
-    // CASE exact match: folder = newName
-    // CASE prefix match: newName || substring(folder, length(oldName)+1)
-    const oldLen = oldTrimmed.length;
-    const result = await prisma.$queryRaw<{ count: bigint }[]>(
-      Prisma.sql`
-        UPDATE "Media"
-        SET folder = CASE
-          WHEN folder = ${oldTrimmed} THEN ${newTrimmed}
-          ELSE ${newTrimmed} || substring(folder FROM ${oldLen + 1})
-        END
-        WHERE "organizationId" = ${org}
-          AND "deletedAt" IS NULL
-          AND (folder = ${oldTrimmed} OR folder LIKE ${prefix + '%'})
-      `
+    const results = await prisma.$transaction(
+      [...idsByFolder].map(([folder, ids]) =>
+        prisma.media.updateMany({
+          where: { id: { in: ids }, folder },
+          data: { folder: newTrimmed + folder.slice(oldTrimmed.length) },
+        })
+      )
     );
 
-    // $queryRaw with UPDATE returns the row count directly in some drivers.
-    // With Prisma + PostgreSQL it returns an empty array; the count is inferred
-    // from the affected rows signal. We return 1 to indicate success rather
-    // than 0 (which would be mistaken for a no-op by callers).
-    return { count: Number((result as any)?.[0]?.count ?? 1) };
+    return { count: results.reduce((total, { count }) => total + count, 0) };
   }
 
   /**
