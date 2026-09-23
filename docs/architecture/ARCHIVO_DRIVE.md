@@ -31,7 +31,7 @@ El tercero no es teórico: el 2026-08-04, 9 posts publicados desde la UI de Post
 55 2 * * *  (carga /opt/homeserver/.env; postiz-archivo-drive.py >/dev/null 2>>/var/log/postiz-archivo.log) || alertar.sh postiz-archivo …
 ```
 
-- **Si una de las dos sale con error, cron llama a `alertar.sh`** (Instalar-Home-Server, `server/ops/`), que avisa por Telegram y abre una incidencia en el bus.
+- **Si una de las dos sale con error, cron llama a `alertar.sh`** (Instalar-Home-Server, `server/ops/`), que abre una incidencia en el bus: la diagnostica el triage, y solo avisa a Dustin si es grave.
 - **El `>/dev/null` del archivador no es un descuido:** el script ya escribe él mismo en el log, y redirigir también su salida estándar duplicaría cada línea. El `stderr` se conserva.
 - **Log común:** `/var/log/postiz-archivo.log`, con rotación semanal en `/etc/logrotate.d/postiz-archivo`.
 - **Van antes que el backup diario (04:00) y que el sync de Notion (06:00)**, para no solaparse con ellos.

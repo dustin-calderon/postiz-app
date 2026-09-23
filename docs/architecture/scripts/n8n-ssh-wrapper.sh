@@ -3,7 +3,8 @@
 #
 # La clave de n8n solo puede ejecutar tres cosas: normalizar-video.sh con una
 # URL como unico argumento, replicar.sh (replica de carruseles) sin argumentos,
-# y avisar al bus de incidencias (alertar.sh) con origen n8n o kuma-<monitor>.
+# y encolar en el bus de incidencias (alertar.sh) con origen n8n-<workflow>,
+# kuma-<monitor> o autoheal-<contenedor>.
 # n8n esta expuesto a internet: si sus credenciales caen, esta clave no puede
 # convertirse en una shell en el host.
 #
@@ -18,7 +19,7 @@ REPLICAR=/opt/apps/carrusel-ig/replicar.sh
 ALERTAR=/opt/repos/instalar-home-server/server/ops/alertar.sh
 
 deny() {
-  echo "clave restringida: solo '$SCRIPT <url>', '$REPLICAR' o '$ALERTAR alertar|encolar <origen> <mensaje en base64>' (recibido: $SSH_ORIGINAL_COMMAND)" >&2
+  echo "clave restringida: solo '$SCRIPT <url>', '$REPLICAR' o '$ALERTAR encolar <origen> <mensaje en base64>' (recibido: $SSH_ORIGINAL_COMMAND)" >&2
   exit 127
 }
 
@@ -38,23 +39,25 @@ if [ "$#" -eq 1 ] && [ "$1" = "$REPLICAR" ]; then
   exec "$REPLICAR"
 fi
 
-# El bus de incidencias. Los fallos de los workflows de n8n (su Error Trigger)
-# van con origen `n8n`, y las caidas que avisa Uptime Kuma, con `kuma-<monitor>`.
-# Ningun otro origen: hay origenes con runbook que actuan solos (actualizar una
-# app, por ejemplo), y una credencial de n8n robada no debe poder dispararlos.
+# El bus de incidencias: solo encolar, que no avisa a nadie (lo decide el
+# triage). Los fallos de los workflows de n8n (su Error Trigger) van con origen
+# `n8n-<workflow>`, las caidas que ve Uptime Kuma con `kuma-<monitor>` y los
+# reinicios de autoheal con `autoheal-<contenedor>`: un origen por cosa, porque
+# el bus identifica una incidencia por su origen. Ningun otro: hay origenes con
+# runbook que actuan solos (actualizar una app, por ejemplo), y una credencial
+# de n8n robada no debe poder dispararlos.
 # El mensaje va en base64 porque lleva espacios y comillas, y el nodo SSH de n8n
 # no puede mandarlo por la entrada estandar.
 if [ "$#" -eq 4 ] && [ "$1" = "$ALERTAR" ]; then
-  case "$2" in alertar|encolar) ;; *) deny ;; esac
-  case "$3" in n8n|kuma-*) ;; *) deny ;; esac
+  [ "$2" = encolar ] || deny
+  case "$3" in n8n-?*|kuma-?*|autoheal-?*) ;; *) deny ;; esac
   case "$3" in *[!a-z0-9-]*) deny ;; esac
   case "$4" in *[!A-Za-z0-9+/=]*) deny ;; esac
   mensaje=$(printf '%s' "$4" | base64 -d 2>/dev/null) || deny
   # Sin esto, la incidencia diria que la lanzo una sesion SSH, y el triage trata
   # lo que sale de una sesion SSH como sospechoso de prueba a mano.
   export ALERTAR_QUIEN="n8n · workflow «Bus de incidencias» por su clave SSH restringida"
-  [ "$2" = encolar ] && exec "$ALERTAR" encolar "$3" "$mensaje"
-  exec "$ALERTAR" "$3" "$mensaje"
+  exec "$ALERTAR" encolar "$3" "$mensaje"
 fi
 
 [ "$#" -eq 2 ] || deny

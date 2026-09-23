@@ -161,11 +161,11 @@ contraseñas y van en `600`, como el `.env` del homeserver. `build.sh` y
 > reinicios. Si algún día se quiere que se auto-reinicie, hay que añadir la
 > etiqueta a propósito.
 
-**Quién avisa si cae y quién lo arregla:** el monitor `Postiz` de Uptime Kuma
-avisa por Telegram y encola la caída en el bus de incidencias como
-`kuma-postiz`. El triage la diagnostica con el runbook
-`server/ops/postiz-caido.prompt.md`, que permite **un** reinicio de `postiz`
-con diagnóstico previo, no un bucle. Qué pide el monitor y por qué, en
+**Quién se entera si cae y quién lo arregla:** el monitor `Postiz` de Uptime
+Kuma encola la caída en el bus de incidencias como `kuma-postiz`. El triage la
+diagnostica con el runbook `server/ops/postiz-caido.prompt.md`, que permite
+**un** reinicio de `postiz` con diagnóstico previo, no un bucle, y solo avisa a
+Dustin si no puede devolverlo. Qué pide el monitor y por qué, en
 `docs/guides/UPTIME_KUMA_SETUP.md`; los dos, en Instalar-Home-Server.
 
 ---
@@ -213,9 +213,10 @@ siguiente: una imagen que no arranca tumbaría Postiz cada 10 minutos. Se
 intenta con el próximo commit, o a mano. `desplegar.sh` lo recuerda en
 `/opt/homeserver/postiz/.desplegar-fallido`.
 
-Un despliegue bueno se cuenta por Telegram, con el commit y la imagen de
+Un despliegue bueno no se cuenta: queda en el log,
+`/opt/homeserver/ops/desplegar-postiz.log`, con el commit y la imagen que corría
 antes. Uno malo va al bus de incidencias (`postiz-despliegue`), que lo
-diagnostica. El log, en `/opt/homeserver/ops/desplegar-postiz.log`.
+diagnostica y solo avisa a Dustin si es grave.
 
 A mano es lo mismo sin el flag. El build tarda unos 15 minutos, así que se
 suelta del ssh, que por el túnel se corta:
@@ -239,12 +240,12 @@ ssh dchomeserver 'nohup /opt/homeserver/postiz/desplegar.sh >> /opt/homeserver/o
   se crearon. `up -d --dry-run postiz` enseña qué recrearía; con `--no-deps`,
   solo `postiz`.
 - **Vuelta atrás a mano:** poner en la línea `image:` del compose la etiqueta
-  que el aviso de Telegram da como «Antes corría» y repetir el
+  que el log da como «corre» en la línea `desplegando` y repetir el
   `up -d --no-deps postiz`.
 - **Las copias vivas** de `build.sh`, `verifica-arranque.sh` y `desplegar.sh`
   están en `/opt/homeserver/postiz` para que un push al repo no ejecute nada en
   el host sin que alguien las copie. Si se cambia una en el repo, se copia a
-  mano; el aviso del despliegue dice si difieren. `desplegar.sh` se prueba
+  mano; si al desplegar difieren, se encola una incidencia (`postiz-copias`). `desplegar.sh` se prueba
   entero, sin tocar nada real, con `bash docs/architecture/scripts/test_desplegar.sh`
   en Linux.
 
