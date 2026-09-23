@@ -25,7 +25,7 @@ arreglos, mejoras y funciones **solo se propone**, y lo decide el owner.
 
 Lo hace el triage del Beelink cuando el vigilante de versiones avisa de una
 release nueva, siguiendo `Instalar-Home-Server/server/ops/actualizar-app-publica.prompt.md`
-(sección «Apps `revisado`»): deja una rama `upstream/<release>` y un informe.
+(sección «Apps `revisado`»): deja una rama `revision/<release>` y un informe.
 Cada dato vive en un solo sitio:
 
 | Qué | Dónde |
