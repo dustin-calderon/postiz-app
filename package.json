@@ -280,8 +280,6 @@
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
     "@vitejs/plugin-react": "^4.2.0",
-    "@vitest/coverage-v8": "1.6.0",
-    "@vitest/ui": "1.6.0",
     "autoprefixer": "^10.4.17",
     "babel-jest": "29.7.0",
     "cross-env": "^10.0.0",
@@ -309,8 +307,7 @@
     "tsup": "^8.5.0",
     "typescript": "5.5.4",
     "vite": "^6.3.5",
-    "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "3.1.4"
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "volta": {
     "node": "20.17.0"
@@ -328,7 +325,8 @@
       "@types/react-dom": "19.1.6",
       "protobufjs": "7.5.5",
       "shell-quote": "1.8.4",
-      "request>form-data": "2.5.5"
+      "request>form-data": "2.5.5",
+      "ts-jest>handlebars": "4.7.9"
     },
     "onlyBuiltDependencies": [
       "bcrypt"
