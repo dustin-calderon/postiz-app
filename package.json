@@ -310,7 +310,7 @@
     "vite-tsconfig-paths": "^5.1.4"
   },
   "volta": {
-    "node": "20.17.0"
+    "node": "22.20.0"
   },
   "jest-junit": {
     "outputDirectory": "./reports",
