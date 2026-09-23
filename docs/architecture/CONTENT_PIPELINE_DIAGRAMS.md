@@ -414,15 +414,15 @@ flowchart TD
     end
 
     subgraph SRV["🖥️ Sólo en el Beelink"]
-        S1["/opt/homeserver/n8n-workflows/<br/>los 4 workflows exportados · modo 600"]
+        S1["/opt/homeserver/n8n-workflows/<br/>los workflows exportados · modo 600"]
         S2["/opt/homeserver/.env<br/>tokens y rutas secretas"]
         S3["/opt/homeserver/postiz/postiz.env<br/>API_LIMIT · MAX_URL_UPLOAD_BYTES"]
         S4[("/mnt/seagate/postiz-media<br/>bind mount de /uploads")]
     end
 
     subgraph EXT["☁️ Fuera del repo"]
-        E1["n8n · 4 workflows activos"]
-        E2["Notion · 11 propiedades + 2 vistas + botón"]
+        E1["n8n · 4 workflows del pipeline + la réplica"]
+        E2["Notion · propiedades, 3 vistas y 2 botones (§14.2)"]
         E3["Postiz · webhook registrado"]
     end
 

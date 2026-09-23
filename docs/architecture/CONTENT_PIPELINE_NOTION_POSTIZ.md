@@ -456,7 +456,7 @@ Por defecto, `programar`.
 
 `borrador` sirve para dos cosas: el **dry-run** editorial y para revisar una pieza en la vista real de Postiz antes de soltarla. Cambiar de `borrador` a `programar` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
 
-> **No contradice "nunca se aprueba en Postiz" (§6).** La aprobación sigue siendo `Status = Listo` en Notion. `modo` sólo decide qué hace Postiz con algo ya aprobado. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
+> **No contradice "nunca se aprueba en Postiz" (§6).** Se aprueba siempre en Notion: una fila en `Listo` con `modo = programar` está aprobada, y una en `borrador` se aprueba pasando `modo` a `programar` —así se aprueban las réplicas (§8)—. `Status` no aprueba un borrador. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
 > ### ⚠️ Un borrador **no pasa por la validación del servidor**
 > `checkValidity`, los ajustes y el límite de 2200 caracteres se comprueban **sólo** dentro de `if (body.type !== 'draft')` (§4.2, `public.integrations.controller.ts:267-279`). Un `borrador` entra con lo único que se mira siempre: que no esté vacío del todo.
@@ -589,7 +589,7 @@ Las opciones de la propiedad `Status` (§7.2):
 
 **El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz (§9.7). Todo lo demás es del worker.
 
-> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica automática la prepara (workflow `Carruseles · Replicar`, §14.3). **Ningún workflow del pipeline de publicación la lee**, comprobado en sus filtros: el sync lee `Listo`, `Programado` y `En Postiz (borrador)`, y la recuperación, `Programado`. La retirada reclama posts con `❌ postiz_post_id`: una fila nueva no tiene, pero una que se rehace (se vuelve a poner en `Por replicar`) sí; qué hace la retirada con ella si pasa a mitad de la réplica no está medido, y el borrador viejo se sustituye igualmente al terminar. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **La réplica la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar`.** Una opción previa a `Listo` para la capa creativa (§10.2): una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica automática la prepara (workflow `Carruseles · Replicar`, §14.3). **El sync no la lee**: lee `Listo`, `Programado` y `En Postiz (borrador)`, y la recuperación, `Programado`. La retirada reclama el post de toda fila con `Status` puesto, `Por replicar` incluida (§9.7): el de una fila que se rehace sigue en Postiz hasta que el sync lo sustituye al terminar la réplica. Es un estado de producción, no del pipeline — lo que §7.2 fusionó en esta misma propiedad. **La réplica la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida (§6). El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 **`Status` es la única propiedad de estado.** Antes había dos —un ciclo de producción propio y el del pipeline— y se fusionaron; el porqué está en §7.2. Tú escribes `Listo` y n8n escribe el resto.
 
@@ -599,7 +599,7 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 
 **Con `modo = borrador`** (§7.2.2) la fila sincronizada no va a `Programado` sino a **`En Postiz (borrador)`**. Es un estado propio a propósito: si reutilizáramos `Programado`, alguien daría por hecho que va a salir y no saldría nunca. Desde ahí se pasa a `Programado` cambiando `modo`, no la propiedad `Status`.
 
-**Postiz no se entera de que la pieza existe hasta que `Status = Listo`.** El borrador *editorial* vive en Notion y no sale de ahí. Lo que Postiz recibe ya está aprobado; `modo` sólo decide si además queda programado o esperando.
+**Postiz no se entera de que la pieza existe hasta que `Status = Listo`.** El borrador *editorial* vive en Notion y no sale de ahí. Lo que Postiz recibe está en `Listo`, y `modo` decide si queda programado o esperando aprobación (§7.2.2).
 
 ### 8.1 El camino de vuelta desde `Error`
 
@@ -648,7 +648,7 @@ El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, r
 >
 > **La ruta con cabecera NO cambia: sigue siendo síncrona a propósito.** Los scripts y la batería de pruebas disparan y leen el resultado en la misma llamada; volverla asíncrona obligaría a reescribir la única red de seguridad real para resolver un problema que sólo tiene Notion. No rompe la regla de «nunca dos implementaciones»: los dos webhooks entran al **mismo** `Notion: leer cola` y hacen exactamente el mismo trabajo — lo que difiere es el contrato de transporte de cada llamante.
 >
-> **Residuo conocido:** con respuesta inmediata es más fácil lanzar dos pasadas solapadas. No es nuevo —el 2026-08-16 ya se solaparon dos por el propio timeout, que invitaba a repulsar— y el margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`. Una fila aún sin crear sí podría crearse dos veces; si algún día pasa de verdad, la solución es un candado en el planner, no volver a lo síncrono.
+> **Dos pasadas solapadas no duplican nada.** Con respuesta inmediata es fácil lanzar dos a la vez. El margen de seguridad (§9.3) cubre las filas que ya tienen `❌ postiz_post_id`, y la identidad externa (§9.6) hace que la segunda creación de una fila nueva devuelva el post de la primera.
 
 > La variante con cabecera sería algo mejor —un secreto en la ruta acaba en los logs de ejecución de n8n y del túnel; en una cabecera, no— y la UI de Notion **sí** admite encabezados personalizados. Cambiarlo es editar la automatización del botón; no urge, porque la ruta viaja cifrada bajo HTTPS.
 
@@ -939,7 +939,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
    └─ FILTRAR por creationMethod === 'API'         ← ver aviso rojo
    └─ para cada post aún no publicado en la ventana:
         ¿sigue habiendo una fila viva en Notion que lo reclame?
-          (viva = Status en Listo · Programado · En Postiz (borrador))
+          (viva = cualquier Status puesto, Publicado y Error incluidos)
           no ──► DELETE /public/v1/posts/:id
 ```
 
@@ -1079,10 +1079,6 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 
 > **No necesita que se construya nada antes**, y es la única razón por la que el resto merece la pena. Si el copy se va a escribir a mano igualmente, el proyecto entero es una UI peor para algo que Postiz ya hace.
 
-### 10.3 El archivo en Drive, a medias
-
-Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes están decididos y verificados contra Drive. Falta lo que escribe de verdad —el espejo nocturno y el archivador curado con su enlace de vuelta a Notion—. Todo el detalle en [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md); aquí sólo importa que **no toca el camino de publicación** y que hasta que exista, la única red del material publicado es la retención larga de §4.7.
-
 ---
 
 ## 11. Decisiones abiertas
@@ -1111,7 +1107,7 @@ Dejó de ser trabajo hipotético: el destino, la cuenta y el origen de los bytes
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `Status`, única — antes eran dos y se fusionaron (§7.2) |
 | Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
-| Archivo en Drive | **En marcha.** Ya no es «para después»: destino, cuenta y origen de los bytes están decididos y verificados; falta el script del espejo y el archivador curado. Sigue fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
+| Archivo en Drive | **Espejo a las 02:40 y archivador a las 02:55**, que escribe `❌ drive_url`. Fuera del camino de publicación → [PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md) |
 | Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
 | Duplicados | **`externalId` en el fork**, con cerrojo de transacción — no con índice único, por el borrado blando (§9.6). Implementado y verificado con grupo de control el 2026-08-24 |
@@ -1217,15 +1213,14 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
-**11 propiedades nuevas** (§7.2), verificadas contra la API: `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. Tipos y opciones correctos.
+**11 propiedades del pipeline** (§7.2): `cuenta`, `colaboradores`, `copy`, `media`, `first_comment`, `modo`, `Status`, `❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`, `❌ release_url`. `❌ drive_url` la escribe el archivador de Drive ([PLAN_ARCHIVO_DRIVE.md](./PLAN_ARCHIVO_DRIVE.md)).
 
 > ### ⚠️ Las descripciones de propiedad no se escriben por la API REST — y se borran solas
-> Comprobado ejecutándolo contra Notion:
 >
 > - `PATCH /v1/databases` **rechaza** cualquier cuerpo que incluya `description` en una propiedad (400, en `2022-06-28` y en `2025-09-03`, y también en `/v1/data_sources`).
 > - Un `PATCH` que reenvía el **tipo** de la propiedad —aunque mande las opciones con sus mismos `id`— **deja la descripción vacía**.
 >
-> Es decir: son de sólo lectura por la API REST y **frágiles ante cualquier cambio de esquema automatizado**. Así se perdieron las de `colaboradores` y `modo`; hay que reponerlas a mano en la UI.
+> Es decir: son de sólo lectura por la API REST y **frágiles ante cualquier cambio de esquema automatizado**.
 >
 > **Antes de tocar el esquema con un script, apunta las descripciones.**
 >
@@ -1233,23 +1228,21 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 
 **2 propiedades de tipo botón**, las dos *Enviar webhook* y solo creables desde la UI: `Sync now` (§9.1) y `Replicar`, que lanza la réplica de carruseles (workflow `Carruseles · Replicar`, §14.3).
 
-**3 vistas nuevas**, sobre las 5 que el calendario ya tenía:
+**3 vistas del pipeline**, en la base (el manual de uso manda a ellas por su nombre):
 
-| Vista | Tipo | Filtro | Orden |
+| Vista | Filtro | Columnas | Orden |
 |---|---|---|---|
-| `▶ Publicar en IG` | tabla | `Plataforma` contiene `Instagram` | `Fecha` ascendente |
-| `⚠️ Averías` | tabla | `Status` es `Error` | `Fecha` ascendente |
-| `🔁 Por replicar` | tabla | `Status` es `Por replicar` | `Fecha` ascendente |
+| `▶ Publicar en IG` | `Plataforma` contiene `Instagram` | `Name`, `Fecha`, `cuenta`, `Tipo`, `Status`, **`modo`**, `Sync now`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log` | `Fecha` ascendente |
+| `⚠️ Averías` | `Status` es `Error` | `Name`, `Fecha`, `cuenta`, `Status`, `❌ error_log`, `❌ postiz_post_id` | `Fecha` ascendente |
+| `🔁 Por replicar` | `Status` es `Por replicar` | `Name`, `URL`, `cuenta`, `Fecha`, `Status`, `❌ error_log` | `Fecha` ascendente |
+
+De las tres, `▶ Publicar en IG` es la que enseña `modo`, y es donde el manual manda a aprobar un borrador (§7.2.2).
 
 **2 propiedades más de la réplica:** `cuenta origen` (texto), la cuenta de Instagram del post ajeno de una fila `Por replicar`, y `plantilla` (1, 2 o 3), la plantilla de CITEM que le tocó. Ningún workflow del pipeline las lee: las lee y escribe la réplica. `cuenta origen` existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta; `plantilla`, porque la siguiente de la rueda sale de la última declarada.
 
-> La primera se documentó como `IG · Publicación`; en Notion se llama `▶ Publicar en IG` (comprobado el 2026-09-09 con `fetch` sobre la base).
+`Fecha` muestra la hora, en 24 h (`time_format: "H:mm"`).
 
-`IG · Publicación` muestra las columnas del pipeline (`cuenta`, `Tipo`, `Status`, `modo`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log`); `⚠️ Averías` se queda con lo que hace falta para diagnosticar: `cuenta`, `❌ error_log` y `❌ postiz_post_id`.
-
-**1 cambio del usuario:** `Fecha` pasó de *Formato de hora: Oculto* a **24 horas** (`time_format: "H:mm"`).
-
-> Todo lo de esta sección está verificado contra Notion. Las vistas y el botón no los expone la API REST, pero sí el conector de Notion —`fetch` sobre la base devuelve `<views>` y el esquema con `"Sync now": {"type": "button"}`—, así que aquí no queda nada dado por bueno de palabra.
+> **Para comprobar vistas y botones:** la API REST no los expone; el conector de Notion sí —`fetch` sobre la base devuelve `<views>` y el esquema con `"Sync now": {"type": "button"}`—. Lo que no expone ninguno de los dos es la **acción** de un botón: que envíe el webhook se comprueba pulsándolo y buscando la ejecución en n8n con `user-agent: NotionAutomation` (§9.1).
 
 ### 14.3 En n8n · `auto.dustincalderon.com`
 
@@ -1288,7 +1281,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > ### Por qué el receptor lleva el secreto en la URL y no en una cabecera
 > `post.activity.ts:329-335` manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
 
-**Copia durable:** los cuatro workflows están exportados en `/opt/homeserver/n8n-workflows/postiz-<id>.json` (modo `600`). **No van a este repositorio**: el receptor lleva su ruta secreta dentro, y esto es un fork de un proyecto público (§14.4).
+**Copia durable:** en `/opt/homeserver/n8n-workflows/` (modo `600`), los cuatro workflows del pipeline como `postiz-<id>.json` y el de la réplica como `carruseles-<id>.json`. Al cambiar un workflow en n8n se vuelve a exportar su copia. **No van a este repositorio**: el receptor lleva su ruta secreta dentro, y esto es un fork de un proyecto público (§14.4).
 
 > ### La batería de pruebas — `/opt/homeserver/n8n-workflows/suite-pruebas-postiz.py`
 >

@@ -2,7 +2,7 @@
 
 > **Estado:** implementado y corriendo. Las dos piezas están en cron y han hecho su primera pasada real, verificada (§7). Sólo queda actualizar el manual de uso de Notion.
 > **Fecha:** 2026-08-04
-> **Relacionado:** [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7 · §10.3 · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
+> **Relacionado:** [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7 · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
 
 ## 1. El problema, dicho con precisión
 
