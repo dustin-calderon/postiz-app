@@ -335,9 +335,9 @@ sobrevivieron a las dos.
 | Observación | Qué es de verdad |
 |---|---|
 | `Media.fileSize` es `0` en todas las filas | **Columna muerta.** En todo el repo aparece sólo en la línea de `schema.prisma` que la declara con `@default(0)`. Nadie la escribe ni la lee. Quitarla exigiría una migración en producción a cambio de nada |
-| El TikTok tiene `tokenExpiration` en el pasado y ningún workflow de refresco | **Correcto.** `refreshCron` sólo lo declaran `instagram-standalone` y `threads`. Los demás proveedores refrescan bajo demanda, cuando un post falla con error de token |
+| El TikTok tiene `tokenExpiration` en el pasado y nadie lo renueva | **Correcto.** Solo se renuevan por adelantado los proveedores que declaran `refreshCron` (`instagram-standalone` y `threads`): `refreshDueTokensWorkflow` lo hace cuando a su token le quedan 30 días, y si falla lo reintenta cada día mientras el token siga valiendo. Los demás proveedores refrescan bajo demanda, cuando un post falla con error de token |
 | Filas de `Media` que apuntan a ficheros inexistentes | Esperado si están **soft-deleted**: el blob lo quita la Phase 1 y la fila espera a la Phase 2. Lo que sí sería un fallo es una fila **sin** `deletedAt` sin fichero — el 2026-08-05 había 29 del primer tipo y **cero** del segundo |
-| Un fichero suelto en `/uploads` sin fila en `Media` | Probablemente un **avatar**. `Integration.picture` se guarda con `uploadSimple()`, que escribe el fichero y no crea fila en `Media`. Cada refresco de token escribe uno nuevo y abandona el anterior: ~5 KB por canal cada 58 días, y nada lo recoge. Se dejó así a propósito — un borrado automático por URL es más peligroso que 30 KB al año |
+| Un fichero suelto en `/uploads` sin fila en `Media` | Probablemente un **avatar**. `Integration.picture` se guarda con `uploadSimple()`, que escribe el fichero y no crea fila en `Media`. Cada refresco de token escribe uno nuevo y abandona el anterior: ~5 KB por canal al mes, y nada lo recoge. Se dejó así a propósito — un borrado automático por URL es más peligroso que unos cientos de KB al año |
 
 ---
 

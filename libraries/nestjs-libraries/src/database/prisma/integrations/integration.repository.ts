@@ -340,6 +340,22 @@ export class IntegrationRepository {
     });
   }
 
+  getIntegrationsToRefresh(providers: string[], expiringBefore: Date) {
+    return this._integration.model.integration.findMany({
+      where: {
+        providerIdentifier: {
+          in: providers,
+        },
+        tokenExpiration: {
+          lte: expiringBefore,
+        },
+        inBetweenSteps: false,
+        deletedAt: null,
+        refreshNeeded: false,
+      },
+    });
+  }
+
   async setBetweenRefreshSteps(id: string) {
     return this._integration.model.integration.update({
       where: {

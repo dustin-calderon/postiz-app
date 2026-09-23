@@ -167,6 +167,12 @@ export class IntegrationManager {
   getAllowedSocialsIntegrations() {
     return socialIntegrationList.map((p) => p.identifier);
   }
+
+  getRefreshCronIntegrations() {
+    return socialIntegrationList
+      .filter((p) => p.refreshCron)
+      .map((p) => p.identifier);
+  }
   getSocialIntegration(integration: string): SocialProvider {
     return socialIntegrationList.find((i) => i.identifier === integration)!;
   }

@@ -1,27 +1,40 @@
 import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import { Integration } from '@prisma/client';
+import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import {
   AuthTokenDetails,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
-import { TemporalService } from 'nestjs-temporal-core';
+
+// Providers with `refreshCron` hand out long-lived tokens (Instagram and
+// Threads: 60 days, refreshable once they are a day old). Refreshing them in
+// their last 30 days leaves a month of daily retries before they expire.
+const REFRESH_WINDOW_DAYS = 30;
 
 @Injectable()
 export class RefreshIntegrationService {
   constructor(
     private _integrationManager: IntegrationManager,
     @Inject(forwardRef(() => IntegrationService))
-    private _integrationService: IntegrationService,
-    private _temporalService: TemporalService
+    private _integrationService: IntegrationService
   ) {}
-  async refresh(integration: Integration, cause = ''): Promise<false | AuthTokenDetails> {
+  async refresh(
+    integration: Integration,
+    cause = '',
+    retryLater = false
+  ): Promise<false | AuthTokenDetails> {
     const socialProvider = this._integrationManager.getSocialIntegration(
       integration.providerIdentifier
     );
 
-    const refresh = await this.refreshProcess(integration, socialProvider, cause);
+    const refresh = await this.refreshProcess(
+      integration,
+      socialProvider,
+      cause,
+      retryLater
+    );
 
     if (!refresh) {
       return false as const;
@@ -49,6 +62,26 @@ export class RefreshIntegrationService {
     return refresh;
   }
 
+  // A token refreshed before it expires can fail without consequences: the
+  // current one still works, and tomorrow's pass tries again. Only a token
+  // that has already expired disconnects its channel when the refresh fails.
+  async refreshDueTokens() {
+    const integrations = await this._integrationService.getIntegrationsToRefresh(
+      this._integrationManager.getRefreshCronIntegrations(),
+      dayjs().add(REFRESH_WINDOW_DAYS, 'day').toDate()
+    );
+
+    let refreshed = 0;
+    for (const integration of integrations) {
+      const expired = dayjs(integration.tokenExpiration).isBefore(dayjs());
+      if (await this.refresh(integration, '', !expired)) {
+        refreshed++;
+      }
+    }
+
+    return { due: integrations.length, refreshed };
+  }
+
   public async setBetweenSteps(integration: Integration, cause = '') {
     await this._integrationService.setBetweenRefreshSteps(integration.id);
     await this._integrationService.informAboutRefreshError(
@@ -58,31 +91,21 @@ export class RefreshIntegrationService {
     );
   }
 
-  public async startRefreshWorkflow(orgId: string, id: string, integration: SocialProvider) {
-    if (!integration.refreshCron) {
-      return false;
-    }
-
-    return this._temporalService.client
-      .getRawClient()
-      ?.workflow.start(`refreshTokenWorkflow`, {
-        workflowId: `refresh_${id}`,
-        args: [{integrationId: id, organizationId: orgId}],
-        taskQueue: 'main',
-        workflowIdConflictPolicy: 'TERMINATE_EXISTING',
-      });
-  }
-
   private async refreshProcess(
     integration: Integration,
     socialProvider: SocialProvider,
-    cause = ''
+    cause = '',
+    retryLater = false
   ): Promise<AuthTokenDetails | false> {
     const refresh: false | AuthTokenDetails = await socialProvider
       .refreshToken(integration.refreshToken)
       .catch((err) => false);
 
     if (!refresh || !refresh.accessToken) {
+      if (retryLater) {
+        return false;
+      }
+
       await this._integrationService.refreshNeeded(
         integration.organizationId,
         integration.id
