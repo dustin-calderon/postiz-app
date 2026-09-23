@@ -1050,6 +1050,25 @@ Un post programado para dentro de 20 días **no existe en Postiz todavía**, y e
 
 El equipo debe saberlo para que nadie se alarme al no encontrar en Postiz algo que sí está en Notion. **Notion es la verdad; Postiz sólo refleja los próximos 15 días.**
 
+### 9.10 Cuando un workflow falla
+
+Un fallo que el propio workflow maneja se ve en Notion: la fila pasa a `Error`
+con su `❌ error_log`. Un fallo que **no** maneja (Notion no contesta a la
+consulta de las 06:00, un nodo de código que revienta) paraba la ejecución, y
+solo quedaba en el historial de n8n, donde nadie lo miraba.
+
+- **Reintentos.** Las llamadas que se pueden repetir sin efecto doble (todas
+  las de Notion, y los `GET` y `DELETE` a Postiz) se reintentan 3 veces, con 5 s
+  entre intentos. `POST /public/v1/posts` y la subida por SSH **no** se
+  reintentan: si la primera llegó y solo se perdió la respuesta, repetirla
+  publicaría o subiría dos veces.
+- **Aviso.** Los cinco workflows del pipeline (sync, subflow, retirada,
+  receptor y réplica de carruseles) tienen de *error workflow* «Bus de
+  incidencias · fallos de n8n y caídas de Kuma». Ese workflow llama a
+  `alertar.sh` por la clave SSH restringida con origen `n8n`, y el fallo llega
+  por Telegram y al triage del Beelink, con el workflow, el nodo y el error. Qué
+  puede pedir esa clave, en [`n8n-ssh-wrapper.sh`](./scripts/n8n-ssh-wrapper.sh).
+
 ---
 
 ## 10. Qué queda por delante
