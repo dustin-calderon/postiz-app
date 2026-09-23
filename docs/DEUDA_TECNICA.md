@@ -108,4 +108,4 @@ gh api --paginate 'repos/dustin-calderon/postiz-app/dependabot/alerts?state=open
         | "\(.security_advisory.severity) \(.dependency.package.name) \(.dependency.relationship)"' | sort | uniq -c | sort -rn
 ```
 
-**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Los tres primeros tienen PR de Dependabot abierto. Para cada uno, subirlo dentro de su mayor o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.
+**Cómo se cierra.** Primero los paquetes directos que tocan datos de fuera: `multer` (subidas), `nodemailer` (correo), `sharp` (imágenes) y `axios`. Para cada uno, subirlo dentro de su mayor o descartar el aviso con su motivo. Después, los transitivos, por quien los trae.
