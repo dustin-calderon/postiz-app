@@ -73,6 +73,31 @@ const setup = (folders: (string | null)[], extra: Row[] = []) => {
 };
 
 describe('MediaRepository.renameFolder', () => {
+  it('renames every media of a folder with one update per folder, not per media', async () => {
+    const { repository, prisma, liveFolders } = setup([
+      'Citem',
+      'Citem',
+      'Citem/Sub',
+      'Citem/Sub',
+      'Citem/Sub',
+    ]);
+
+    const result = await repository.renameFolder('org', {
+      oldName: 'Citem',
+      newName: 'NewBrand',
+    });
+
+    expect(liveFolders()).toEqual([
+      'NewBrand',
+      'NewBrand',
+      'NewBrand/Sub',
+      'NewBrand/Sub',
+      'NewBrand/Sub',
+    ]);
+    expect(result).toEqual({ count: 5 });
+    expect(prisma.media.updateMany).toHaveBeenCalledTimes(2);
+  });
+
   it('treats "_" in the old name as a plain character', async () => {
     const { repository, liveFolders } = setup([
       'A_B',
