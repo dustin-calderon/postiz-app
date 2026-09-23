@@ -1097,8 +1097,8 @@ ese se encargan los reintentos y el aviso:
   En un nodo con salida de error, n8n agota los intentos antes de tomarla. La
   subida por SSH **no** se reintenta: repetirla subiría el fichero dos veces.
   La consulta del turno por SSH, que solo lee, sí.
-- **Aviso.** Los cinco workflows del pipeline (sync, subflow, retirada,
-  receptor y réplica de carruseles) tienen de *error workflow* «Bus de
+- **Aviso.** Los workflows del pipeline (sync, subflow, retirada, receptor y
+  réplica de carruseles) tienen de *error workflow* «Bus de
   incidencias · fallos de n8n y caídas de Kuma». Ese workflow encola el fallo
   en el bus del Beelink por la clave SSH restringida, con origen
   `n8n-<workflow>`, el nodo y el error. El triage lo diagnostica, y solo avisa a
