@@ -161,8 +161,12 @@ con `sed -i`, que conserva el modo.
 > reinicios. Si algún día se quiere que se auto-reinicie, hay que añadir la
 > etiqueta a propósito.
 
-**Quién avisa si cae:** el monitor `Postiz` de Uptime Kuma, por Telegram. Qué
-pide y por qué, en `docs/guides/UPTIME_KUMA_SETUP.md` de Instalar-Home-Server.
+**Quién avisa si cae y quién lo arregla:** el monitor `Postiz` de Uptime Kuma
+avisa por Telegram y encola la caída en el bus de incidencias como
+`kuma-postiz`. El triage la diagnostica con el runbook
+`server/ops/postiz-caido.prompt.md`, que permite **un** reinicio de `postiz`
+con diagnóstico previo, no un bucle. Qué pide el monitor y por qué, en
+`docs/guides/UPTIME_KUMA_SETUP.md`; los dos, en Instalar-Home-Server.
 
 ---
 

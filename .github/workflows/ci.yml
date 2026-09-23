@@ -3,8 +3,9 @@
 # que lo que no pasa por aquí no debería fusionarse.
 #
 # Corre en cada push, a cualquier rama: el resultado se ata al commit, y una PR
-# lo enseña aunque la haya abierto un workflow (las PR que abre GITHUB_TOKEN no
-# disparan `pull_request`). Es lo mismo que construye Dockerfile.dev, más los tests.
+# lo enseña aunque la haya abierto un workflow (los `pull_request` de una PR que
+# abre GITHUB_TOKEN esperan a que alguien los apruebe). Es lo mismo que
+# construye Dockerfile.dev, más los tests.
 name: CI
 
 on:
