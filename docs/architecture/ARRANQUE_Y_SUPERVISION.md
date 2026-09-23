@@ -195,17 +195,24 @@ el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
 # 1. en local: commit y push a origin/custom/postiz-dc
 # 2. en el servidor, en este orden
 ssh dchomeserver 'cd /opt/repos/postiz-fork && git pull --ff-only origin custom/postiz-dc'
-ssh dchomeserver 'bash /opt/homeserver/postiz/build.sh'
+# el build tarda ~15 min: suelto del ssh, que por el túnel se corta
+ssh dchomeserver 'cd /opt/homeserver/postiz && nohup bash build.sh > ~/postiz-build.log 2>&1 < /dev/null &'
+ssh dchomeserver 'tail -3 ~/postiz-build.log'   # hasta «=== Build completado»
 ssh dchomeserver '/opt/repos/instalar-home-server/server/ops/backup/volcar-app.sh postiz \
   > /opt/homeserver/ops/volcados-actualizacion/postiz-$(date +%F-%H%M).dump'
 ssh dchomeserver 'docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d --no-deps postiz'
 ssh dchomeserver 'bash /opt/homeserver/postiz/verifica-arranque.sh'
+# 3. los veredictos de trivy caducan con la imagen: lo que salga de postiz se juzga otra vez
+ssh dchomeserver 'IMAGENES_ALERTAR=/bin/true python3 /opt/repos/instalar-home-server/server/ops/check-imagenes-publicas.py | grep postiz'
 ```
 
 - **`build.sh`** ([copia versionada](./scripts/build.sh)) construye
   `postiz-custom:local-<sha>` y deja el compose apuntando a ella. Una etiqueta
   por commit hace que los veredictos de `vulnerabilidades-aceptadas.json`
-  (Instalar-Home-Server) caduquen al reconstruir.
+  (Instalar-Home-Server) caduquen al reconstruir. El paso 3 los saca: si son
+  los de siempre, se repiten las comprobaciones de `docs/DEUDA_TECNICA.md` en
+  la imagen en marcha y, si siguen valiendo, el veredicto se ata a la etiqueta
+  nueva. Si hay uno nuevo, se juzga desde cero.
 - **El volcado va antes del `up -d` y se queda.** El arranque aplica el esquema
   con `prisma db push --accept-data-loss`, así que volver a la imagen anterior
   no deshace un cambio de esquema. Cómo se restaura, en la cabecera de
