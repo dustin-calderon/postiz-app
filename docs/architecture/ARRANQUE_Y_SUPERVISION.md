@@ -188,28 +188,38 @@ el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
 
 ## Despliegue
 
+**Fusionar a `custom/postiz-dc` despliega.** Cada 10 minutos el cron del
+Beelink lanza `/opt/homeserver/postiz/desplegar.sh --si-hay-cambios`
+([copia versionada](./scripts/desplegar.sh)). Si lo que corre no es el último
+commit de la rama, y el cambio toca algo más que `docs/`, `.fork/`, `.github/`
+o un `.md`, hace el despliegue entero:
+
+1. trae la rama al clon (`/opt/repos/postiz-fork`, solo fast-forward);
+2. construye la imagen con `build.sh`, que deja el compose apuntando a ella;
+3. vuelca la base con `volcar-app.sh postiz` en `/opt/homeserver/ops/volcados-actualizacion/`;
+4. recrea solo `postiz` (`up -d --no-deps`) y espera a que quede **sano**: el
+   healthcheck en verde, las tres apps de pm2 `online`, `/` contestando 307 por
+   nginx y el orchestrator del contenedor nuevo escuchando la cola `main` de
+   Temporal;
+5. si en 10 minutos no queda sano, vuelve solo a la imagen que corría y
+   comprueba que esa sí lo esté.
+
+Un despliegue bueno se cuenta por Telegram, con el commit y la imagen de
+antes. Uno malo va al bus de incidencias (`postiz-despliegue`), que lo
+diagnostica. El log, en `/opt/homeserver/ops/desplegar-postiz.log`.
+
+A mano es lo mismo sin el flag. El build tarda unos 15 minutos, así que se
+suelta del ssh, que por el túnel se corta:
+
 ```bash
-# 1. en local: commit y push a origin/custom/postiz-dc
-# 2. en el servidor, en este orden
-ssh dchomeserver 'cd /opt/repos/postiz-fork && git pull --ff-only origin custom/postiz-dc'
-# el build tarda ~15 min: suelto del ssh, que por el túnel se corta
-ssh dchomeserver 'cd /opt/homeserver/postiz && nohup bash build.sh > ~/postiz-build.log 2>&1 < /dev/null &'
-ssh dchomeserver 'tail -3 ~/postiz-build.log'   # hasta «=== Build completado»
-ssh dchomeserver '/opt/repos/instalar-home-server/server/ops/backup/volcar-app.sh postiz \
-  > /opt/homeserver/ops/volcados-actualizacion/postiz-$(date +%F-%H%M).dump'
-ssh dchomeserver 'docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d --no-deps postiz'
-ssh dchomeserver 'bash /opt/homeserver/postiz/verifica-arranque.sh'
-# 3. los veredictos de trivy caducan con la imagen: lo que salga de postiz se juzga otra vez
-ssh dchomeserver 'IMAGENES_ALERTAR=/bin/true python3 /opt/repos/instalar-home-server/server/ops/check-imagenes-publicas.py | grep postiz'
+ssh dchomeserver 'nohup /opt/homeserver/postiz/desplegar.sh >> /opt/homeserver/ops/desplegar-postiz.log 2>&1 < /dev/null &'
 ```
 
 - **`build.sh`** ([copia versionada](./scripts/build.sh)) construye
-  `postiz-custom:local-<sha>` y deja el compose apuntando a ella. Una etiqueta
-  por commit hace que los veredictos de `vulnerabilidades-aceptadas.json`
-  (Instalar-Home-Server) caduquen al reconstruir. El paso 3 los saca: si son
-  los de siempre, se repiten las comprobaciones de `docs/DEUDA_TECNICA.md` en
-  la imagen en marcha y, si siguen valiendo, el veredicto se ata a la etiqueta
-  nueva. Si hay uno nuevo, se juzga desde cero.
+  `postiz-custom:local-<sha>`. Una etiqueta por commit hace que los veredictos
+  de `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) caduquen con cada
+  imagen: `check-imagenes-publicas.py` los vuelve a sacar esa noche y el triage
+  los juzga otra vez, con las comprobaciones de `docs/DEUDA_TECNICA.md`.
 - **El volcado va antes del `up -d` y se queda.** El arranque aplica el esquema
   con `prisma db push --accept-data-loss`, así que volver a la imagen anterior
   no deshace un cambio de esquema. Cómo se restaura, en la cabecera de
@@ -218,8 +228,15 @@ ssh dchomeserver 'IMAGENES_ALERTAR=/bin/true python3 /opt/repos/instalar-home-se
   redis, elasticsearch y Temporal si su configuración difiere de la de cuando
   se crearon. `up -d --dry-run postiz` enseña qué recrearía; con `--no-deps`,
   solo `postiz`.
-- **Vuelta atrás:** poner en la línea `image:` del compose la etiqueta que
-  `build.sh` imprime al terminar y repetir el `up -d --no-deps postiz`.
+- **Vuelta atrás a mano:** poner en la línea `image:` del compose la etiqueta
+  que el aviso de Telegram da como «Antes corría» y repetir el
+  `up -d --no-deps postiz`.
+- **Las copias vivas** de `build.sh`, `verifica-arranque.sh` y `desplegar.sh`
+  están en `/opt/homeserver/postiz` para que un push al repo no ejecute nada en
+  el host sin que alguien las copie. Si se cambia una en el repo, se copia a
+  mano; el aviso del despliegue dice si difieren. `desplegar.sh` se prueba
+  entero, sin tocar nada real, con `bash docs/architecture/scripts/test_desplegar.sh`
+  en Linux.
 
 > **Recrear el contenedor no cambia la retención de medios.** `workflow.start`
 > con un `workflowId` ya vivo lanza `WorkflowExecutionAlreadyStarted` y el
