@@ -20,8 +20,10 @@ no caducan con una release:
 
 ## Qué se trae de upstream
 
-**Siempre, los arreglos de seguridad** que alcancen este código. **El resto** de
-arreglos, mejoras y funciones **solo se propone**, y lo decide el owner.
+**Los arreglos de seguridad** que alcancen este código, salvo los que
+`docs/DEUDA_TECNICA.md` decide no portar, con su motivo y lo que lo reabriría.
+**El resto** de arreglos, mejoras y funciones **solo se propone**, y lo decide
+el owner.
 
 Lo hace el triage del Beelink cuando el vigilante de versiones avisa de una
 release nueva, siguiendo `Instalar-Home-Server/server/ops/actualizar-app-publica.prompt.md`
@@ -32,7 +34,7 @@ Cada dato vive en un solo sitio:
 |---|---|
 | Hasta qué release está revisado | `version.revisado` de la entrada `postiz` en `Instalar-Home-Server/server/config/apps-publicas.json` |
 | Qué se portó | `git log --grep "cherry picked from"`, y los ports a mano, que lo dicen en su mensaje |
-| Qué se revisó y no se porta, y por qué | `docs/DEUDA_TECNICA.md` |
+| Qué seguridad no se porta, y por qué | `docs/DEUDA_TECNICA.md` |
 
 Las dependencias no dependen de upstream: las vigila Dependabot en este repo, y
 las críticas se arreglan aquí (`pnpm.overrides`) o se descartan con su motivo.
