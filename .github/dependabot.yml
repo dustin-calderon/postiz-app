@@ -1,11 +1,27 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
+# Dependabot — el fichero de la flota (Instalar-Home-Server, PLAN_APPS_PUBLICAS_PARCHEADAS.md §4.5).
+#
+# Sin él, Dependabot abre una PR de seguridad por aviso, a cuentagotas, y cada
+# una lleva un pnpm-lock.yaml resuelto contra la rama del día en que nació: con
+# el CI en verde puede devolver un paquete a una versión vulnerable. Aquí solo
+# se decide esto:
+#
+#   · `groups` con `applies-to: security-updates`: la tanda entera en UNA PR.
+#   · `open-pull-requests-limit: 0`: sin subidas rutinarias de versión. Declarar
+#     el ecosistema las enciende; este cero las apaga y no toca las de seguridad.
+#
+# `directory: "/"` porque el único manifiesto con dependencias es el
+# package.json de la raíz (monorepo pnpm con un solo pnpm-lock.yaml).
+# Ninguna PR de Dependabot se fusiona tal cual: se resuelve de nuevo sobre
+# custom/postiz-dc con la skill sanar-dependencias.
 version: 2
 updates:
-  - package-ecosystem: "npm" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "npm"
+    directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      seguridad:
+        applies-to: security-updates
+        patterns:
+          - "*"
