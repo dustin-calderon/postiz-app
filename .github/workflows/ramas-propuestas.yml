@@ -1,0 +1,33 @@
+# El triage del Beelink propone cambios en ramas: revision/<release> con lo que
+# trae de upstream (Instalar-Home-Server, actualizar-app-publica.prompt.md) y
+# triage/<origen> con el arreglo de una incidencia. Esto las abre como PR contra
+# custom/postiz-dc, con el mensaje de su último commit como descripción, para
+# que se aprueben desde GitHub con la puerta a la vista. Fusionar despliega.
+name: Ramas propuestas
+
+on:
+  push:
+    branches:
+      - 'revision/**'
+      - 'triage/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  abrir-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: |
+          if [ -n "$(gh pr list --head "$RAMA" --state open --json number --jq '.[].number')" ]; then
+            echo "La PR de $RAMA ya existe"; exit 0
+          fi
+          git log -1 --format=%B > cuerpo.md
+          gh pr create --base custom/postiz-dc --head "$RAMA" \
+            --title "$(git log -1 --format=%s)" --body-file cuerpo.md
+        env:
+          RAMA: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

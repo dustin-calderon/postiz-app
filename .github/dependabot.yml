@@ -11,8 +11,9 @@
 #
 # `directory: "/"` porque el único manifiesto con dependencias es el
 # package.json de la raíz (monorepo pnpm con un solo pnpm-lock.yaml).
-# Ninguna PR de Dependabot se fusiona tal cual: se resuelve de nuevo sobre
-# custom/postiz-dc con la skill sanar-dependencias.
+# La PR que abre se fusiona sola si pasa la puerta y no es un salto de mayor
+# (workflows/dependabot-fusionar.yml, que dice qué lo hace seguro). Lo que se
+# queda abierto se resuelve sobre custom/postiz-dc con la skill sanar-dependencias.
 version: 2
 updates:
   - package-ecosystem: "npm"
