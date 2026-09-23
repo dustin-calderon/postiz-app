@@ -136,11 +136,15 @@ def rclone(*args):
 def publicados():
     filas = sql("""SELECT p.id||'\x01'||p."publishDate"::text||'\x01'||coalesce(i.name,'?')
                    ||'\x01'||coalesce(p."integrationId",'')
-                   ||'\x01'||coalesce(p."releaseURL",'')||'\x01'||coalesce(p.content,'')
+                   ||'\x01'||coalesce(p."releaseURL",'')||'\x01'||replace(coalesce(p.content,''), E'\\n', '\x03')
                    ||'\x01'||coalesce(p.image::text,'[]')
                    FROM "Post" p LEFT JOIN "Integration" i ON i.id=p."integrationId"
                    WHERE p.state='PUBLISHED' AND p."parentPostId" IS NULL
                    ORDER BY p."publishDate";""")
+    # psql -A separa los registros con \n y NO escapa los \n del contenido: un
+    # copy con salto de linea partia su fila en dos y abortaba la pasada entera
+    # (y con ella todos los posts posteriores). Por eso el SQL cambia \n por
+    # \x03 dentro de content y aqui se restaura tras el split.
     out = []
     for ln in filas.split("\n"):
         if not ln.strip():
@@ -152,7 +156,8 @@ def publicados():
             media = []
         out.append({"id": pid, "fecha": fecha, "cuenta_larga": cuenta,
                     "integracion": integ,
-                    "url": url, "copy": sin_html(contenido), "media": media})
+                    "url": url, "copy": sin_html(contenido.replace("\x03", "\n")),
+                    "media": media})
     return out
 
 
