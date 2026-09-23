@@ -11,6 +11,8 @@
 #   4. un proceso por app, sin duplicados
 #   5. sentry_cpu_profiler.node NO debe aparecer en ningun proceso
 #   6. HTTP 200 en /api/auth/can-register y 307 en /
+#   7. los mismos recuentos que antes del despliegue
+#   8. siguen `Running` los workflows de los posts programados
 #
 # NOTA: todos los recorridos de /proc filtran por `readlink exe` = node. Sin
 # eso, el propio comando de busqueda aparece en los resultados -- contiene la
@@ -59,7 +61,7 @@ $C sh -c 'for u in /api/auth/can-register /; do
   node -e "require(\"http\").get({host:\"localhost\",port:5000,path:\"$u\",timeout:8000},r=>{console.log(\"HTTP \"+r.statusCode);process.exit(0)}).on(\"error\",e=>{console.log(\"ERROR \"+e.message);process.exit(0)})"
 done'
 
-echo "-- 7. Datos (baseline 2026-08-05: Media 83, Post 67, 58 ficheros) --"
+echo "-- 7. Datos (los mismos que antes del despliegue) --"
 docker exec postiz-postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -Atc "select count(*) from \"Media\""' | sed 's|^|   Media: |'
 docker exec postiz-postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -Atc "select count(*) from \"Post\""'  | sed 's|^|   Post:  |'
 echo "   $(find /mnt/seagate/postiz-media -type f | wc -l) ficheros en disco"

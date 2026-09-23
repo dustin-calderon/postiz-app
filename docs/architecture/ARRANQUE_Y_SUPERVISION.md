@@ -1,7 +1,6 @@
 # ⚙️ Arranque y supervisión del contenedor
 
 > **Estado**: ✅ Producción
-> **Última revisión**: 2026-08-05
 > **Responsable de diseño**: Custom fork (`custom/postiz-dc`)
 > **Relacionado**: [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
 
@@ -172,8 +171,10 @@ Lo que importa de su salida:
 | `pm2 list` | tres apps `online` con `restarts=0` |
 | pid de pm2 vs proceso real | `node …/main.js` y `next-server` — **nunca** `pnpm`, `sh` ni `dotenv` |
 | procesos node vivos | uno por app, sin duplicados |
-| módulos nativos del backend | cinco, y **`sentry_cpu_profiler.node` NO debe estar** |
+| `sentry_cpu_profiler` cargado | «no, en ninguno»: **no debe estar** en ningún proceso node |
 | API y frontend por nginx | `HTTP 200` en `/api/auth/can-register`, `307` en `/` |
+| datos | los mismos recuentos de `Media`, `Post` y ficheros que antes del despliegue |
+| workflows vivos | los `postWorkflow…` de los posts programados siguen `Running`; «NO SE PUDO CONSULTAR» es un fallo, no un «no hay» |
 
 Un arranque sano llega a `Backend is running` en **~12 s** desde que pm2 lanza
 el proceso. Si pasa un minuto sin esa línea, no es lentitud: es el punto 1.
