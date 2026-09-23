@@ -26,3 +26,16 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+
+  # Los workflows de .github/workflows usan acciones de terceros, y GitHub da
+  # avisos de ellas: sin este bloque, sus arreglos llegarían en PR sueltas.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      seguridad:
+        applies-to: security-updates
+        patterns:
+          - "*"
