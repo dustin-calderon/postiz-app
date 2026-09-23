@@ -52,13 +52,15 @@ En Dependabot, sus avisos (críticos, altos y medios) están descartados como `t
 
 ## La imagen de producción lleva herramientas de desarrollo que no ejecuta
 
-**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: el runtime de Go dentro de `esbuild` y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm. pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
+**Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: el runtime de Go dentro de `esbuild` y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm, todos procesos de node, y nginx. Esto tiene que listar solo `node`, `nginx` y la shell del propio comando (`dash`, `sort`), nunca `esbuild`:
+`docker exec postiz sh -c 'for p in /proc/[0-9]*; do readlink $p/exe; done 2>/dev/null | sort -u'`
+pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada build vuelve a sacar estos hallazgos y hay que juzgarlos otra vez (paso 3 del despliegue, en `docs/architecture/ARRANQUE_Y_SUPERVISION.md`): es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** Cada despliegue es una imagen nueva, y estos hallazgos vuelven a salir esa noche. Los juzga otra vez el triage del Beelink (`revalidar-veredictos.prompt.md` en Instalar-Home-Server), repitiendo las comprobaciones de este documento: es el precio de que las aceptaciones caduquen.
 
-**Qué la vuelve urgente.** Que ese coste se note: más de un build al mes, o que la lista crezca.
+**Qué la vuelve urgente.** Que la lista crezca, o que un hallazgo cambie de versión y ya no se pueda volver a aceptar con las mismas comprobaciones.
 
 **Cómo se cierra.** Un `Dockerfile` de producción sin devDependencies ni herramientas de build, construido por `build.sh`, y el escáner de imágenes sin esos hallazgos.
 
