@@ -1095,10 +1095,11 @@ ese se encargan los reintentos y el aviso:
   subida por SSH **no** se reintenta: repetirla subiría el fichero dos veces.
 - **Aviso.** Los cinco workflows del pipeline (sync, subflow, retirada,
   receptor y réplica de carruseles) tienen de *error workflow* «Bus de
-  incidencias · fallos de n8n y caídas de Kuma». Ese workflow llama a
-  `alertar.sh` por la clave SSH restringida con origen `n8n`, y el fallo llega
-  por Telegram y al triage del Beelink, con el workflow, el nodo y el error. Qué
-  puede pedir esa clave, en [`n8n-ssh-wrapper.sh`](./scripts/n8n-ssh-wrapper.sh).
+  incidencias · fallos de n8n y caídas de Kuma». Ese workflow encola el fallo
+  en el bus del Beelink por la clave SSH restringida, con origen
+  `n8n-<workflow>`, el nodo y el error. El triage lo diagnostica, y solo avisa a
+  Dustin si es grave. Qué puede pedir esa clave, en
+  [`n8n-ssh-wrapper.sh`](./scripts/n8n-ssh-wrapper.sh).
 
 ---
 

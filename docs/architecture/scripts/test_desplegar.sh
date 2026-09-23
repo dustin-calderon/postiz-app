@@ -44,7 +44,12 @@ sha=$(git -C "$DESPLEGAR_REPO" rev-parse --short HEAD)
 sed -i -E "s|^([[:space:]]*image: postiz-custom:)[^[:space:]]+|\1local-$sha|" "$DESPLEGAR_DIR/docker-compose.yml"
 EOF
 echo 'echo verifica' > "$T/postiz/verifica-arranque.sh"
-printf '#!/bin/bash\n[ "$1" = --stdin ] && shift\n{ echo "== $1 SIN_AGENTE=${SIN_AGENTE:-0}"; cat; } >> "$ESTADO/avisos"\n' > "$T/ops/alertar.sh"
+# Como el de verdad: el mensaje por stdin con --stdin, y si no, por argv.
+cat > "$T/ops/alertar.sh" <<'EOF'
+#!/bin/bash
+if [ "$1" = --stdin ]; then shift; texto=$(cat); else texto=$2; fi
+printf '== %s SIN_AGENTE=%s\n%s\n' "$1" "${SIN_AGENTE:-0}" "$texto" >> "$ESTADO/avisos"
+EOF
 printf '#!/bin/bash\necho volcado-de-$1\n' > "$T/ops/backup/volcar-app.sh"
 chmod +x "$T/ops/alertar.sh" "$T/ops/backup/volcar-app.sh"
 
@@ -53,7 +58,11 @@ git init -q --bare "$T/origen.git"
 git clone -q "$T/origen.git" "$T/trabajo" 2>/dev/null
 g() { git -C "$T/trabajo" -c user.email=t@t -c user.name=t "$@"; }
 g checkout -q -b custom/postiz-dc
-mkdir -p "$T/trabajo/apps" "$T/trabajo/docs"
+mkdir -p "$T/trabajo/apps" "$T/trabajo/docs/architecture/scripts"
+# Las copias versionadas, iguales a las vivas de mentira: un despliegue compara
+# unas con otras.
+cp "$T/postiz/build.sh" "$T/postiz/verifica-arranque.sh" "$T/trabajo/docs/architecture/scripts/"
+cp "$SCRIPT" "$T/postiz/desplegar.sh"; cp "$SCRIPT" "$T/trabajo/docs/architecture/scripts/"
 commit() { echo "$RANDOM" > "$T/trabajo/$1"; g add -A; g commit -qm "$2"; g push -q origin custom/postiz-dc; g rev-parse --short HEAD; }
 BASE=$(commit apps/a.ts "código base")
 git clone -q -b custom/postiz-dc "$T/origen.git" "$T/repo"
@@ -83,8 +92,7 @@ echo "-- 3. Cambió código y queda sano: se despliega"
 NUEVO=$(commit apps/b.ts "arreglo")
 bash "$SCRIPT" --si-hay-cambios
 es "corre la nueva" "$(cat "$T/estado/imagen")" "postiz-custom:local-$NUEVO"
-es "avisa del éxito solo por Telegram" "$(aviso | head -2)" "== postiz-despliegue SIN_AGENTE=1
-✅ Postiz desplegado: $NUEVO"
+es "un despliegue bueno no avisa a nadie" "$(aviso)" ""
 es "volcado antes" "$(cat "$T/volcados"/*.dump)" "volcado-de-postiz"
 es "el clon avanzó" "$(git -C "$T/repo" rev-parse --short HEAD)" "$NUEVO"
 
@@ -129,6 +137,12 @@ corriendo "$BASE"; echo "$OTRO" > "$T/postiz/.desplegar-fallido"
 bash "$SCRIPT" > /dev/null
 es "lo despliega" "$(cat "$T/estado/imagen")" "postiz-custom:local-$OTRO"
 es "y olvida el fallo" "$(cat "$T/postiz/.desplegar-fallido" 2>/dev/null)" ""
+
+echo "-- 10. Una copia viva distinta de la del repo abre incidencia"
+corriendo "$BASE"; echo "# editada a mano" >> "$T/postiz/build.sh"
+bash "$SCRIPT" > /dev/null
+es "encola la deriva" "$(aviso | head -1)" "== postiz-copias SIN_AGENTE=0"
+aviso | grep -q "build.sh" && echo "ok   nombra la copia" || { echo "MAL  no nombra la copia"; fallos=$((fallos+1)); }
 
 echo
 [ "$fallos" -eq 0 ] && echo "TODO BIEN" || { echo "$fallos FALLOS"; exit 1; }

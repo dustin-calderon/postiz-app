@@ -16,8 +16,9 @@
 # alguien lo copie. Al desplegar se comparan las copias vivas con las del commit
 # y el aviso dice si difieren.
 #
-# Avisa por el bus de Instalar-Home-Server: un fallo se diagnostica en el
-# triage, y un despliegue bueno solo se cuenta por Telegram.
+# Un fallo va al bus de incidencias de Instalar-Home-Server, que lo diagnostica
+# y solo avisa a Dustin si es gravísimo. Un despliegue bueno no se cuenta: queda
+# en el log.
 
 set -euo pipefail
 
@@ -128,12 +129,10 @@ DIFIEREN=""
 for f in build.sh verifica-arranque.sh desplegar.sh; do
   cmp -s "$DIR/$f" "$REPO/docs/architecture/scripts/$f" || DIFIEREN="$DIFIEREN $f"
 done
+# Una copia viva que no es la del repo es deriva: la siguiente vez se desplegaría
+# con un script que nadie ha revisado. Va al triage.
+[ -z "$DIFIEREN" ] ||
+  "$ALERTAR" postiz-copias "Las copias vivas de$DIFIEREN en $DIR no son las del repo (docs/architecture/scripts)"
 
-SIN_AGENTE=1 "$ALERTAR" --stdin postiz-despliegue <<EOF
-✅ Postiz desplegado: $OBJETIVO
-$(git -C "$REPO" log -1 --format=%s "origin/$RAMA")
-Antes corría $ANTERIOR.${DIFIEREN:+
-Las copias vivas de$DIFIEREN en $DIR difieren de las del repo.}
-EOF
 rm -f "$FALLIDO"
 log "desplegado $NUEVA"
