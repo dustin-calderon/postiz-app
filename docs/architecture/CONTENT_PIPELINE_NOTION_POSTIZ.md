@@ -620,6 +620,14 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 
 Esos nodos viven en n8n, no en git. La batería de pruebas (§14.3) comprueba la subida con un fichero ilegible y el rechazo de Postiz con un copy de más de 2200 caracteres.
 
+**El historial de errores, para aprender de ellos.** `❌ error_log` solo guarda el último de cada fila, así que el historial vive en otros sitios:
+
+| Qué | Dónde | Cómo se lee |
+|---|---|---|
+| Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n, **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server) | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
+| Los fallos al publicar | Tabla `Errors` de Postiz (`postiz_db`) | `SELECT "createdAt", platform, message FROM "Errors" ORDER BY 1;` |
+| El archivo en Drive | `/var/log/postiz-archivo.log`, 8 semanas de rotación | [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
+
 Al reintentar, el worker **reutiliza `❌ postiz_media` si ya tiene valor** y sólo re-transfiere los ficheros si está vacío. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida.
 
 > Si el error fue **en el propio fichero** (se subió el vídeo equivocado), hay que **vaciar `❌ postiz_media` a mano** además de cambiar los ficheros. Es la única excepción a "no se editan a mano los campos del worker", y conviene tenerla escrita.
@@ -1294,7 +1302,7 @@ De las tres, `▶ Publicar en IG` es la que enseña `modo`, y es donde el manual
 > - **`API token is invalid` (401):** el token está revocado. Se crea uno nuevo y se rota con el script de §14.4.
 > - **404 que nombra la integración:** el token vale, pero la integración perdió el acceso a la base. Se arregla añadiéndola en *··· → Conexiones* de la base. **Mover la base de sitio puede quitarle la conexión: si se mueve, compruébala.**
 >
-> **Para leer el historial de ejecuciones**, la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
+> **Para leer el historial de ejecuciones** (90 días; los errores del pipeline, con `scripts/errores-pipeline.py`, §8.1), la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
 > `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
 
 El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf`, que además escribe.
