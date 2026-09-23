@@ -154,10 +154,7 @@ describe('MediaRepository.renameFolder', () => {
   });
 });
 
-/**
- * The media view uses `renamedFolderPath` to follow the open folder after a
- * rename, so it must pick exactly the folders the repository renames.
- */
+/** Where a path goes on rename: used by `renameFolder` and by the media view. */
 describe('renamedFolderPath', () => {
   it('follows the renamed folder and the ones below it, not its lookalikes', () => {
     expect(renamedFolderPath('Citem', 'Citem', 'NewBrand')).toBe('NewBrand');
@@ -165,21 +162,5 @@ describe('renamedFolderPath', () => {
     expect(renamedFolderPath('Citem2', 'Citem', 'NewBrand')).toBeNull();
     expect(renamedFolderPath('Citem/Sub', 'Citem/Sub', 'Citem/Arte')).toBe('Citem/Arte');
     expect(renamedFolderPath('Citem', 'Citem/Sub', 'Citem/Arte')).toBeNull();
-  });
-
-  it.each([
-    [['A_B', 'A_B/sub', 'A_B/sub/deep', 'AxB', 'AxB/sub', 'A_B2'], 'A_B', 'Z'],
-    [['A%', 'A%/x', 'Abc/x', 'A'], 'A%', 'P'],
-    [['A', 'A/B', 'A/A'], ' A ', 'A/B'],
-    [['Design/Design', 'Design2'], 'Design', 'Art'],
-    [['Citem'], 'Citem', ' Citem '],
-  ])('agrees with the repository on %j (%s -> %s)', async (folders, oldName, newName) => {
-    const { repository, liveFolders } = setup(folders);
-
-    await repository.renameFolder('org', { oldName, newName });
-
-    expect(liveFolders()).toEqual(
-      folders.map((folder) => renamedFolderPath(folder, oldName, newName) ?? folder)
-    );
   });
 });

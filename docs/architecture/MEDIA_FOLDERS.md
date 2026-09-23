@@ -230,7 +230,7 @@ cuadrícula y en la de lista.
 Renombrar (✎, en la página Medios) pide sólo el último segmento y reconstruye la
 ruta completa antes de llamar a `PUT /media/rename-folder`. Si la carpeta abierta
 es la renombrada o cuelga de ella, la vista pasa a la ruta nueva. Lo decide
-`renamedFolderPath`, que aplica la misma regla que el renombrado del servidor:
+`renamedFolderPath`, la misma función con la que el servidor elige qué renombra:
 con `Citem2` abierta, renombrar `Citem` no mueve la vista.
 
 Tras mover o renombrar se revalidan a la vez la lista de medios y la de
@@ -270,9 +270,9 @@ son preferencias de la sesión y no tocan el backend.
 |---|---|
 | Campo `folder` e índice | `libraries/nestjs-libraries/src/database/prisma/schema.prisma` (modelo `Media`) |
 | DTO de mover | `libraries/nestjs-libraries/src/dtos/media/move.media.dto.ts` |
-| DTO de renombrar y `renamedFolderPath` (a dónde va una ruta al renombrar; lo usa la vista) | `libraries/nestjs-libraries/src/dtos/media/rename.folder.dto.ts` |
+| DTO de renombrar y `renamedFolderPath` (a dónde va una ruta al renombrar; la usan el repositorio y la vista) | `libraries/nestjs-libraries/src/dtos/media/rename.folder.dto.ts` |
 | Consultas: `getFolders`, `moveMedia`, `renameFolder`, filtro de `getMedia`, saneado en `saveFile` | `libraries/nestjs-libraries/src/database/prisma/media/media.repository.ts` |
-| Pruebas de `renameFolder` y de que `renamedFolderPath` coincide con él (`pnpm test`) | `libraries/nestjs-libraries/src/database/prisma/media/media.repository.spec.ts` |
+| Pruebas de `renameFolder` y de `renamedFolderPath` (`pnpm test`) | `libraries/nestjs-libraries/src/database/prisma/media/media.repository.spec.ts` |
 | Servicio (delega en el repositorio) | `libraries/nestjs-libraries/src/database/prisma/media/media.service.ts` |
 | Endpoints y lectura de `folder` en las subidas | `apps/backend/src/api/routes/media.controller.ts` |
 | `MediaBox`: árbol, carpeta pendiente, selección, mover, renombrar, vistas y zoom | `apps/frontend/src/components/media/media.component.tsx` |
