@@ -271,6 +271,29 @@ check("no deja huérfanos vivos",
                              AND p.image::text LIKE '%%'||m.id||'%%');""" % t_e) == "0")
 borrar(pid_e)
 
+print(); print("=" * 62); print("6c · POSTIZ RECHAZA LA PIEZA: EL MOTIVO SE ENTIENDE"); print("=" * 62)
+# Una fila que pasa las validaciones de n8n y que Postiz rechaza: copy de mas de
+# 2200 caracteres. `❌ error_log` lo lee una persona: tiene que traer el motivo de
+# Postiz en limpio —sin el JSON escapado ni el stack de axios— y decir que el
+# fallo es de la fila (nodo «Formatear error» del subflow).
+subprocess.run("ffmpeg -y -v error -f lavfi -i color=c=blue:s=1080x1350 -frames:v 1 /tmp/e3.jpg",
+               shell=True, capture_output=True)
+pid_r = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name": "CITEM"}},
+              "Tipo": {"select": {"name": "Post"}},
+              "Fecha": {"date": {"start": d7 + "T19:00:00", "time_zone": "Europe/Madrid"}},
+              "copy": {"rich_text": [{"text": {"content": "Suite de pruebas: rechazo. " + "x" * 1900}},
+                                     {"text": {"content": "y" * 400}}]},
+              "media": {"files": [{"type": "file_upload", "file_upload": {"id": subir("e3.jpg")}, "name": "e3.jpg"}]}})
+esperar_indice([pid_r])
+hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+r_r = leer(pid_r)
+check("Postiz rechaza la pieza: la fila queda en Error", r_r["Status"] == "Error", "(%s)" % r_r["Status"])
+check("el error_log trae el motivo de Postiz en limpio",
+      r_r["error"].startswith("Postiz rechazó la pieza: post is too long")
+      and "stack" not in r_r["error"] and '\\"' not in r_r["error"], "(%s)" % r_r["error"][:90])
+check("el rechazo no crea el post ni deja media a medias", not r_r["post_id"] and not r_r["media"])
+borrar(pid_r)
+
 print(); print("=" * 62); print("6b · IDENTIDAD EXTERNA: EL DUPLICADO ES IMPOSIBLE"); print("=" * 62)
 # El 2026-08-24 dos pasadas del sync se solaparon 8 s y dejaron seis posts
 # duplicados: cada una creo el suyo, la ultima escritura en Notion piso a la
