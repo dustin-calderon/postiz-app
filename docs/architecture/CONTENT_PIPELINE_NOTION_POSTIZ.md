@@ -989,6 +989,9 @@ Eso cierra la última ventana que quedaba: la pasada de retirada corriendo mient
 
 > Aplica el mismo margen de seguridad de §9.3: nada dentro de los próximos 5 minutos se retira automáticamente.
 
+> ### La lista de filas se lee entera o no se retira nada
+> Las filas que reclaman crecen sin tope, porque las `Publicado` se quedan. `Notion: filas vivas` pagina (`start_cursor`, hasta 50 páginas de 100) y ordena por `created_time`: sin orden, Notion no garantiza ninguno, y una fila editada entre dos páginas podría no leerse y su post parecería huérfano. `Reconciliar` junta las páginas y **se niega a seguir** si alguna no es una lista o si la última aún dice `has_more`: con una lista a medias borraría posts legítimos. Probado con páginas de 10 contra las de 100 (mismas filas, mismas acciones) y con el tope de páginas forzado (se detiene).
+
 ### 9.8 El cuerpo exacto de `POST /public/v1/posts`
 
 **Contrastado contra la API real**, no sólo derivado de los DTOs.
@@ -1390,7 +1393,7 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | Límite | Consecuencia |
 |---|---|
 | **Colaboradores en `graph.instagram.com`** | Se envían, pero no está comprobado que Meta los acepte en la API de Instagram Login. Deuda aceptada (§11, decisión #7) |
-| **Más de 100 filas en una consulta** | Ni el sync ni la retirada paginan: **fallan a las claras** si `has_more` es `true`, en vez de trabajar con media lista. El sync lee solo los estados vivos y va sobrado. **La retirada no**: lee toda fila de Instagram con `Status`, `Publicado` incluidas (§9.7), y esas crecen con cada pieza. Al pasar de 100, la retirada y la recuperación dejan de correr y avisa el bus de incidencias (§9.10). Hay que paginar esa consulta antes |
+| **Más de 100 filas accionables en el sync** | La consulta del sync no pagina: **falla a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Lee solo los estados vivos, que no se acumulan. La de la retirada, que sí crece, pagina (§9.7) |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
 | **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus de incidencias (§9.10). Lo ya programado en Postiz sigue en pie; lo editado ese día no llega hasta la siguiente pasada o el botón |
 
