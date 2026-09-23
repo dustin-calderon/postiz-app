@@ -65,5 +65,10 @@ docker exec postiz-postgres sh -c 'psql -U $POSTGRES_USER -d $POSTGRES_DB -Atc "
 echo "   $(find /mnt/seagate/postiz-media -type f | wc -l) ficheros en disco"
 
 echo "-- 8. Workflows vivos --"
-docker exec temporal temporal workflow list --address 172.22.0.4:7233 --namespace default --limit 40 2>/dev/null \
-  | grep Running | sed 's|^|   |'
+# Por nombre de servicio, no por IP: la IP del contenedor cambia al recrearlo, y
+# con una IP fija esta sección salía vacía sin decir que no había podido mirar.
+if ! lista=$(docker exec temporal temporal workflow list --address temporal:7233 --namespace default --limit 40 2>&1); then
+  echo "   NO SE PUDO CONSULTAR Temporal: $(echo "$lista" | tail -1)"
+else
+  echo "$lista" | grep Running | sed 's|^|   |'
+fi
