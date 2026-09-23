@@ -5,14 +5,14 @@ Lo que se sabe pendiente en `custom/postiz-dc` y se ha decidido no resolver toda
 **Contexto común a todas.** Postiz se publica en `https://postiz.dustincalderon.com` detrás de Cloudflare Access, con el registro cerrado (`DISABLE_REGISTRATION=true`). Qué queda fuera de Access y por qué lo dice su entrada en `Instalar-Home-Server/server/config/apps-publicas.json`. Hay dos excepciones:
 
 - `/uploads`: nginx lo sirve como fichero estático.
-- `/api/public/*`: llega entero al backend sin login. Allí solo `/api/public/v1/*` exige la API key de la organización (`PublicAuthMiddleware`). El resto de `PublicController` (`apps/backend/src/api/routes/public.controller.ts`) responde a cualquiera.
+- `/api/public/v1/*`: llega al backend sin login y exige la API key de la organización (`PublicAuthMiddleware`). El resto de `/api/public` (`PublicController`) pide Access como todo lo demás: lo llama el frontend.
 
 El contenedor solo publica nginx, en `127.0.0.1:4007`. Todo lo de abajo se ha juzgado con ese montaje: si cambia, cambia el juicio. Se comprueba así:
 
 ```bash
-for p in '/_next/image?url=%2Ffavicon.ico&w=64&q=75' /api/auth/can-register /api/enterprise/create-user; do
+for p in '/_next/image?url=%2Ffavicon.ico&w=64&q=75' /api/auth/can-register /api/enterprise/create-user /api/public/stream; do
   curl -s -o /dev/null -w "$p %{http_code} %{redirect_url}\n" "https://postiz.dustincalderon.com$p"; done
-# las tres: 302 a cloudflareaccess.com
+# las cuatro: 302 a cloudflareaccess.com
 curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/public/v1/is-connected
 # 401: llega al backend y pide la API key
 ```
@@ -21,7 +21,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 ## Credenciales generadas con `Math.random`: hay que rotarlas
 
-**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t`, sin login, devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
+**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
 
 **Cómo se cierra.** Regenerando cada API key creada antes del despliegue de `8fb61ee4` (pantalla de API pública, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. Se listan con:
 
