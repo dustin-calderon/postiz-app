@@ -112,7 +112,7 @@ A Postiz le da igual: con `upload-from-url` los bytes van de Notion a Postiz dir
 
 **Quien tiene que descargarse el fichero es Meta**, del Beelink y por el túnel, y ahí el tamaño manda. El 2026-08-06 dos Trial Reels de 2160×3840 a 38 Mbps (585 MB) no se publicaron nunca: Meta no terminó de descargarlos, el contenedor se quedó en `IN_PROGRESS`, saltó el `startToCloseTimeout` de 10 min de la actividad, Temporal reintentó 3 veces **volviendo a servir los 585 MB** y eso agotó el rate limit de la app; su firma en la tabla `Errors` de Postiz es `activity StartToClose timeout`. Un clip de 1080×1920 a 8 Mbps (18 MB) del mismo día publicó sin problema.
 
-**Lo publicable es ≤1080×1920 y ≲12 Mbps** — Instagram admite hasta 25 Mbps y 1 GiB, pero eso es lo que *acepta*, no lo que nuestro uplink *entrega a tiempo*. Hay dos capas: el sync normaliza los videos fuera de ese techo con `normalizar-video.sh` en el host ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)), y Postiz rechaza al crear el post cualquier video que aun así exceda los límites duros ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)), también si se sube por la UI. El pipeline de clips de Instalar-Home-Server aplica la misma normalización en su Paso 5.
+**Lo publicable es ≤1080×1920 y ≲12 Mbps** — Instagram admite hasta 25 Mbps y 300 MB en un reel, pero eso es lo que *acepta*, no lo que nuestro uplink *entrega a tiempo*. Hay dos capas: el sync convierte en el host, con `normalizar-media.sh`, lo que se arregla convirtiendo ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)), y Postiz rechaza al crear el post lo que exige decidir a una persona ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)), también si se sube por la UI. El pipeline de clips de Instalar-Home-Server aplica la misma normalización en su Paso 5.
 
 ### ⚠️ El Seagate es USB y `/uploads` es un bind mount
 
@@ -171,7 +171,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 ## 8. Fuentes
 
 **Código de este repositorio** (autoridad para todo lo relativo a Postiz):
-`upload.factory.ts` · `cloudflare.storage.ts` · `local.storage.ts` · `upload.interface.ts` · `app.module.ts` · `throttler.provider.ts` · `instagram.provider.ts` · **`instagram.standalone.provider.ts`** · `instagram.video.rules.ts` · `instagram.dto.ts` · `create.post.dto.ts` · `media.dto.ts` · **`valid.url.path.ts`** · `has.extension.ts` · `custom.upload.validation.ts` · `get.posts.dto.ts` · `posts.service.ts` · `posts.repository.ts` · `media.repository.ts` · `webhooks.repository.ts` · `webhooks.controller.ts` · `post.activity.ts` · **`post.workflow.v1.0.6.ts`** · `public.integrations.controller.ts` · `schema.prisma`
+`upload.factory.ts` · `cloudflare.storage.ts` · `local.storage.ts` · `upload.interface.ts` · `app.module.ts` · `throttler.provider.ts` · `instagram.provider.ts` · **`instagram.standalone.provider.ts`** · `instagram.media.rules.ts` · `instagram.dto.ts` · `create.post.dto.ts` · `media.dto.ts` · **`valid.url.path.ts`** · `has.extension.ts` · `custom.upload.validation.ts` · `get.posts.dto.ts` · `posts.service.ts` · `posts.repository.ts` · `media.repository.ts` · `webhooks.repository.ts` · `webhooks.controller.ts` · `post.activity.ts` · **`post.workflow.v1.0.6.ts`** · `public.integrations.controller.ts` · `schema.prisma`
 
 **Fuera del repositorio:** los workflows de n8n, exportados en `/opt/homeserver/n8n-workflows/` ([INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)), y el calendario de Notion, `collection://186a2405-a123-81dc-832f-000b82a65c0c`.
 

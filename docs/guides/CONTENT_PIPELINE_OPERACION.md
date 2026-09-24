@@ -15,7 +15,7 @@
 set -a; . /opt/homeserver/.env; set +a; python3 /opt/homeserver/n8n-workflows/suite-pruebas-postiz.py
 ```
 
-Las reglas del trial reel tienen su propia prueba, [`prueba-trial-reels.py`](../architecture/scripts/prueba-trial-reels.py) ([NOTION_SCHEMA §2.3](../architecture/CONTENT_PIPELINE_NOTION_SCHEMA.md)).
+Las reglas del trial reel tienen su propia prueba, [`prueba-trial-reels.py`](../architecture/scripts/prueba-trial-reels.py) ([NOTION_SCHEMA §2.3](../architecture/CONTENT_PIPELINE_NOTION_SCHEMA.md)). Y el convertidor, la suya: [`test_normalizar-media.sh`](../architecture/scripts/test_normalizar-media.sh) fabrica un fichero de cada caso que Instagram no publica tal cual (HEIC, WebP, AVIF, GIF, PNG grande con transparencia, WebM, 120 fps, audio PCM, más de 300 MB, un fichero ilegible), lo pasa por la copia viva, mide lo que llega a Postiz y lo borra, también del disco. Se lanza tras cambiar el script: `bash /opt/repos/postiz-fork/docs/architecture/scripts/test_normalizar-media.sh`.
 
 > Al cargar el `.env` sale `line 103: {client_id:: command not found`. **Es inocuo y no hay que arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. El pipeline no la usa, y su consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 

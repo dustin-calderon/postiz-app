@@ -84,14 +84,20 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
 3. si tiene ❌ postiz_post_id y no está publicado ──► DELETE primero
 4. si `❌ postiz_media` no es de estos mismos ficheros, en este orden:
       pide a Notion la URL FRESCA de cada fichero   ← nunca una guardada
-      SSH al host ──► normalizar-video.sh <url>
+      SSH al host ──► normalizar-media.sh <url>
         ├─ mide con ffprobe (~2 s, sin descargar)
         ├─ clasifica imagen/video por LÍNEA DE TIEMPO
         │    duration ≥ 1 s o nb_frames ≥ 2 ⇒ video; si no, imagen
-        ├─ imagen, o video dentro del techo (≤1080 ancho, ≤12 Mbps):
-        │    upload-from-url por 127.0.0.1:4007
-        ├─ SOLO un video fuera del techo: descarga → ffmpeg
-        │    1080×1920/8 Mbps → re-mide → multipart por 127.0.0.1:4007
+        ├─ lo que Instagram publica tal cual: upload-from-url
+        │    foto JPEG o PNG de hasta 8 MiB; video MOV/MP4, H.264/HEVC,
+        │    23-60 fps, AAC ≤48 kHz, ≤1080×1920, ≤12 Mbps, ≤300 MB
+        ├─ lo demás: descarga → convierte → re-mide → multipart
+        │    foto (HEIC, WebP, AVIF, GIF, >8 MiB) → JPEG ≤1440 px de
+        │      ancho, la transparencia sobre blanco
+        │    video → MP4 H.264, fps a 23-60, AAC 48 kHz, el bitrate
+        │      que cabe en 300 MB (como mucho 8 Mbps); nunca amplía
+        │    lo que ffprobe no abre se prueba con heif-convert (HEIC)
+        ├─ las dos subidas por 127.0.0.1:4007, sin Cloudflare
         ├─ los bytes NO pasan por n8n en ningún caso
         └─ si el script falla (exit≠0): el nodo SSH NO lanza error —
            devuelve {code,stdout,stderr}— así que el veredicto de cada
@@ -119,22 +125,24 @@ El cuerpo exacto del `POST`, con los campos que dan 400 si se olvidan: [API_POST
 
 Las dos escrituras van separadas: guardar `❌ postiz_media` en cuanto sube hace el proceso **reanudable a mitad**, y evita volver a subir un reel en cada resincronización.
 
-> ### ⚠️ La normalización es una puerta de VIDEO, y por ahí pasa todo el media
-> El subflow manda un asset por invocación **sin saber qué es**. Dentro de la rama de video toda medida ausente cuenta como «fuera de techo», y el bitrate de una imagen es `N/A` siempre: sin clasificar antes, cada foto se recodificaría a un MP4 de **un fotograma** (`nb_frames=1`, `duration=0.04`) y se publicaría como video.
->
-> **El único discriminador fiable es la línea de tiempo**: `duration ≥ 1 s` o `nb_frames ≥ 2`. Lo que **no** sirve, medido con ffprobe:
+> ### ⚠️ Por la puerta pasa todo el media, y no sabe qué le llega
+> El subflow manda un asset por invocación **sin saber qué es**, así que el script clasifica. Si clasificara mal, cada foto saldría convertida en un MP4 de **un fotograma** y se publicaría como video. **El único discriminador fiable es la línea de tiempo**: `duration ≥ 1 s` o `nb_frames ≥ 2`. Lo que **no** sirve:
 >
 > | Señal | Por qué falla |
 > |---|---|
-> | El contenedor | un HEIC de iPhone es `mov,mp4,m4a,3gp,3g2,mj2`, igual que un MP4 |
+> | El contenedor | MOV/MP4 es también el de un HEIC |
 > | `avg_frame_rate` | vale `25/1` hasta en un PNG |
-> | El códec | un HEIC es `hevc`, igual que un video H.265 |
+> | El códec | `hevc` es un video H.265 y también una foto HEIC |
 > | `nb_frames == 1` | en PNG y JPEG es `N/A`, no `1` |
 > | `duration` a secas | `N/A` en PNG/WebP pero **0,04 s** en JPEG — hacen falta las dos |
 >
 > La `duration` se pide al **contenedor**, no al stream: el demuxer de imagen le inventa al stream un fotograma nominal de 0,04 s.
 >
-> **La recodificación es la excepción**: sólo un asset positivamente identificado como video y positivamente fuera de techo. Dentro de la rama de video rige la regla contraria —*una medida ausente NO cumple, se normaliza*—, porque un video demasiado pesado no llega a publicarse ([NOTION_POSTIZ §6](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). Y si ffprobe no saca ni dimensiones, se **aborta**: subir a ciegas y recodificar a ciegas son las dos malas.
+> **Se convierte solo lo que Instagram no publica tal cual**, contra la referencia de Meta (IG User Media), y una medida ausente cuenta como que no cumple: un video demasiado pesado no llega a publicarse ([NOTION_POSTIZ §6](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). El ffmpeg de Ubuntu (6.1) no abre un HEIC de iPhone, así que lo que ffprobe no abre se prueba con `heif-convert` (paquete `libheif-examples`); si tampoco lo reconoce, se **aborta** con el motivo. La conversión deja la foto derecha según su orientación (comprobado con un JPEG y un HEIC de iPhone girados) y no copia sus metadatos.
+>
+> **PNG sube tal cual** aunque la referencia diga «Format: JPEG»: Instagram publica PNG con normalidad (son las láminas de todos los carruseles replicados). Las demás fotos se convierten: la referencia solo admite JPEG, y Meta rechaza un formato que no admite con el error 2207005.
+>
+> Lo que exige decidir a una persona —la duración de un video, la proporción de una foto— no se convierte: lo rechaza Postiz al crear el post ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)). La prueba del script es [`test_normalizar-media.sh`](./scripts/test_normalizar-media.sh) ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)).
 
 > ### ⚠️ El veredicto es de la fila, no de cada asset
 > Un IF **por item** con 10 assets y 2 correctos partiría la ejecución en dos ramas vivas: n8n ejecuta primero la buena, y una excepción ahí mata la ejecución antes de que la rama de error escriba nada. La fila se quedaría en `Listo`, con `❌ error_log` vacío y medios huérfanos — un fallo invisible desde Notion, que es peor que el fallo.
