@@ -136,6 +136,8 @@ Consecuencias:
 > **Aplicado: `API_LIMIT` = 300.** Es nuestra instancia, con una sola organización y una API key que es nuestra; el throttle existe para proteger un SaaS multi-inquilino, no este caso.
 >
 > La alternativa estructural —comparar antes de recrear, con un `GET` (no throttleado) y sólo borrar+crear si algo cambió— ahorraría casi todas esas llamadas. Es mejor ingeniería, pero **no hace falta todavía**.
+>
+> **Cuándo hará falta.** Cada pasada crea una vez cada fila de la ventana, así que lo que gasta y lo que tarda crecen con las filas; la batería lanza muchas seguidas. Las dos señales: una fila en `Error` con «Postiz respondió 429», o pasadas del sync que se acercan a los 125 s, donde Cloudflare corta la respuesta del webhook con cabecera. `scripts/errores-pipeline.py` saca la primera; la duración de cada pasada está en las ejecuciones de n8n.
 
 El batching del worker existe por el límite de **Instagram** (100 publicaciones / 24 h) y por no saturar el orchestrator, **no** por cuota de Postiz.
 
@@ -383,7 +385,7 @@ Y tres cosas que **no** son propiedades nuevas:
 - **`publish_at`** es `Fecha`, con hora (§7.5).
 - **`❌ release_url`** es **propiedad propia** (tipo `url`). Se planteó reutilizar la `URL` que ya existía y se descartó: `URL` es tuya y tiene otro uso (decisión #3 de §11).
 
-> **El aviso de error irá al correo de quien creó la fila.** No hace falta propiedad: Notion expone `created_by` como metadato de página y n8n puede resolverlo a email, con una dirección general de reserva. **Diseño decidido, implementación pendiente** (§11): hoy los fallos se ven en la vista *⚠️ Averías*.
+> **No hay aviso de error por correo.** María revisa las publicaciones, y lo que falla en una fila se ve en la vista *⚠️ Averías* (§11).
 
 > ### ⚠️ Renombrar una propiedad rompe el worker
 > Los workflows buscan las propiedades **por su nombre exacto**, acentos y emoji incluidos. Renombrar una en Notion y no tocar n8n tiene dos desenlaces, ninguno bueno:
@@ -663,7 +665,7 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 | URL | Auth | Respuesta | |
 |---|---|---|---|
 | `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **`202` al instante** | **← la que usa el botón** |
-| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada (o `524` de Cloudflare si espera turno más de ~100 s: la pasada termina igual) | para scripts y `curl` |
+| `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada | para scripts y `curl`. Los del Beelink llaman a n8n en local, `http://127.0.0.1:5678/webhook/postiz-sync-ig`: Cloudflare corta con `524` una respuesta de más de 125 s, y una pasada larga o que espera turno los pasa aunque termine bien |
 
 El apartado **«Contenido» se deja vacío** — el workflow no lee el cuerpo, relee el calendario por su cuenta.
 
@@ -1143,7 +1145,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | 1 | ~~Formato y zona horaria~~ | — | **Resuelta:** offset explícito, contenedor en UTC (§9.8) |
 | ~~2~~ | ~~Tope de tamaño~~ | — | **Resuelta, y el tope dejó de ser un problema.** No son 300 MB sino **1 GiB** (`MAX_URL_UPLOAD_BYTES`), y ya no protege memoria —el streaming la hace constante— sino el disco (§9.2). Probado con 672 MB |
 | ~~3~~ | ~~¿`URL` libre?~~ | — | **No.** Creada propiedad `❌ release_url` aparte |
-| ~~4~~ | ~~Dirección de reserva~~ | — | **`contacto@dustincalderon.com`** |
+| ~~4~~ | ~~Dirección de reserva~~ | — | **Sin uso:** era para las alertas por correo, descartadas |
 | ~~5~~ | ~~Qué pasa si el sync entero falla~~ | — | **Resuelta:** cada nodo HTTP se reintenta 3 veces y, si aun así falla, el bus de incidencias avisa con el workflow, el nodo y el error (§9.10) |
 | ~~6~~ | ~~Huérfanos de `/upload` si falla el `POST /posts`~~ | — | **Resuelta: se añadió `DELETE /public/v1/media/:id` al fork** y el worker borra lo que acaba de subir si la creación falla (§9.2). Verificado: 30 medios vivos antes y después de un fallo real |
 | 7 | ¿Meta acepta `collaborators` en `graph.instagram.com`? | — | **Deuda técnica.** No se probará de momento |
@@ -1160,7 +1162,7 @@ Lo que revelarían esas dos semanas, y sigue sin saberse:
 | IDs de integración | Los tres, verificados en la base de datos (§7.2.1) |
 | Piezas compartidas entre cuentas | **Un post con `collaborators`**, no N posts (§7.2.4) |
 | Estado del pipeline | Propiedad `Status`, única — antes eran dos y se fusionaron (§7.2) |
-| Alertas | **Email al creador de la fila** (`created_by`), con dirección general de reserva `contacto@dustincalderon.com` — *diseño decidido; **sin implementar**: falta elegir remitente (§10)* |
+| Alertas | **Ninguna a personas por fila.** María revisa las publicaciones: lo que falla en una fila se ve en la vista ⚠️ Averías. Los fallos del sistema van al bus de incidencias (§9.10) |
 | Archivo en Drive | **Espejo a las 02:40 y archivador a las 02:55**, que escribe `❌ drive_url`. Fuera del camino de publicación → [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 | Retención de la caché de medios | **`MEDIA_RETENTION_DAYS = 3650`**, aplicado y verificado. El default de 30 sólo era seguro para el material con fila en Notion (§4.7) |
 | Plan de Notion | **De pago** → el botón webhook es viable |
@@ -1355,7 +1357,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > Cubre: seguridad de los tres disparadores, las cuatro validaciones que deben acabar en `Error` **con el motivo nombrando la propiedad tal y como se llama hoy**, el camino completo de un carrusel, la regresión del margen (§9.3), **que las pasadas van de una en una** (§9.1), el reintento que reutiliza los medios **y que vuelve a subirlos si son otros ficheros**, la retirada, **la pieza aplazada a más de 15 días**, **la ruta de error de la subida**, **el rechazo de Postiz con el motivo en limpio** (§8.1), la identidad externa (§9.6), **la pieza aprobada tarde** (§9.4), el estado en reposo y la limpieza de sus propios ficheros.
 >
-> **Se lanza cuando nadie está pulsando `Sync now`.** Sus pasadas son pasadas completas del sync sobre las filas reales y esperan su turno detrás de las de quien esté trabajando (§9.1); si esperan más de ~100 s, Cloudflare devuelve `524` antes de que la pasada termine y la batería leería el resultado antes de tiempo.
+> **Mejor cuando nadie está pulsando `Sync now`.** Sus pasadas son pasadas completas del sync sobre las filas reales: se ponen en fila con las de quien esté trabajando (§9.1), que esperan detrás, y todas gastan del mismo límite de creaciones de Postiz (§4.3). Lo que espera a que acabe una pasada lo llama en local, sin Cloudflare; por la URL pública solo prueba que el camino público rechaza y que el botón responde.
 >
 > **La ruta de error se prueba desde el 2026-08-16** (§6) con una fila de dos assets donde uno es ilegible para ffprobe. No es una comprobación de adorno: es el único fallo del pipeline que era *invisible* —la fila se quedaba en `Listo`, sin `error_log`, con medios huérfanos vivos— y por tanto el único que ningún otro check podía cazar. Afirma las dos caras del huérfano a propósito: que el asset bueno **llegó a subirse** (si no, la segunda afirmación pasaría sin haber probado nada) y que **no queda ninguno vivo**.
 >

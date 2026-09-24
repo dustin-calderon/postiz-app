@@ -6,6 +6,11 @@ TOK = os.environ["NOTION_API_KEY"]
 TOKEN = os.environ["N8N_SYNC_IG_TOKEN"]
 DB = "186a2405a123812aa925cde1bb94ef12"
 W = "https://auto.dustincalderon.com/webhook/"
+# Lo que espera a que acabe una pasada va a n8n desde el propio Beelink, sin
+# Cloudflare: Cloudflare corta a los 125 s una respuesta que no llega (524), y una
+# pasada con bastantes filas, o que espera turno, los pasa; se leería el
+# resultado antes de tiempo. Por W solo va lo que prueba el camino público.
+L = "http://127.0.0.1:5678/webhook/"
 H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28"}
 ok, fail = [], []
 
@@ -103,7 +108,7 @@ malos = [
 ]
 pids = [fila(p) for _n, p, _e in malos]
 esperar_indice(pids)
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 for (nombre, _p, esperado), pid in zip(malos, pids):
     r = leer(pid)
     check(nombre + " -> Error", r["Status"] == "Error", "motivo: " + r["error"][:70])
@@ -117,7 +122,7 @@ vid3 = subir("v1.mp4", "video/mp4")
 pid = fila({**BASE, "Tipo": {"select": {"name": "Reel"}},
             "is_trial_reel": {"checkbox": True}, "media": M(vid3, "v1.mp4")})
 esperar_indice([pid])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r = leer(pid)
 check("se crea (como borrador)", r["Status"] == "En Postiz (borrador)" and bool(r["post_id"]),
       "(Status=%s · %s)" % (r["Status"], r["error"][:60]))
@@ -140,7 +145,7 @@ print(); print("=" * 66); print("3 · SIN MARCAR, NADA CAMBIA"); print("=" * 66)
 vid4 = subir("v1.mp4", "video/mp4")
 pid2 = fila({**BASE, "Tipo": {"select": {"name": "Reel"}}, "media": M(vid4, "v1.mp4")})
 esperar_indice([pid2])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r2 = leer(pid2)
 check("un reel normal sigue creandose", bool(r2["post_id"]), "(Status=%s · %s)" % (r2["Status"], r2["error"][:50]))
 if r2["post_id"]:

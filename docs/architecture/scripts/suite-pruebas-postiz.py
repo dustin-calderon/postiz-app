@@ -8,6 +8,11 @@ BTN = os.environ["N8N_SYNC_IG_BUTTON_PATH"]
 RECV = os.environ["N8N_POSTIZ_WEBHOOK_PATH"]
 DB = "186a2405a123812aa925cde1bb94ef12"
 W = "https://auto.dustincalderon.com/webhook/"
+# Lo que espera a que acabe una pasada va a n8n desde el propio Beelink, sin
+# Cloudflare: Cloudflare corta a los 125 s una respuesta que no llega (524), y una
+# pasada con bastantes filas, o que espera turno, los pasa; se leería el
+# resultado antes de tiempo. Por W solo va lo que prueba el camino público.
+L = "http://127.0.0.1:5678/webhook/"
 H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28"}
 ok = []; fail = []; omitidas = []
 
@@ -107,7 +112,7 @@ c, b = hit(W + "postiz-sync-ig")
 check("sync sin token rechaza", c == 403 and de_n8n(b), "(%d, %s)" % (c, "de n8n" if de_n8n(b) else "DE CLOUDFLARE — no llego a n8n"))
 c, b = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": "malo"})
 check("sync con token erróneo rechaza", c == 403 and de_n8n(b), "(%d, %s)" % (c, "de n8n" if de_n8n(b) else "DE CLOUDFLARE — no llego a n8n"))
-c, r = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); check("sync con token correcto acepta", c == 200, "(%d)" % c)
+c, r = hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); check("sync con token correcto acepta", c == 200, "(%d)" % c)
 c, _ = hit(W + "postiz-sync-0000000000000000"); check("ruta secreta errónea rechaza", c == 404, "(%d)" % c)
 # El botón responde 202 al instante y la pasada sigue por detrás. Notion corta
 # la petición mucho antes que el túnel (medido el 2026-08-16: pasadas de 21 s
@@ -141,9 +146,9 @@ for _ in range(60):
 desde = n8n_sql("""SELECT coalesce(max(id), 0) FROM execution_entity WHERE "workflowId"='%s';""" % SYNC_WF)
 hilos = []
 for _ in range(2):
-    hilos.append(threading.Thread(target=hit, args=(W + "postiz-sync-ig",), kwargs={"hdr": {"X-Sync-Token": TOKEN}}))
+    hilos.append(threading.Thread(target=hit, args=(L + "postiz-sync-ig",), kwargs={"hdr": {"X-Sync-Token": TOKEN}}))
     hilos[-1].start(); time.sleep(3)
-for h in hilos: h.join()  # la segunda puede volver con un 524 de Cloudflare: la pasada sigue en n8n
+for h in hilos: h.join()
 for _ in range(60):
     if pasadas_en_marcha(desde) == "0": break
     time.sleep(5)
@@ -180,7 +185,7 @@ pids = []
 for nombre, props, esperado in casos:
     pid = fila(props); pids.append(pid)
 esperar_indice(pids)
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 for (nombre, _, esperado), pid in zip(casos, pids):
     r = leer(pid)
     check(nombre + " → Error", r["Status"] == "Error", "motivo: " + r["error"][:60])
@@ -204,7 +209,7 @@ pid = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name
             "media": {"files": [{"type": "file_upload", "file_upload": {"id": f1}, "name": "t1.jpg"},
                                  {"type": "file_upload", "file_upload": {"id": f2}, "name": "t2.jpg"}]}})
 esperar_indice([pid])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r = leer(pid)
 check("Status pasa a Programado", r["Status"] == "Programado")
 check("escribe ❌ postiz_post_id", bool(r["post_id"]))
@@ -238,7 +243,7 @@ pid_m = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"na
               "copy": {"rich_text": [{"text": {"content": "Dentro del margen."}}]},
               "media": {"files": [{"type": "file_upload", "file_upload": {"id": f3}, "name": "t1.jpg"}]}})
 esperar_indice([pid_m])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 rm_ = leer(pid_m)
 check("fila NUEVA dentro del margen SÍ se crea", rm_["Status"] == "En Postiz (borrador)" and bool(rm_["post_id"]),
       "(Status=%s)" % rm_["Status"])
@@ -246,12 +251,12 @@ if rm_["post_id"]:
     check("y es DRAFT, no publica", sql('SELECT state FROM "Post" WHERE id=\'%s\';' % rm_["post_id"]) == "DRAFT")
 if rm_["post_id"]:
     # ...y una segunda pasada ya NO la toca, porque ahora sí tiene post_id
-    hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+    hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
     r_m2 = leer(pid_m)
     check("y en la 2ª pasada ya no se recrea", r_m2["post_id"] == rm_["post_id"], "(mismo post_id)")
     check("sigue viva en Postiz", sql('SELECT "deletedAt" IS NULL FROM "Post" WHERE id=\'%s\';' % rm_["post_id"]) == "t")
 api("https://api.notion.com/v1/pages/" + pid_m, {"properties": {"Status": {"select": None}}}, m="PATCH")
-hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
 if rm_["post_id"]:
     vivo = sql('SELECT "deletedAt" IS NULL FROM "Post" WHERE id=\'%s\';' % rm_["post_id"])
     check("la retirada SÍ respeta el margen (no la borra)", vivo == "t", "(sigue viva, correcto)")
@@ -260,7 +265,7 @@ api("https://api.notion.com/v1/pages/" + pid_m, {"archived": True}, m="PATCH")
 
 print(); print("=" * 62); print("4 · REINTENTO REUTILIZA EL MEDIA"); print("=" * 62)
 media_antes = r["media"]
-t0 = time.time(); hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); dt = time.time() - t0
+t0 = time.time(); hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN}); dt = time.time() - t0
 r2 = leer(pid)
 check("no vuelve a subir los ficheros", r2["media"] == media_antes, "(%.1fs)" % dt)
 check("crea un post nuevo", r2["post_id"] != pid_post)
@@ -274,7 +279,7 @@ g1, g2 = subir("t2.jpg"), subir("t1.jpg")
 api("https://api.notion.com/v1/pages/" + pid, {"properties": {"media": {"files": [
     {"type": "file_upload", "file_upload": {"id": g1}, "name": "t2.jpg"},
     {"type": "file_upload", "file_upload": {"id": g2}, "name": "t1.jpg"}]}}}, m="PATCH")
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r3 = leer(pid)
 check("con otros ficheros los vuelve a subir", r3["media"] != r2["media"] and r3["media"].count("path") == 2)
 check("y guarda los nuevos, en su orden", [m.get("src") for m in json.loads(r3["media"] or "[]")] == ficheros(pid))
@@ -287,7 +292,7 @@ web_antes = sql('SELECT id FROM "Post" WHERE "creationMethod"=\'WEB\' AND state=
 vigente = leer(pid)["post_id"]
 check("el post de la fila sigue vivo antes de retirar", sql('SELECT "deletedAt" IS NULL FROM "Post" WHERE id=\'%s\';' % vigente) == "t")
 api("https://api.notion.com/v1/pages/" + pid, {"properties": {"Status": {"select": None}}}, m="PATCH")
-hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
 check("retira el post huérfano", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % vigente) == "t")
 web_despues = sql('SELECT id FROM "Post" WHERE "creationMethod"=\'WEB\' AND state=\'QUEUE\' AND "deletedAt" IS NULL ORDER BY id;')
 check("NO toca los posts creados a mano (WEB)", web_antes == web_despues,
@@ -305,7 +310,7 @@ pid_a = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"na
               "copy": {"rich_text": [{"text": {"content": "Suite de pruebas: aplazada."}}]},
               "media": {"files": [{"type": "file_upload", "file_upload": {"id": subir("t1.jpg")}, "name": "t1.jpg"}]}})
 esperar_indice([pid_a])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 ra = leer(pid_a)
 check("la pieza está en Postiz antes de aplazarla", ra["Status"] == "En Postiz (borrador)" and bool(ra["post_id"]), "(%s)" % ra["Status"])
 d30 = (datetime.date.today() + datetime.timedelta(days=30)).isoformat() + "T20:00:00.000+02:00"
@@ -314,7 +319,7 @@ q = {"page_size": 10, "filter": {"property": "Fecha", "date": {"after": (datetim
 for _ in range(12):  # el índice de consulta de Notion va por detrás de la escritura
     if any(x["id"] == pid_a for x in api("https://api.notion.com/v1/databases/%s/query" % DB, q, m="POST")["results"]): break
     time.sleep(2)
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})  # el sync lanza la retirada
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})  # el sync lanza la retirada
 if ra["post_id"]:
     check("aplazarla retira el post de la fecha vieja", sql('SELECT "deletedAt" IS NOT NULL FROM "Post" WHERE id=\'%s\';' % ra["post_id"]) == "t")
 check("y la fila vuelve a Listo", leer(pid_a)["Status"] == "Listo", "(%s)" % leer(pid_a)["Status"])
@@ -340,7 +345,7 @@ pid_e = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"na
                                   {"type": "file_upload", "file_upload": {"id": e_roto}, "name": "eroto.jpg"}]}})
 esperar_indice([pid_e])
 t_e = sql("SELECT now();")
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r_e = leer(pid_e)
 check("un asset ilegible deja la fila en Error", r_e["Status"] == "Error", "(%s)" % r_e["Status"])
 check("el error_log dice qué asset y por qué",
@@ -375,7 +380,7 @@ pid_r = fila({"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"na
                                      {"text": {"content": "y" * 400}}]},
               "media": {"files": [{"type": "file_upload", "file_upload": {"id": subir("e3.jpg")}, "name": "e3.jpg"}]}})
 esperar_indice([pid_r])
-hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r_r = leer(pid_r)
 check("Postiz rechaza la pieza: la fila queda en Error", r_r["Status"] == "Error", "(%s)" % r_r["Status"])
 check("el error_log trae el motivo de Postiz en limpio",
@@ -503,7 +508,7 @@ _reclamado = _post_directo(_fila_ret, "reclamado por identidad", _d9)
 # fila. Si la retirada no se lo llevara, seria que no llego a evaluar nada y el
 # check de arriba estaria pasando sin haber probado nada.
 _suelto = _post_directo("sin-fila-" + uuid.uuid4().hex, "sin fila detras", _d9)
-hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+hit(L + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
 check("la retirada NO borra un post reclamado por identidad", _vivo(_reclamado))
 check("y si borra uno cuya identidad no tiene fila (control)", not _vivo(_suelto))
 borrar(_fila_ret)
@@ -523,7 +528,7 @@ if _borrador_tarde:
     api("https://api.notion.com/v1/pages/" + _fila_tarde,
         {"properties": {"❌ postiz_post_id": {"rich_text": [{"text": {"content": _borrador_tarde}}]}}}, m="PATCH")
     esperar_indice([_fila_tarde])
-    hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+    hit(L + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
     _rt = leer(_fila_tarde)
     check("aprobada tarde pasa a Error y dice por qué", _rt["Status"] == "Error" and "borrador" in _rt["error"],
           "(%s: %s)" % (_rt["Status"], _rt["error"][:60]))
@@ -540,7 +545,7 @@ for pid in [l for l in sql("""SELECT id FROM "Post" WHERE "deletedAt" IS NULL
         print("  no se pudo borrar %s: %s" % (pid[:8], e))
 
 print(); print("=" * 62); print("7 · ESTADO EN REPOSO"); print("=" * 62)
-c, r1 = hit(W + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
+c, r1 = hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 # Las filas de la suite ya estan archivadas: cualquier fila que aparezca en la
 # respuesta es real. Una escritura en Notion (`"object":"page"`) o una fila que
 # el planificador reporta (`"page_id"`, p. ej. «fuera de ventana») dicen que el
@@ -549,7 +554,7 @@ if '"object":"page"' in r1 or '"page_id"' in r1:
     omite("sync no hace nada", "calendario con filas reales")
 else:
     check("sync no hace nada", "nada que hacer" in r1)
-c, r2 = hit(W + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
+c, r2 = hit(L + "postiz-retirada-ig", hdr={"X-Sync-Token": TOKEN})
 if '"object":"page"' in r2:
     omite("retirada no hace nada", "calendario con filas reales en ventana")
 else:
