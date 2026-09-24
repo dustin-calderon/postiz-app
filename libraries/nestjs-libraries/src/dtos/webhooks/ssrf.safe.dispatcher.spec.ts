@@ -12,28 +12,29 @@ import {
 const { isBlockedIp } = validator;
 
 /**
- * A test cannot reach the internet, so a local server plays the "public"
- * origin: the IP guard is told that 127.0.0.1 (and only it) is public. Every
- * other address keeps the real verdict, so ::1, 10.x, 192.168.x... are still
- * the real blocked addresses the requests must never reach.
+ * A test cannot reach the internet, so a server on 127.0.0.1 plays the public
+ * origin: the IP guard is told that 127.0.0.1, and only it, is public. The
+ * internal service lives on ::1 and keeps the real verdict, so a request that
+ * slipped past the guard would really reach it and count a hit on /secret.
  */
 const PUBLIC_STAND_IN = '127.0.0.1';
 
 // Names the fake resolver answers, so no test depends on real DNS.
-const FAKE_DNS: Record<string, string> = {
-  'public.test': PUBLIC_STAND_IN,
-  'internal.test': '192.168.1.10',
-  'metadata.test': '169.254.169.254',
+const FAKE_DNS: Record<string, { address: string; family: number }> = {
+  'public.test': { address: PUBLIC_STAND_IN, family: 4 },
+  'internal.test': { address: '::1', family: 6 },
+  'metadata.test': { address: '169.254.169.254', family: 4 },
 };
-
-let server: http.Server;
-let port: number;
-let secretHits = 0;
 
 const realLookup = dns.lookup;
 
-beforeAll(async () => {
-  server = http.createServer((req, res) => {
+let secretHits = 0;
+const servers: http.Server[] = [];
+let publicPort: number;
+let internalPort: number;
+
+const listen = async (host: string) => {
+  const server = http.createServer((req, res) => {
     const target = req.url?.startsWith('/redirect?to=')
       ? decodeURIComponent(req.url.slice('/redirect?to='.length))
       : '';
@@ -47,14 +48,23 @@ beforeAll(async () => {
     }
     res.end('ok');
   });
-  await new Promise<void>((resolve) =>
-    server.listen(0, '0.0.0.0', () => resolve())
-  );
-  port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.listen(0, host, () => resolve()));
+  servers.push(server);
+  return (server.address() as AddressInfo).port;
+};
+
+const redirectTo = (target: string) =>
+  `http://public.test:${publicPort}/redirect?to=${encodeURIComponent(target)}`;
+
+beforeAll(async () => {
+  publicPort = await listen(PUBLIC_STAND_IN);
+  internalPort = await listen('::1');
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
+  await Promise.all(
+    servers.map((server) => new Promise((resolve) => server.close(resolve)))
+  );
   await ssrfSafeDispatcher.close();
 });
 
@@ -70,13 +80,13 @@ beforeEach(() => {
     options: any,
     callback: any
   ) => {
-    const address = FAKE_DNS[hostname];
-    if (!address) {
+    const fake = FAKE_DNS[hostname];
+    if (!fake) {
       return (realLookup as any)(hostname, options, callback);
     }
     return options?.all
-      ? callback(null, [{ address, family: 4 }])
-      : callback(null, address, 4);
+      ? callback(null, [fake])
+      : callback(null, fake.address, fake.family);
   }) as any);
 });
 
@@ -121,34 +131,26 @@ describe('isBlockedIp', () => {
   });
 });
 
+// Every one of these is refused. The ::1 ones are reachable, so a request
+// that got through would show up in `secretHits`.
 const internalUrls = () => [
-  `http://127.0.0.1:${port}/secret`,
-  `http://10.0.0.1:${port}/secret`,
-  `http://172.16.0.1:${port}/secret`,
-  `http://172.31.0.1:${port}/secret`,
-  `http://192.168.1.1:${port}/secret`,
-  `http://169.254.169.254:${port}/secret`,
-  `http://[::1]:${port}/secret`,
-  `http://[::ffff:127.0.0.1]:${port}/secret`,
-  `http://localhost:${port}/secret`,
-  `http://internal.test:${port}/secret`,
-  `http://metadata.test:${port}/secret`,
-  `http://public.test:${port}/redirect?to=${encodeURIComponent(
-    `http://[::1]:${port}/secret`
-  )}`,
-  `http://public.test:${port}/redirect?to=${encodeURIComponent(
-    `http://internal.test:${port}/secret`
-  )}`,
+  `http://10.0.0.1:${internalPort}/secret`,
+  `http://172.16.0.1:${internalPort}/secret`,
+  `http://172.31.0.1:${internalPort}/secret`,
+  `http://192.168.1.1:${internalPort}/secret`,
+  `http://169.254.169.254:${internalPort}/secret`,
+  `http://[::1]:${internalPort}/secret`,
+  `http://[::ffff:127.0.0.1]:${publicPort}/secret`,
+  `http://internal.test:${internalPort}/secret`,
+  `http://metadata.test:${internalPort}/secret`,
+  redirectTo(`http://[::1]:${internalPort}/secret`),
+  redirectTo(`http://internal.test:${internalPort}/secret`),
+  redirectTo(`http://169.254.169.254:${internalPort}/secret`),
 ];
 
 describe('ssrfSafeDispatcher (fetch)', () => {
-  // 127.0.0.1 is the stand-in public origin inside these tests, so the literal
-  // 127.0.0.1 case is covered by the real guard in the next test instead.
-  const urls = () =>
-    internalUrls().filter((u) => !u.startsWith('http://127.0.0.1'));
-
   it('refuses every internal destination, redirects included', async () => {
-    for (const url of urls()) {
+    for (const url of internalUrls()) {
       const error = await fetch(url, {
         dispatcher: ssrfSafeDispatcher,
         // an unguarded 10.x/172.16.x would hang instead of failing
@@ -162,40 +164,37 @@ describe('ssrfSafeDispatcher (fetch)', () => {
         cause: 'Blocked IP',
       });
     }
-  });
-
-  it('refuses a literal 127.0.0.1 with the real guard', async () => {
-    jest.restoreAllMocks();
-    const error = await fetch(`http://127.0.0.1:${port}/secret`, {
-      dispatcher: ssrfSafeDispatcher,
-    } as any).then(
-      () => null,
-      (err) => err
-    );
-    expect(error?.cause?.message).toBe('Blocked IP');
     expect(secretHits).toBe(0);
   });
 
-  it('never lets a request reach the internal service', async () => {
-    for (const url of urls()) {
-      await fetch(url, {
+  it('refuses 127.0.0.1 and localhost with the real guard', async () => {
+    jest.restoreAllMocks();
+    for (const url of [
+      `http://127.0.0.1:${publicPort}/secret`,
+      `http://localhost:${publicPort}/secret`,
+    ]) {
+      const error = await fetch(url, {
         dispatcher: ssrfSafeDispatcher,
-        signal: AbortSignal.timeout(3000),
-      } as any).catch(() => null);
+      } as any).then(
+        () => null,
+        (err) => err
+      );
+      expect({ url, cause: error?.cause?.message }).toEqual({
+        url,
+        cause: 'Blocked IP',
+      });
     }
     expect(secretHits).toBe(0);
   });
 
   it('reaches a public destination, by name and after a redirect', async () => {
-    const direct = await fetch(`http://public.test:${port}/`, {
+    const direct = await fetch(`http://public.test:${publicPort}/`, {
       dispatcher: ssrfSafeDispatcher,
     } as any);
     expect(await direct.text()).toBe('ok');
 
     const redirected = await fetch(
-      `http://public.test:${port}/redirect?to=${encodeURIComponent(
-        `http://public.test:${port}/`
-      )}`,
+      redirectTo(`http://public.test:${publicPort}/`),
       { dispatcher: ssrfSafeDispatcher } as any
     );
     expect(await redirected.text()).toBe('ok');
@@ -204,9 +203,7 @@ describe('ssrfSafeDispatcher (fetch)', () => {
 
 describe('getSsrfSafeAxios', () => {
   it('refuses every internal destination, redirects included', async () => {
-    for (const url of internalUrls().filter(
-      (u) => !u.startsWith('http://127.0.0.1')
-    )) {
+    for (const url of internalUrls()) {
       const error = await getSsrfSafeAxios()
         .get(url, { timeout: 3000 })
         .then(
@@ -221,19 +218,20 @@ describe('getSsrfSafeAxios', () => {
     expect(secretHits).toBe(0);
   });
 
-  it('refuses a literal 127.0.0.1 with the real guard', async () => {
+  it('refuses 127.0.0.1 and localhost with the real guard', async () => {
     jest.restoreAllMocks();
-    await expect(
-      getSsrfSafeAxios().get(`http://127.0.0.1:${port}/secret`)
-    ).rejects.toThrow('Blocked IP');
+    for (const url of [
+      `http://127.0.0.1:${publicPort}/secret`,
+      `http://localhost:${publicPort}/secret`,
+    ]) {
+      await expect(getSsrfSafeAxios().get(url)).rejects.toThrow('Blocked IP');
+    }
     expect(secretHits).toBe(0);
   });
 
   it('reaches a public destination, by name and after a redirect', async () => {
     const { data } = await getSsrfSafeAxios().get(
-      `http://public.test:${port}/redirect?to=${encodeURIComponent(
-        `http://public.test:${port}/`
-      )}`
+      redirectTo(`http://public.test:${publicPort}/`)
     );
     expect(data).toBe('ok');
   });
