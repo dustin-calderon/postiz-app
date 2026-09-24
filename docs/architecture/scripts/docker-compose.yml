@@ -1,8 +1,9 @@
 # ============================================================
 # Postiz — Social Media Scheduler (Stack Aislado)
 # ============================================================
-# Instalado: 2026-06-02 | Auditado: 2026-06-02
 # Dominio: https://postiz.dustincalderon.com (puerto 4007)
+# Copia versionada: docs/architecture/scripts/docker-compose.yml de postiz-app.
+# Las contraseñas de las bases vienen del .env de al lado, que no va a git.
 # Stack propio: postgres + redis + temporal + elasticsearch
 #
 # Arrancar:  docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d
@@ -18,14 +19,13 @@ services:
   # Postiz — App principal (frontend + backend en mismo container)
   # ----------------------------------------------------------
   postiz:
+    # La etiqueta la pone build.sh en cada despliegue; la copia de git no la sigue.
     image: postiz-custom:local-f4d9ce30
     container_name: postiz
     restart: unless-stopped
     env_file:
       - postiz.env
     volumes:
-      # FIX BUG-09: /config era un volumen fantasma sin uso documentado.
-      # La config real vive en la DB. Eliminado para evitar confusion.
       - /mnt/seagate/postiz-media:/uploads
     ports:
       - "127.0.0.1:4007:5000"
@@ -39,15 +39,12 @@ services:
       temporal:
         # Postiz tiene retry logic nativa para Temporal — service_started es suficiente.
         condition: service_started
-    # FIX BUG-02: Imagen Alpine sin wget/curl. Healthcheck usa Node.js TCP socket
-    # (Node.js siempre presente en imagen Postiz).
+    # La imagen no trae wget ni curl: el chequeo usa node. Pide una URL que
+    # atraviesa nginx y el backend, porque nginx puede estar vivo con el backend
+    # muerto y un chequeo solo de nginx lo daría por sano.
     healthcheck:
       test:
         - "CMD-SHELL"
-        # Antes abria un socket contra el 5000 (nginx). Nginx puede estar vivo
-        # con el backend muerto: el 2026-08-04 el contenedor se declaro healthy
-        # durante horas mientras la API devolvia 502. Ahora se pide una URL real
-        # que atraviesa nginx Y backend; si cualquiera falla, el chequeo falla.
         - "node -e \"require('http').get({host:'localhost',port:5000,path:'/api/auth/can-register',timeout:5000},function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})\""
       interval: 30s
       timeout: 10s
@@ -110,7 +107,7 @@ services:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.enabled=false
-    # FIX BUG-05: Elasticsearch requiere memlock=-1 para deshabilitar swap.
+    # Elasticsearch requiere memlock=-1 para deshabilitar swap.
     # Sin esto, ES puede entrar en paging de memoria y corromper indices.
     ulimits:
       memlock:
@@ -202,9 +199,7 @@ services:
       - temporal
 
 # ----------------------------------------------------------
-# Volumenes
-# FIX BUG-09: postiz_config eliminado
-# FIX BUG-10: postiz_uploads eliminado — media usa bind mount (/mnt/seagate/postiz-media:/uploads). Volumen declarado pero nunca montado.
+# Volumenes (los medios van por bind mount a /mnt/seagate/postiz-media)
 # ----------------------------------------------------------
 volumes:
   postiz_postgres_data:
