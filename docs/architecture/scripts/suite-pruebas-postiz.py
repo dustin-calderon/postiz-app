@@ -6,14 +6,14 @@ TOK = os.environ["NOTION_API_KEY"]
 TOKEN = os.environ["N8N_SYNC_IG_TOKEN"]
 BTN = os.environ["N8N_SYNC_IG_BUTTON_PATH"]
 RECV = os.environ["N8N_POSTIZ_WEBHOOK_PATH"]
-DB = "186a2405a123812aa925cde1bb94ef12"
+DS = "186a2405-a123-81dc-832f-000b82a65c0c"  # la fuente de datos del calendario (Notion-Version 2025-09-03)
 W = "https://auto.dustincalderon.com/webhook/"
 # Lo que espera a que acabe una pasada va a n8n desde el propio Beelink, sin
 # Cloudflare: Cloudflare corta a los 125 s una respuesta que no llega (524), y una
 # pasada con bastantes filas, o que espera turno, los pasa; se leería el
 # resultado antes de tiempo. Por W solo va lo que prueba el camino público.
 L = "http://127.0.0.1:5678/webhook/"
-H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28"}
+H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2025-09-03"}
 ok = []; fail = []; omitidas = []
 
 def api(u, d=None, m=None, h=None, raw=False):
@@ -69,15 +69,15 @@ def fila(props):
     base = {"Name": {"title": [{"text": {"content": "__ZZ suite (borrar)"}}]},
             "Plataforma": {"multi_select": [{"name": "Instagram"}]}}
     base.update(props)
-    return api("https://api.notion.com/v1/pages", {"parent": {"database_id": DB}, "properties": base})["id"]
+    return api("https://api.notion.com/v1/pages", {"parent": {"type": "data_source_id", "data_source_id": DS}, "properties": base})["id"]
 
 def esperar_indice(pids, intentos=12):
     """El indice de consulta de Notion va por detras de la escritura: una fila
-    recien creada tarda unos segundos en aparecer en /databases/{id}/query.
+    recien creada tarda unos segundos en aparecer en /data_sources/{id}/query.
     Sin esta espera el sync no las ve y la suite falla por un motivo falso."""
     q = {"page_size": 100, "filter": {"property": "Name", "title": {"contains": "__ZZ suite"}}}
     for i in range(intentos):
-        vistos = {r["id"] for r in api("https://api.notion.com/v1/databases/%s/query" % DB, q, m="POST")["results"]}
+        vistos = {r["id"] for r in api("https://api.notion.com/v1/data_sources/%s/query" % DS, q, m="POST")["results"]}
         if all(p in vistos for p in pids):
             print("  (indice de Notion al dia tras %ds)" % (i * 2))
             return True
@@ -100,7 +100,7 @@ def ficheros(pid):
                        f["file"]["url"].split("?")[0])[-1] for f in fs_]
 
 def borrar(pid):
-    for b in ({"properties": {"Status": {"select": None}}}, {"archived": True}):
+    for b in ({"properties": {"Status": {"select": None}}}, {"in_trash": True}):
         api("https://api.notion.com/v1/pages/" + pid, b, m="PATCH")
 
 # Clave de la API publica de Postiz. Vive aqui y no en la seccion de limpieza
@@ -261,7 +261,7 @@ if rm_["post_id"]:
     vivo = sql('SELECT "deletedAt" IS NULL FROM "Post" WHERE id=\'%s\';' % rm_["post_id"])
     check("la retirada SÍ respeta el margen (no la borra)", vivo == "t", "(sigue viva, correcto)")
     sql('UPDATE "Post" SET "deletedAt"=now() WHERE id=\'%s\';' % rm_["post_id"])  # limpieza manual
-api("https://api.notion.com/v1/pages/" + pid_m, {"archived": True}, m="PATCH")
+api("https://api.notion.com/v1/pages/" + pid_m, {"in_trash": True}, m="PATCH")
 
 print(); print("=" * 62); print("4 · REINTENTO REUTILIZA EL MEDIA"); print("=" * 62)
 media_antes = r["media"]
@@ -297,7 +297,7 @@ check("retira el post huérfano", sql('SELECT "deletedAt" IS NOT NULL FROM "Post
 web_despues = sql('SELECT id FROM "Post" WHERE "creationMethod"=\'WEB\' AND state=\'QUEUE\' AND "deletedAt" IS NULL ORDER BY id;')
 check("NO toca los posts creados a mano (WEB)", web_antes == web_despues,
       "(%d vivos antes, %d después)" % (len(web_antes.split()), len(web_despues.split())))
-api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
+api("https://api.notion.com/v1/pages/" + pid, {"in_trash": True}, m="PATCH")
 
 print(); print("=" * 62); print("5b · APLAZAR MÁS DE 15 DÍAS RETIRA EL POST"); print("=" * 62)
 # Una pieza ya en Postiz cuya Fecha pasa a más de 15 días: el sync no la toca
@@ -317,7 +317,7 @@ d30 = (datetime.date.today() + datetime.timedelta(days=30)).isoformat() + "T20:0
 api("https://api.notion.com/v1/pages/" + pid_a, {"properties": {"Fecha": {"date": {"start": d30}}}}, m="PATCH")
 q = {"page_size": 10, "filter": {"property": "Fecha", "date": {"after": (datetime.date.today() + datetime.timedelta(days=20)).isoformat()}}}
 for _ in range(12):  # el índice de consulta de Notion va por detrás de la escritura
-    if any(x["id"] == pid_a for x in api("https://api.notion.com/v1/databases/%s/query" % DB, q, m="POST")["results"]): break
+    if any(x["id"] == pid_a for x in api("https://api.notion.com/v1/data_sources/%s/query" % DS, q, m="POST")["results"]): break
     time.sleep(2)
 hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})  # el sync lanza la retirada
 if ra["post_id"]:

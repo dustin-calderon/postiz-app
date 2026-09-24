@@ -4,14 +4,14 @@ import json, urllib.request, os, uuid, subprocess, time, sys, datetime
 
 TOK = os.environ["NOTION_API_KEY"]
 TOKEN = os.environ["N8N_SYNC_IG_TOKEN"]
-DB = "186a2405a123812aa925cde1bb94ef12"
+DS = "186a2405-a123-81dc-832f-000b82a65c0c"  # la fuente de datos del calendario (Notion-Version 2025-09-03)
 W = "https://auto.dustincalderon.com/webhook/"
 # Lo que espera a que acabe una pasada va a n8n desde el propio Beelink, sin
 # Cloudflare: Cloudflare corta a los 125 s una respuesta que no llega (524), y una
 # pasada con bastantes filas, o que espera turno, los pasa; se leería el
 # resultado antes de tiempo. Por W solo va lo que prueba el camino público.
 L = "http://127.0.0.1:5678/webhook/"
-H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28"}
+H = {"Authorization": "Bearer " + TOK, "Notion-Version": "2025-09-03"}
 ok, fail = [], []
 
 
@@ -62,7 +62,7 @@ def fila(props):
             "Plataforma": {"multi_select": [{"name": "Instagram"}]},
             "modo": {"select": {"name": "borrador"}}}   # nunca publica
     base.update(props)
-    return api("https://api.notion.com/v1/pages", {"parent": {"database_id": DB}, "properties": base})["id"]
+    return api("https://api.notion.com/v1/pages", {"parent": {"type": "data_source_id", "data_source_id": DS}, "properties": base})["id"]
 
 
 def leer(pid):
@@ -75,7 +75,7 @@ def leer(pid):
 def esperar_indice(pids, intentos=12):
     q = {"page_size": 100, "filter": {"property": "Name", "title": {"contains": "__ZZ trial"}}}
     for i in range(intentos):
-        vistos = {r["id"] for r in api("https://api.notion.com/v1/databases/%s/query" % DB, q, m="POST")["results"]}
+        vistos = {r["id"] for r in api("https://api.notion.com/v1/data_sources/%s/query" % DS, q, m="POST")["results"]}
         if all(p in vistos for p in pids):
             return True
         time.sleep(2)
@@ -115,7 +115,7 @@ for (nombre, _p, esperado), pid in zip(malos, pids):
     check(nombre + " -> el motivo lo explica", esperado in r["error"], "(esperaba %r)" % esperado)
 for pid in pids:
     api("https://api.notion.com/v1/pages/" + pid, {"properties": {"Status": {"select": None}}}, m="PATCH")
-    api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
+    api("https://api.notion.com/v1/pages/" + pid, {"in_trash": True}, m="PATCH")
 
 print(); print("=" * 66); print("2 · EL CAMINO BUENO: 1 video + trial"); print("=" * 66)
 vid3 = subir("v1.mp4", "video/mp4")
@@ -139,7 +139,7 @@ if r["post_id"]:
     check("no se cuela graduation_strategy", "graduation_strategy" not in js)
     sql("UPDATE \"Post\" SET \"deletedAt\"=now() WHERE id='%s';" % r["post_id"])
 api("https://api.notion.com/v1/pages/" + pid, {"properties": {"Status": {"select": None}}}, m="PATCH")
-api("https://api.notion.com/v1/pages/" + pid, {"archived": True}, m="PATCH")
+api("https://api.notion.com/v1/pages/" + pid, {"in_trash": True}, m="PATCH")
 
 print(); print("=" * 66); print("3 · SIN MARCAR, NADA CAMBIA"); print("=" * 66)
 vid4 = subir("v1.mp4", "video/mp4")
@@ -153,7 +153,7 @@ if r2["post_id"]:
     check("NO lleva is_trial_reel", "is_trial_reel" not in s2, "(%s)" % s2[:120])
     sql("UPDATE \"Post\" SET \"deletedAt\"=now() WHERE id='%s';" % r2["post_id"])
 api("https://api.notion.com/v1/pages/" + pid2, {"properties": {"Status": {"select": None}}}, m="PATCH")
-api("https://api.notion.com/v1/pages/" + pid2, {"archived": True}, m="PATCH")
+api("https://api.notion.com/v1/pages/" + pid2, {"in_trash": True}, m="PATCH")
 
 print(); print("=" * 66)
 print("RESULTADO: %d pasan, %d fallan" % (len(ok), len(fail)))

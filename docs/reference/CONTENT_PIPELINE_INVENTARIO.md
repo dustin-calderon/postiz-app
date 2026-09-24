@@ -38,6 +38,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 
 > **Convención: todo va por `httpRequest`, no por nodos de integración.** Ningún workflow de esta instancia usa el nodo de Notion; se llama a la API directamente. Un nodo de tercero añade una dependencia que se actualiza sola y puede cambiar de comportamiento bajo los pies.
 
+**La API de Notion:** todos los nodos de Notion de estos workflows, y los scripts del pipeline, van con `Notion-Version: 2025-09-03`, y las consultas a `/v1/data_sources/186a2405-a123-81dc-832f-000b82a65c0c/query`, la fuente de datos del calendario. Con la versión `2022-06-28` las consultas a `/databases/…/query` fallarían en cuanto la base tuviera una segunda fuente de datos (guía oficial de Notion para `2025-09-03`).
+
 **La base de n8n** está en `postgres_core` y se llama **`n8n_db`**, no `n8n`. Cómo leer de ella el historial: [OPERACION §3](../guides/CONTENT_PIPELINE_OPERACION.md).
 
 ## 2. Producción: configuración y secretos

@@ -28,7 +28,7 @@ from zoneinfo import ZoneInfo
 PUBLICADO_ID = "1RkW1J4lc2X-qmOTqrRsJwQc1uuDMMN6G"
 REMOTO = "gdrive-work"
 RAIZ_DISCO = "/mnt/seagate/postiz-media"
-DB_NOTION = "186a2405a123812aa925cde1bb94ef12"
+DS_NOTION = "186a2405-a123-81dc-832f-000b82a65c0c"  # fuente de datos del calendario (API 2025-09-03)
 REGISTRO_WEB = "/opt/homeserver/scripts/.postiz-archivo-web.json"
 CERROJO = "/var/lock/postiz-archivo.lock"
 _CERROJO = None
@@ -55,7 +55,7 @@ MADRID = ZoneInfo("Europe/Madrid")
 SECO = "--seco" in sys.argv
 
 TOK = os.environ["NOTION_API_KEY"]
-NH = {"Authorization": "Bearer " + TOK, "Notion-Version": "2022-06-28",
+NH = {"Authorization": "Bearer " + TOK, "Notion-Version": "2025-09-03",
       "Content-Type": "application/json"}
 
 
@@ -172,7 +172,7 @@ def filas_notion():
                   "filter": {"property": "❌ postiz_post_id", "rich_text": {"is_not_empty": True}}}
         if cursor:
             cuerpo["start_cursor"] = cursor
-        d = notion("https://api.notion.com/v1/databases/%s/query" % DB_NOTION, cuerpo, m="POST")
+        d = notion("https://api.notion.com/v1/data_sources/%s/query" % DS_NOTION, cuerpo, m="POST")
         resultados.extend(d["results"])
         if not d.get("has_more"):
             break
