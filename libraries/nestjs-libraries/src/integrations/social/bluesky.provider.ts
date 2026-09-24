@@ -23,7 +23,10 @@ import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
-import { getSsrfSafeAxios } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import {
+  getSsrfSafeAxios,
+  getSsrfSafeDispatcher,
+} from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
@@ -79,7 +82,10 @@ async function uploadVideo(
   async function downloadVideo(
     url: string
   ): Promise<{ video: Buffer; size: number }> {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+      dispatcher: getSsrfSafeDispatcher(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch video: ${response.statusText}`);
     }

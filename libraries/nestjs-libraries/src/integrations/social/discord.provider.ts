@@ -6,6 +6,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { Integration } from '@prisma/client';
 import { DiscordDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/discord.dto';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
@@ -160,7 +161,10 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
 
     let index = 0;
     for (const media of firstPost.media || []) {
-      const loadMedia = await fetch(media.path);
+      const loadMedia = await fetch(media.path, {
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
 
       form.append(
         `files[${index}]`,
@@ -243,7 +247,10 @@ export class DiscordProvider extends SocialAbstract implements SocialProvider {
 
     let index = 0;
     for (const media of commentPost.media || []) {
-      const loadMedia = await fetch(media.path);
+      const loadMedia = await fetch(media.path, {
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
 
       form.append(
         `files[${index}]`,

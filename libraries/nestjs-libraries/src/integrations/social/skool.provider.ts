@@ -1,5 +1,6 @@
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { SocialAbstract } from '../social.abstract';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import {
   AuthTokenDetails,
   MediaContent,
@@ -206,7 +207,10 @@ export class SkoolProvider extends SocialAbstract implements SocialProvider {
     const fileIds: string[] = [];
 
     for (const item of media) {
-      const fileResponse = await fetch(item.path);
+      const fileResponse = await fetch(item.path, {
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
       const fileBuffer = await fileResponse.arrayBuffer();
       const contentType =
         fileResponse.headers.get('content-type') || 'application/octet-stream';

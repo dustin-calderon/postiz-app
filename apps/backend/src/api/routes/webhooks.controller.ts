@@ -12,6 +12,7 @@ import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.reque
 import { Organization } from '@prisma/client';
 import { ApiTags } from '@nestjs/swagger';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
 import {
   OnlyURL, UpdateDto, WebhooksDto
@@ -60,6 +61,10 @@ export class WebhookController {
         method: 'POST',
         body: JSON.stringify(body),
         headers: { 'Content-Type': 'application/json' },
+        // the URL is validated as public, but a redirect or a DNS change
+        // could still point it inside: pin it like every outgoing webhook
+        // @ts-ignore — undici option, not in lib.dom fetch types
+        dispatcher: getSsrfSafeDispatcher(),
       });
     } catch (err) {
       /** sent **/

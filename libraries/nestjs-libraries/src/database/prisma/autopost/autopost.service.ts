@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
@@ -184,7 +185,14 @@ export class AutopostService {
 
   async loadUrl(url: string) {
     try {
-      const loadDom = new JSDOM(await (await fetch(url)).text());
+      const loadDom = new JSDOM(
+        await (
+          await fetch(url, {
+            // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+            dispatcher: getSsrfSafeDispatcher(),
+          })
+        ).text()
+      );
       loadDom.window.document
         .querySelectorAll('script')
         .forEach((s) => s.remove());

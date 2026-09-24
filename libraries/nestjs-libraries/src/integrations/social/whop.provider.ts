@@ -9,6 +9,7 @@ import {
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { WhopDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/whop.dto';
 import { Integration } from '@prisma/client';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
@@ -225,7 +226,10 @@ export class WhopProvider extends SocialAbstract implements SocialProvider {
     const attachments: { id: string }[] = [];
 
     for (const item of media) {
-      const fileResponse = await fetch(item.path);
+      const fileResponse = await fetch(item.path, {
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
       const fileBuffer = await fileResponse.arrayBuffer();
       const fileName = item.path.split('/').pop() || 'file';
 
