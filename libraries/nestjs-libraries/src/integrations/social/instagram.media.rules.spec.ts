@@ -17,6 +17,7 @@ const video = (over: Partial<VideoMetadata> = {}): VideoMetadata => ({
   durationSec: 30,
   bitrateBps: 8_000_000,
   sizeBytes: 30 * MiB,
+  rotated: false,
   ...over,
 });
 
@@ -39,6 +40,15 @@ describe('instagramVideoViolations', () => {
     expect(
       instagramVideoViolations(video({ width: 3840, height: 2160 }), 'reel')
     ).toEqual([expect.stringContaining('width 3840px')]);
+  });
+
+  it('does not judge the width of a video turned 90°', () => {
+    expect(
+      instagramVideoViolations(
+        video({ width: 2560, height: 1440, rotated: true }),
+        'reel'
+      )
+    ).toEqual([]);
   });
 
   it('caps reels at 300 MiB and stories at 100 MiB', () => {
@@ -109,7 +119,9 @@ describe('instagramImageViolation', () => {
 
   it('does not judge an image turned by its EXIF orientation', () => {
     expect(
-      instagramImageViolation(image({ width: 4032, height: 3024, orientation: 6 }))
+      instagramImageViolation(
+        image({ width: 4032, height: 3024, orientation: 6 })
+      )
     ).toBeNull();
   });
 
@@ -151,7 +163,10 @@ describe('checkInstagramMedia', () => {
   });
 
   it('does not judge the images of a story', async () => {
-    const [v, i] = probes({}, { 'a.jpg': image({ width: 1080, height: 1920 }) });
+    const [v, i] = probes(
+      {},
+      { 'a.jpg': image({ width: 1080, height: 1920 }) }
+    );
     await expect(
       checkInstagramMedia([{ path: 'a.jpg' }], { post_type: 'story' }, v, i)
     ).resolves.toBe(true);

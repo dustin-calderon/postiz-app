@@ -52,7 +52,9 @@ export function instagramVideoViolations(
   const limits = INSTAGRAM_MEDIA_LIMITS;
   const violations: string[] = [];
 
-  if (meta.width > limits.maxVideoWidthPx) {
+  // A video turned 90° is not judged by its width: which of its two sizes
+  // Meta checks is not documented, and a guess would block valid posts.
+  if (!meta.rotated && meta.width > limits.maxVideoWidthPx) {
     violations.push(
       `width ${meta.width}px exceeds ${limits.maxVideoWidthPx}px max`
     );
