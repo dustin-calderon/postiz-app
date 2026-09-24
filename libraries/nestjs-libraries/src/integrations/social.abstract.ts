@@ -27,6 +27,13 @@ export type VideoMetadata = {
   sizeBytes: number;
 };
 
+export type ImageMetadata = {
+  width: number;
+  height: number;
+  /** EXIF orientation, 1 when absent. 5 to 8 swap width and height on screen. */
+  orientation: number;
+};
+
 export class RefreshToken extends ApplicationFailure {
   constructor(identifier: string, json: string, body: BodyInit, message = '') {
     super(message, 'refresh_token', true, [
@@ -219,6 +226,28 @@ export abstract class SocialAbstract {
   ): Promise<VideoMetadata | null> {
     const localPath = this.resolveLocalUploadPath(mediaPath);
     return localPath ? this.getVideoMetadata(localPath) : null;
+  }
+
+  /**
+   * Measures a local uploaded image with sharp. null = not measurable (not a
+   * local upload, or not an image sharp reads): callers treat it as "no
+   * evidence", not as a failure.
+   */
+  protected async probeUploadedImage(
+    mediaPath: string
+  ): Promise<ImageMetadata | null> {
+    const localPath = this.resolveLocalUploadPath(mediaPath);
+    if (!localPath) {
+      return null;
+    }
+    try {
+      const { width = 0, height = 0, orientation = 1 } = await sharp(
+        localPath
+      ).metadata();
+      return { width, height, orientation };
+    } catch {
+      return null;
+    }
   }
 
   public async mention(

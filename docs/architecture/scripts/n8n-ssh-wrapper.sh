@@ -1,7 +1,7 @@
 #!/bin/sh
 # n8n-ssh-wrapper.sh — comando forzado (authorized_keys) de la clave SSH de n8n.
 #
-# La clave de n8n solo puede ejecutar cuatro cosas: normalizar-video.sh con una
+# La clave de n8n solo puede ejecutar cuatro cosas: normalizar-media.sh con una
 # URL como unico argumento, replicar.sh (replica de carruseles) sin argumentos,
 # turno-sync.sh con un id de ejecucion (el turno del sync, solo lectura), y
 # encolar en el bus de incidencias (alertar.sh) con origen n8n-<workflow>,
@@ -15,7 +15,7 @@
 #
 # El nodo SSH de n8n debe mandar la URL SIN comillas (no lleva espacios).
 
-SCRIPT=/opt/homeserver/postiz/normalizar-video.sh
+SCRIPT=/opt/homeserver/postiz/normalizar-media.sh
 REPLICAR=/opt/apps/carrusel-ig/replicar.sh
 TURNO=/opt/homeserver/postiz/turno-sync.sh
 ALERTAR=/opt/repos/instalar-home-server/server/ops/alertar.sh

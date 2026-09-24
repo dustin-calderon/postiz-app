@@ -19,7 +19,7 @@ import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorato
 import { META_GRAPH_API_VERSION } from '@gitroom/nestjs-libraries/integrations/social/facebook.provider';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
-import { checkInstagramVideos } from '@gitroom/nestjs-libraries/integrations/social/instagram.video.rules';
+import { checkInstagramMedia } from '@gitroom/nestjs-libraries/integrations/social/instagram.media.rules';
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
@@ -79,8 +79,11 @@ export class InstagramProvider
         return 'Audio can only be added to a video Reel';
       }
     }
-    return checkInstagramVideos(firstPost, settings, (p) =>
-      this.probeUploadedVideo(p)
+    return checkInstagramMedia(
+      firstPost,
+      settings,
+      (p) => this.probeUploadedVideo(p),
+      (p) => this.probeUploadedImage(p)
     );
   }
 
