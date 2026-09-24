@@ -25,6 +25,15 @@ export type VideoMetadata = {
   durationSec: number;
   bitrateBps: number;
   sizeBytes: number;
+  /** Shown turned 90° (a phone's portrait clip): on screen, width is height. */
+  rotated: boolean;
+};
+
+export type ImageMetadata = {
+  width: number;
+  height: number;
+  /** EXIF orientation, 1 when absent. 5 to 8 swap width and height on screen. */
+  orientation: number;
 };
 
 export class RefreshToken extends ApplicationFailure {
@@ -92,9 +101,9 @@ export abstract class SocialAbstract {
    * `posts` mirrors the client shape: the outer array is the main post followed
    * by each comment, the inner array is the media items for that entry.
    *
-   * Image-dimension checks use sharp; video checks use ffprobe when the media
-   * resolves to a local upload (see `probeUploadedVideo`) and fail open when
-   * the file cannot be measured.
+   * Image-dimension checks use sharp; video checks use ffprobe. Both measure
+   * only a local upload (see `probeUploadedVideo` and `probeUploadedImage`)
+   * and fail open when the file cannot be measured.
    */
   async checkValidity(
     posts: Array<ValidityMedia[]>,
@@ -201,12 +210,19 @@ export abstract class SocialAbstract {
       }
       // A field that cannot be read stays 0, which never exceeds a limit:
       // each rule only fires with actual evidence.
+      const rotation =
+        (stream.side_data_list || []).find(
+          (d: any) => d?.rotation !== undefined
+        )?.rotation ??
+        stream.tags?.rotate ??
+        0;
       return {
         width: +stream.width || 0,
         height: +stream.height || 0,
         durationSec: +(probe?.format?.duration ?? stream.duration) || 0,
         bitrateBps: +(stream.bit_rate ?? probe?.format?.bit_rate) || 0,
         sizeBytes: +probe?.format?.size || 0,
+        rotated: Math.abs(+rotation || 0) % 180 === 90,
       };
     } catch {
       return null;
@@ -219,6 +235,28 @@ export abstract class SocialAbstract {
   ): Promise<VideoMetadata | null> {
     const localPath = this.resolveLocalUploadPath(mediaPath);
     return localPath ? this.getVideoMetadata(localPath) : null;
+  }
+
+  /**
+   * Measures a local uploaded image with sharp. null = not measurable (not a
+   * local upload, or not an image sharp reads): callers treat it as "no
+   * evidence", not as a failure.
+   */
+  protected async probeUploadedImage(
+    mediaPath: string
+  ): Promise<ImageMetadata | null> {
+    const localPath = this.resolveLocalUploadPath(mediaPath);
+    if (!localPath) {
+      return null;
+    }
+    try {
+      const { width = 0, height = 0, orientation = 1 } = await sharp(
+        localPath
+      ).metadata();
+      return { width, height, orientation };
+    } catch {
+      return null;
+    }
   }
 
   public async mention(

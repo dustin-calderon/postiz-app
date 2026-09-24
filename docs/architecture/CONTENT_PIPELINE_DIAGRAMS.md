@@ -169,7 +169,7 @@ flowchart TD
     TRAS --> QUP{"¿subir<br/>assets?"}
 
     QUP -->|"otros ficheros<br/>u otro orden"| EXP["Expandir assets<br/>un item por fichero"]
-    EXP --> UP["Beelink: normalizar y subir<br/>normalizar-video.sh, un asset por invocación<br/>imagen o video en techo ⇒ upload-from-url<br/>SOLO video fuera de techo ⇒ ffmpeg + multipart"]
+    EXP --> UP["Beelink: normalizar y subir<br/>normalizar-media.sh, un asset por invocación<br/>lo que Instagram publica tal cual ⇒ upload-from-url<br/>lo demás ⇒ convertir (ffmpeg, heif-convert) + multipart"]
     UP --> REC["Recolectar media<br/>respeta el ORDEN · N items ⇒ UNO<br/>no lanza nunca: cuenta n_fallos"]
     REC --> QOK{"¿subida OK?<br/>n_fallos == 0"}
     QOK -->|sí| GM["Notion: guardar ❌ postiz_media<br/>ESCRITURA 1"]

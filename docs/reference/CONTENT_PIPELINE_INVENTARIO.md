@@ -67,8 +67,8 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 | Script | Copia viva | Qué es |
 |---|---|---|
 | `suite-pruebas-postiz.py`, `prueba-trial-reels.py` | `/opt/homeserver/n8n-workflows/` | La batería de pruebas ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)). Leen los valores sensibles de `os.environ` y no llevan ninguna ruta secreta dentro |
-| `normalizar-video.sh` | `/opt/homeserver/postiz/` | La puerta por la que pasa todo el media ([SYNC §2](../architecture/CONTENT_PIPELINE_SYNC.md)). No lleva secretos: el `ORG` es un id y la `apiKey` la lee de la base al ejecutarse |
+| `normalizar-media.sh` | `/opt/homeserver/postiz/` | La puerta por la que pasa todo el media ([SYNC §2](../architecture/CONTENT_PIPELINE_SYNC.md)). No lleva secretos: el `ORG` es un id y la `apiKey` la lee de la base al ejecutarse. Necesita en el host `ffmpeg`, `jq` y `heif-convert` (paquete `libheif-examples`) |
 | `n8n-ssh-wrapper.sh` | `/opt/homeserver/postiz/` | El comando forzado (`authorized_keys`) de la clave SSH de n8n: decide qué puede ejecutar n8n en el host si sus credenciales caen. Lo que permite, y por qué, lo dice su cabecera |
 | `turno-sync.sh` | `/opt/homeserver/postiz/` | La consulta de solo lectura con la que el sync espera su turno ([SYNC §1](../architecture/CONTENT_PIPELINE_SYNC.md)) |
 
-`errores-pipeline.py` y `rotar-token-notion.sh` no tienen copia: se ejecutan desde el clon del Beelink, `/opt/repos/postiz-fork`.
+`errores-pipeline.py`, `rotar-token-notion.sh` y `test_normalizar-media.sh` no tienen copia: se ejecutan desde el clon del Beelink, `/opt/repos/postiz-fork`.

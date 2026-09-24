@@ -128,7 +128,7 @@ bash "$DIR/verifica-arranque.sh" || true
 # Del compose no cuenta la línea image: la reescribe build.sh en cada despliegue.
 DIFIEREN=""
 for f in build.sh verifica-arranque.sh desplegar.sh n8n-ssh-wrapper.sh turno-sync.sh \
-         normalizar-video.sh docker-compose.yml; do
+         normalizar-media.sh docker-compose.yml; do
   diff -q <(sed '/^[[:space:]]*image: postiz-custom:/d' "$DIR/$f" 2>/dev/null) \
           <(sed '/^[[:space:]]*image: postiz-custom:/d' "$REPO/docs/architecture/scripts/$f" 2>/dev/null) \
     > /dev/null || DIFIEREN="$DIFIEREN $f"

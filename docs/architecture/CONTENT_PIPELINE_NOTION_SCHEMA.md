@@ -206,6 +206,8 @@ Instagram recorta todos los elementos de un carrusel al ratio del **primer** ele
 
 No se resuelve con código: se resuelve exportando los slides de un carrusel con la misma proporción. Es una convención del equipo, no una validación del worker.
 
+Lo que sí se valida es el rango: cada foto del feed, carruseles incluidos, tiene que estar entre 4:5 y 1,91:1, o Meta no la publica (error 2207009). Lo rechaza Postiz al crear el post ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)). Una foto vertical de iPhone es 3:4 y queda fuera.
+
 ## 7. Máquina de estados
 
 Las opciones de la propiedad `Status` (§2):
@@ -245,7 +247,7 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 | Lo escribe | Forma | El fallo es de |
 |---|---|---|
 | `Planificar` (sync) | los motivos de la validación, separados por `·` («sin copy · sin media») | la fila |
-| `Recolectar media` (subflow) | «Subiendo los assets a Postiz: `<fichero>`: `<motivo>`», con el motivo de `normalizar-video.sh` o el mensaje con el que Postiz rechazó el fichero | casi siempre el fichero |
+| `Recolectar media` (subflow) | «Subiendo los assets a Postiz: `<fichero>`: `<motivo>`», con el motivo de `normalizar-media.sh` o el mensaje con el que Postiz rechazó el fichero | casi siempre el fichero |
 | `Formatear error` (subflow), si Postiz contesta con `provider` | «Postiz rechazó la pieza: `<mensaje de Postiz>`. Corrígelo en la fila…» | la fila: es la validación del contenido (`PostValidationException`, [POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)) |
 | `Formatear error`, cualquier otra respuesta | «Postiz respondió `<código>`: `<mensaje>`. No es un fallo de la fila…» | el sistema (la petición, la API key, el límite) |
 | `Formatear error`, sin respuesta | «Postiz no respondió (`<error de red>`). No es un fallo de la fila…» | el sistema |

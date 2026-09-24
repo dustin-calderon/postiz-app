@@ -16,7 +16,7 @@ import { META_GRAPH_API_VERSION } from '@gitroom/nestjs-libraries/integrations/s
 import { Integration } from '@prisma/client';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
-import { checkInstagramVideos } from '@gitroom/nestjs-libraries/integrations/social/instagram.video.rules';
+import { checkInstagramMedia } from '@gitroom/nestjs-libraries/integrations/social/instagram.media.rules';
 
 const instagramProvider = new InstagramProvider();
 
@@ -63,8 +63,11 @@ export class InstagramStandaloneProvider
         return 'Trial Reels must be a video';
       }
     }
-    return checkInstagramVideos(firstPost, settings, (p) =>
-      this.probeUploadedVideo(p)
+    return checkInstagramMedia(
+      firstPost,
+      settings,
+      (p) => this.probeUploadedVideo(p),
+      (p) => this.probeUploadedImage(p)
     );
   }
 
