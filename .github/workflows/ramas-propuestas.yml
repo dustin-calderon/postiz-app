@@ -19,7 +19,9 @@
 #
 # Necesita tres ajustes del repo, que cambia el owner: «Allow GitHub Actions to
 # create and approve pull requests» (sin él, `gh pr create` falla), permitir el
-# auto-merge y proteger custom/postiz-dc exigiendo `puerta`.
+# auto-merge y proteger custom/postiz-dc exigiendo `puerta` sobre una PR al día
+# con la base (lo que pide dependabot-fusionar.yml). Una PR que se queda por
+# detrás espera: el triage la rebasa y la vuelve a subir en su siguiente pasada.
 name: Ramas propuestas
 
 on:
