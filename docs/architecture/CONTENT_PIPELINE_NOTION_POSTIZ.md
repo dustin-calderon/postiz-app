@@ -500,7 +500,7 @@ const collaborators =
 |---|---|---|
 | Post de imagen única | ✅ Sí | — |
 | Reel | ✅ Sí | — |
-| **Carrusel** | ❌ **No** | Instagram lo rechaza (`instagram.provider.ts:376-381`) |
+| **Carrusel** | ❌ **No** | Postiz los manda en cada lámina y Meta los rechaza ahí (`instagram.provider.ts:381-386` traduce el error). La referencia de Meta (`IG User Media`, parámetro `collaborators`) sí los admite en carruseles, en el contenedor del carrusel |
 | **Story** | ❌ **No** | El código los omite (`!isStory`) |
 
 > ### ⚠️ Un carrusel o una story compartidos son filas separadas
@@ -534,7 +534,7 @@ El worker las comprueba antes de gastar una llamada. Todas verificadas en `insta
 | Trial reel: 1 media y vídeo | ✅ Sí\* | `instagram.standalone.provider.ts:53-63` |
 | **Máximo 10 medias** | ❌ **No** | El provider normal sí, el standalone **no**. Llega a Meta |
 | **Carrusel: mínimo 2 medias** | ❌ No | Error de Instagram, traducido en `instagram.provider.ts:362-367` |
-| **Colaboradores en carrusel** | ❌ No | Error de Instagram, traducido en `instagram.provider.ts:376-381` |
+| **Colaboradores en carrusel** | ❌ No | Error de Meta porque Postiz los manda en cada lámina (§7.2.4), traducido en `instagram.provider.ts:381-386` |
 | **Colaboradores en story** | ❌ No | Se **descartan en silencio** (`!isStory`, sin error) |
 | **Audio** | ❌ No | Se **descarta en silencio**: exige `graph.facebook.com` (§4.9) |
 
@@ -635,7 +635,7 @@ Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La 
 
 Al reintentar, el worker **reutiliza `❌ postiz_media` si son los mismos ficheros en el mismo orden**: compara el `src` guardado de cada uno con el id del fichero que hay hoy en `media`, que va en la ruta de su URL de Notion (la firma cambia en cada lectura; la ruta no). Si se sustituye o se reordena una lámina, los vuelve a subir todos. Esto es lo que evita volver a mover un reel de 100 MB por un fallo que ocurrió después de la subida, sin publicar nunca un fichero viejo. Sin un id reconocible (un enlace externo) no reutiliza nunca.
 
-**Si una pieza ya programada pasa a `Error` por una edición que no valida** (la hora borrada al cambiar la `Fecha`, sin media…), la versión anterior sigue en Postiz y sale a su hora: la fila en `Error` sigue reclamando su post (§9.7). Se corrige la fila, o se vacía `Status` si no debe salir.
+**Si una pieza ya programada pasa a `Error` por una edición que no valida** (la hora borrada al cambiar la `Fecha`, sin media…), la versión anterior sigue en Postiz y sale a su hora: la fila en `Error` sigue reclamando su post (§9.7). Se corrige la fila, o se vacía `Status` si no debe salir. **Si en cambio falla después de validar** —al subir los ficheros, o Postiz rechaza o no contesta el `POST`—, no queda nada programado: el subflow borra el post anterior antes de subir y crear el nuevo.
 
 ## 9. El worker de n8n — reconciliación, no cola
 
