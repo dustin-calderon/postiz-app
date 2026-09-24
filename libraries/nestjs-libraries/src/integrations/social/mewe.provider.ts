@@ -7,6 +7,7 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { makeSecureId } from '@gitroom/nestjs-libraries/services/make.secure.id';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { MeweDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/mewe.dto';
@@ -205,7 +206,10 @@ export class MeweProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     mediaPath: string
   ): Promise<string> {
-    const mediaResponse = await fetch(mediaPath);
+    const mediaResponse = await fetch(mediaPath, {
+      // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+      dispatcher: getSsrfSafeDispatcher(),
+    });
     const blob = await mediaResponse.blob();
     const fileName = mediaPath.split('/').pop() || 'photo.jpg';
 

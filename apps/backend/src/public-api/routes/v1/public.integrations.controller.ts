@@ -103,10 +103,20 @@ export class PublicIntegrationsController {
     @Body() body: UploadDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    const response = await fetch(body.url, {
-      // @ts-ignore — undici option, not in lib.dom fetch types
-      dispatcher: ssrfSafeDispatcher,
-    });
+    // The DTO only vets the URL it is given. The dispatcher vets every
+    // connection, redirects included, so a public URL that redirects inside
+    // is refused here.
+    let response: Response;
+    try {
+      response = await fetch(body.url, {
+        // @ts-ignore — undici option, not in lib.dom fetch types
+        dispatcher: ssrfSafeDispatcher,
+      });
+    } catch (err) {
+      // Nothing was downloaded (DNS, refused, TLS or the SSRF guard): it is
+      // the URL that failed, not the server
+      throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
+    }
     if (!response.ok) {
       throw new HttpException({ msg: 'Failed to fetch URL' }, 400);
     }

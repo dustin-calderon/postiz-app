@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
+import { getSsrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
@@ -134,7 +135,19 @@ export class AutopostService {
 
   async loadXML(url: string) {
     try {
-      const { items } = await parser.parseURL(url);
+      // parser.parseURL() requests with plain http(s).get, which no SSRF guard
+      // can pin: fetch the feed through the dispatcher and only parse here.
+      // Same headers and timeout parseURL used.
+      const feed = await fetch(url, {
+        headers: { 'User-Agent': 'rss-parser', Accept: 'application/rss+xml' },
+        signal: AbortSignal.timeout(60000),
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
+      if (!feed.ok) {
+        throw new Error('Status code ' + feed.status);
+      }
+      const { items } = await parser.parseString(await feed.text());
       const findLast = items.reduce(
         (all: any, current: any) => {
           if (dayjs(current.pubDate).isAfter(all.pubDate)) {
@@ -184,7 +197,14 @@ export class AutopostService {
 
   async loadUrl(url: string) {
     try {
-      const loadDom = new JSDOM(await (await fetch(url)).text());
+      const loadDom = new JSDOM(
+        await (
+          await fetch(url, {
+            // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+            dispatcher: getSsrfSafeDispatcher(),
+          })
+        ).text()
+      );
       loadDom.window.document
         .querySelectorAll('script')
         .forEach((s) => s.remove());

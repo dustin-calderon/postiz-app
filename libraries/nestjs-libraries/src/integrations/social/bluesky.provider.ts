@@ -22,10 +22,14 @@ import {
 import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
+import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
+import {
+  getSsrfSafeAxios,
+  getSsrfSafeDispatcher,
+} from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 import sharp from 'sharp';
 import { Plug } from '@gitroom/helpers/decorators/plug.decorator';
 import { timer } from '@gitroom/helpers/utils/timer';
-import axios from 'axios';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
@@ -33,7 +37,9 @@ import { isVideo } from '@gitroom/helpers/utils/has.extension';
 async function reduceImageBySize(url: string, maxSizeKB = 976) {
   try {
     // Fetch the image from the URL
-    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const response = await getSsrfSafeAxios().get(url, {
+      responseType: 'arraybuffer',
+    });
     let imageBuffer = Buffer.from(response.data);
 
     // Use sharp to get the metadata of the image
@@ -76,7 +82,10 @@ async function uploadVideo(
   async function downloadVideo(
     url: string
   ): Promise<{ video: Buffer; size: number }> {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+      dispatcher: getSsrfSafeDispatcher(),
+    });
     if (!response.ok) {
       throw new Error(`Failed to fetch video: ${response.statusText}`);
     }
@@ -229,6 +238,17 @@ export class BlueskyProvider extends SocialAbstract implements SocialProvider {
     refresh?: string;
   }) {
     const body = JSON.parse(Buffer.from(params.code, 'base64').toString());
+
+    // Bluesky talks to a user-supplied service URL via BskyAgent (not our
+    // `this.fetch`), so the undici SSRF dispatcher can't intercept it. Validate
+    // the URL here — the connection chokepoint — so an internal/private address
+    // can never be saved as an integration. Opt-out matches the dispatcher env.
+    if (
+      process.env.DISABLE_SSRF_PROTECTION !== 'true' &&
+      !(await isSafePublicHttpsUrl(body.service))
+    ) {
+      return 'Invalid service URL: must be a public HTTPS address';
+    }
 
     try {
       const agent = new BskyAgent({
