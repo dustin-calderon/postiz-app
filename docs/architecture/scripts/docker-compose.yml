@@ -1,0 +1,225 @@
+# ============================================================
+# Postiz — Social Media Scheduler (Stack Aislado)
+# ============================================================
+# Instalado: 2026-06-02 | Auditado: 2026-06-02
+# Dominio: https://postiz.dustincalderon.com (puerto 4007)
+# Stack propio: postgres + redis + temporal + elasticsearch
+#
+# Arrancar:  docker compose -f /opt/homeserver/postiz/docker-compose.yml up -d
+# Parar:     docker compose -f /opt/homeserver/postiz/docker-compose.yml down
+# Logs:      docker compose -f /opt/homeserver/postiz/docker-compose.yml logs -f postiz
+#
+# Temporal UI (debugging): ssh -L 8081:localhost:8081 dchomeserver -> http://localhost:8081
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # Postiz — App principal (frontend + backend en mismo container)
+  # ----------------------------------------------------------
+  postiz:
+    image: postiz-custom:local-f4d9ce30
+    container_name: postiz
+    restart: unless-stopped
+    env_file:
+      - postiz.env
+    volumes:
+      # FIX BUG-09: /config era un volumen fantasma sin uso documentado.
+      # La config real vive en la DB. Eliminado para evitar confusion.
+      - /mnt/seagate/postiz-media:/uploads
+    ports:
+      - "127.0.0.1:4007:5000"
+    networks:
+      - postiz_net
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+      temporal:
+        # Postiz tiene retry logic nativa para Temporal — service_started es suficiente.
+        condition: service_started
+    # FIX BUG-02: Imagen Alpine sin wget/curl. Healthcheck usa Node.js TCP socket
+    # (Node.js siempre presente en imagen Postiz).
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        # Antes abria un socket contra el 5000 (nginx). Nginx puede estar vivo
+        # con el backend muerto: el 2026-08-04 el contenedor se declaro healthy
+        # durante horas mientras la API devolvia 502. Ahora se pide una URL real
+        # que atraviesa nginx Y backend; si cualquiera falla, el chequeo falla.
+        - "node -e \"require('http').get({host:'localhost',port:5000,path:'/api/auth/can-register',timeout:5000},function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})\""
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  # ----------------------------------------------------------
+  # PostgreSQL dedicado para Postiz
+  # (aislado de postgres_core para no introducir riesgo)
+  # ----------------------------------------------------------
+  postiz-postgres:
+    image: postgres:17-alpine
+    container_name: postiz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postiz
+      POSTGRES_PASSWORD: ${POSTIZ_DB_PASSWORD}
+      POSTGRES_DB: postiz_db
+    volumes:
+      - postiz_postgres_data:/var/lib/postgresql/data
+    networks:
+      - postiz_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postiz -d postiz_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Redis dedicado para Postiz
+  # ----------------------------------------------------------
+  postiz-redis:
+    image: redis:7-alpine
+    container_name: postiz-redis
+    restart: unless-stopped
+    volumes:
+      - postiz_redis_data:/data
+    networks:
+      - postiz_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # Elasticsearch — Requerido por Temporal para visibility
+  # avanzada y custom search attributes de Postiz.
+  # 256MB heap = ~512MB RAM total — aceptable en Beelink 16GB.
+  # ----------------------------------------------------------
+  temporal-elasticsearch:
+    image: elasticsearch:7.17.27
+    container_name: temporal-elasticsearch
+    restart: unless-stopped
+    environment:
+      - cluster.routing.allocation.disk.threshold_enabled=true
+      - cluster.routing.allocation.disk.watermark.low=512mb
+      - cluster.routing.allocation.disk.watermark.high=256mb
+      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+      - xpack.security.enabled=false
+    # FIX BUG-05: Elasticsearch requiere memlock=-1 para deshabilitar swap.
+    # Sin esto, ES puede entrar en paging de memoria y corromper indices.
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - temporal_es_data:/usr/share/elasticsearch/data
+    networks:
+      - postiz_net
+    expose:
+      - 9200
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ----------------------------------------------------------
+  # Temporal — PostgreSQL dedicado
+  # ----------------------------------------------------------
+  temporal-postgres:
+    image: postgres:16-alpine
+    container_name: temporal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD}
+      # POSTGRES_DB=temporal: Temporal auto-setup crea sus propias DBs
+      # (temporal + temporal_visibility). Este POSTGRES_DB solo crea la
+      # DB principal como placeholder — temporal_visibility la crea Temporal.
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal_postgres_data:/var/lib/postgresql/data
+    networks:
+      - postiz_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Temporal — Motor de jobs (con Elasticsearch para visibility)
+  # ----------------------------------------------------------
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    container_name: temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD}
+      - POSTGRES_SEEDS=temporal-postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - ENABLE_ES=true
+      - ES_SEEDS=temporal-elasticsearch
+      - ES_VERSION=v7
+      - TEMPORAL_NAMESPACE=default
+    volumes:
+      - ./temporal-dynamicconfig:/etc/temporal/config/dynamicconfig
+    networks:
+      - postiz_net
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+      temporal-elasticsearch:
+        condition: service_healthy
+    # Temporal no expone endpoint HTTP — gRPC healthcheck requeriria herramienta especifica.
+    # Postiz tiene retry logic para reconexion con Temporal. No se necesita healthcheck aqui.
+
+  # ----------------------------------------------------------
+  # Temporal UI (solo para debugging interno)
+  # Acceder via: ssh -L 8081:localhost:8081 dchomeserver
+  # ----------------------------------------------------------
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: temporal-ui
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://127.0.0.1:8081
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks:
+      - postiz_net
+    depends_on:
+      - temporal
+
+# ----------------------------------------------------------
+# Volumenes
+# FIX BUG-09: postiz_config eliminado
+# FIX BUG-10: postiz_uploads eliminado — media usa bind mount (/mnt/seagate/postiz-media:/uploads). Volumen declarado pero nunca montado.
+# ----------------------------------------------------------
+volumes:
+  postiz_postgres_data:
+    name: postiz_postgres_data
+  postiz_redis_data:
+    name: postiz_redis_data
+  temporal_postgres_data:
+    name: temporal_postgres_data
+  temporal_es_data:
+    name: temporal_es_data
+
+# ----------------------------------------------------------
+# Red interna aislada del stack Postiz
+# ----------------------------------------------------------
+networks:
+  postiz_net:
+    name: postiz_net
+    driver: bridge

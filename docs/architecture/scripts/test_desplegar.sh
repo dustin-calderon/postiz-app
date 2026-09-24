@@ -63,6 +63,8 @@ mkdir -p "$T/trabajo/apps" "$T/trabajo/docs/architecture/scripts"
 # unas con otras.
 cp "$T/postiz/build.sh" "$T/postiz/verifica-arranque.sh" "$T/trabajo/docs/architecture/scripts/"
 cp "$SCRIPT" "$T/postiz/desplegar.sh"; cp "$SCRIPT" "$T/trabajo/docs/architecture/scripts/"
+# El compose versionado: igual al vivo salvo la etiqueta, que no cuenta.
+printf 'services:\n  postiz:\n    image: postiz-custom:local-cualquiera\n' > "$T/trabajo/docs/architecture/scripts/docker-compose.yml"
 commit() { echo "$RANDOM" > "$T/trabajo/$1"; g add -A; g commit -qm "$2"; g push -q origin custom/postiz-dc; g rev-parse --short HEAD; }
 BASE=$(commit apps/a.ts "código base")
 git clone -q -b custom/postiz-dc "$T/origen.git" "$T/repo"
@@ -143,6 +145,15 @@ corriendo "$BASE"; echo "# editada a mano" >> "$T/postiz/build.sh"
 bash "$SCRIPT" > /dev/null
 es "encola la deriva" "$(aviso | head -1)" "== postiz-copias SIN_AGENTE=0"
 aviso | grep -q "build.sh" && echo "ok   nombra la copia" || { echo "MAL  no nombra la copia"; fallos=$((fallos+1)); }
+
+echo "-- 11. Del compose solo cuenta lo que no es la etiqueta de la imagen"
+cp "$T/trabajo/docs/architecture/scripts/build.sh" "$T/postiz/build.sh"   # lo que dejó la 10
+corriendo "$BASE"
+bash "$SCRIPT" > /dev/null
+es "la etiqueta distinta no es deriva" "$(aviso)" ""
+corriendo "$BASE"; echo "    restart: always" >> "$T/postiz/docker-compose.yml"
+bash "$SCRIPT" > /dev/null
+aviso | grep -q "docker-compose.yml" && echo "ok   un cambio de verdad en el compose sí lo es" || { echo "MAL  no ve el cambio del compose"; fallos=$((fallos+1)); }
 
 echo
 [ "$fallos" -eq 0 ] && echo "TODO BIEN" || { echo "$fallos FALLOS"; exit 1; }

@@ -151,9 +151,11 @@ healthcheck:
 
 Vive en `/opt/homeserver/postiz/docker-compose.yml` (copia previa:
 `docker-compose.yml.bak-20260805-healthcheck`). Se usa `node -e` porque la
-imagen no trae `wget` ni `curl`. El compose, su `.bak` y `postiz.env` llevan
-contraseñas y van en `600`, como el `.env` del homeserver. `build.sh` y
-`desplegar.sh` cambian la imagen del compose con `sed -i`, que conserva el modo.
+imagen no trae `wget` ni `curl`. El compose ya no lleva contraseñas: las de
+las bases las lee Compose del `.env` de al lado (`POSTIZ_DB_PASSWORD`,
+`TEMPORAL_DB_PASSWORD`), y las de la app están en `postiz.env`. Esos dos y el
+`.bak` van en `600`, como el `.env` del homeserver, y ninguno va a git. `build.sh`
+y `desplegar.sh` cambian la imagen del compose con `sed -i`, que conserva el modo.
 
 > **`autoheal` no reinicia este contenedor.** Corre con
 > `AUTOHEAL_CONTAINER_LABEL=autoheal` y `postiz` no lleva esa etiqueta. Un
@@ -242,10 +244,12 @@ ssh dchomeserver 'nohup /opt/homeserver/postiz/desplegar.sh >> /opt/homeserver/o
 - **Vuelta atrás a mano:** poner en la línea `image:` del compose la etiqueta
   que el log da como «corre» en la línea `desplegando` y repetir el
   `up -d --no-deps postiz`.
-- **Las copias vivas** de `build.sh`, `verifica-arranque.sh` y `desplegar.sh`
-  están en `/opt/homeserver/postiz` para que un push al repo no ejecute nada en
-  el host sin que alguien las copie. Si se cambia una en el repo, se copia a
-  mano; si al desplegar difieren, se encola una incidencia (`postiz-copias`). `desplegar.sh` se prueba
+- **Las copias vivas** de lo que hay en `docs/architecture/scripts/` y corre en
+  el host (los scripts de despliegue, los que llama n8n y el compose) están en
+  `/opt/homeserver/postiz` para que un push al repo no ejecute nada en el host
+  sin que alguien las copie. Si se cambia una en el repo, se copia a mano; si al
+  desplegar difieren, se encola una incidencia (`postiz-copias`). Cuáles se
+  comparan lo dice `desplegar.sh`; del compose no cuenta la línea `image`. `desplegar.sh` se prueba
   entero, sin tocar nada real, con `bash docs/architecture/scripts/test_desplegar.sh`
   en Linux.
 
@@ -275,9 +279,9 @@ Un volcado de `Integration` o de `Post` lleva credenciales aunque no lo parezca.
   ```
 
 Los ficheros de trabajo que sí se conservan a propósito son las copias `.bak-*`
-de lo que **no** está en git: `docker-compose.yml` y `postiz.env`. Todo lo demás
-—scripts, suites— vive en `docs/architecture/scripts/`, así que una copia suelta
-en el servidor sólo añade una versión más que puede divergir.
+de lo que **no** está en git: `.env` y `postiz.env`. Todo lo demás —el compose,
+los scripts, las suites— vive en `docs/architecture/scripts/`, así que una copia
+suelta en el servidor sólo añade una versión más que puede divergir.
 
 ## ☠️ Borrar un canal borra su historial de publicaciones
 
