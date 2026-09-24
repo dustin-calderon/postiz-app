@@ -628,7 +628,7 @@ Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La 
 
 | Qué | Dónde | Cómo se lee |
 |---|---|---|
-| Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n, **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server) | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
+| Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n: las de los últimos **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server) o las **10 000** más recientes (`EXECUTIONS_DATA_PRUNE_MAX_COUNT`, por defecto), lo que llegue antes. Cada batería de pruebas gasta muchas: lanzarla a menudo acorta el historial | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
 | Los fallos al publicar | Tabla `Errors` de Postiz (`postiz_db`) | `SELECT "createdAt", platform, message FROM "Errors" ORDER BY 1;` |
 | El archivo en Drive | `/var/log/postiz-archivo.log`, 8 semanas de rotación | [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 | Cada pasada de la réplica de carruseles, con las filas que mandó a `Error` | `~/.local/state/carrusel-ig/replicar.log` en el Beelink | `tail` del log; lo escribe `replicar.sh` |
@@ -1318,7 +1318,7 @@ De las tres, `▶ Publicar en IG` es la que enseña `modo`, y es donde el manual
 > - **`API token is invalid` (401):** el token está revocado. Se crea uno nuevo y se rota con el script de §14.4.
 > - **404 que nombra la integración:** el token vale, pero la integración perdió el acceso a la base. Se arregla añadiéndola en *··· → Conexiones* de la base. **Mover la base de sitio puede quitarle la conexión: si se mueve, compruébala.**
 >
-> **Para leer el historial de ejecuciones** (90 días; los errores del pipeline, con `scripts/errores-pipeline.py`, §8.1), la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
+> **Para leer el historial de ejecuciones** (cuánto guarda, en §8.1; los errores del pipeline, con `scripts/errores-pipeline.py`, §8.1), la base de n8n en `postgres_core` se llama **`n8n_db`**, no `n8n` —con el nombre obvio psql responde `database "n8n" does not exist` y parece que no hay historial—:
 > `docker exec postgres_core psql -U postgres -d n8n_db -c "SELECT w.name, e.mode, e.status, e.\"startedAt\" FROM execution_entity e JOIN workflow_entity w ON w.id=e.\"workflowId\" WHERE w.name LIKE 'Postiz%' ORDER BY 4 DESC LIMIT 20;"`
 
 El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf`, que además escribe.
@@ -1351,7 +1351,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > **Desde el 2026-08-16 también `normalizar-video.sh`**, por el mismo motivo y con la misma regla: es la puerta por la que pasa todo el media y sólo existía en `/opt/homeserver/postiz/`. No lleva secretos —el `ORG` es un id, y la `apiKey` la lee de la base al ejecutarse—, así que puede ir al repositorio tal cual.
 >
-> **`n8n-ssh-wrapper.sh` también está en `scripts/`**, con la misma regla: es el comando forzado (`authorized_keys`) de la clave SSH de n8n, así que decide qué puede ejecutar n8n en el host si sus credenciales caen. Lo que permite, y por qué cada cosa, lo dice su cabecera.
+> **`n8n-ssh-wrapper.sh` también está en `scripts/`**, con la misma regla: es el comando forzado (`authorized_keys`) de la clave SSH de n8n, así que decide qué puede ejecutar n8n en el host si sus credenciales caen. Lo que permite, y por qué cada cosa, lo dice su cabecera. **Y `turno-sync.sh`**, la consulta de solo lectura que el sync hace por esa clave para no solaparse (§9.1).
 >
 > Al cargar el `.env` verás `line 103: {client_id:: command not found`. **Es inocuo y no hace falta arreglarlo**: `GOOGLE_API_CREDENTIALS` es un JSON sin comillas, así que el shell lo parte en el primer espacio y esa variable queda vacía. Cargan las otras 54, ninguna la usa el pipeline, y el consumidor real (`calcom`) la recibe entera porque docker-compose no usa semántica de shell. Ponerle comillas arreglaría el aviso y podría romper `calcom`.
 >
@@ -1408,6 +1408,7 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | **Más de 100 filas accionables en el sync** | La consulta del sync no pagina: **falla a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Lee solo los estados vivos, que no se acumulan. La de la retirada, que sí crece, pagina (§9.7) |
 | **Subida parcial de un carrusel** | Si el asset 1 sube y el 2 falla, el primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
 | **Ficheros sustituidos** | Al cambiar o reordenar los ficheros de una fila ya subida, el sync sube los nuevos; los anteriores quedan en Postiz sin post, y ninguna limpieza recoge un fichero que nunca se publicó ([MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)) |
+| **Versión de la API de Notion** | Las consultas del sync, del receptor y de la retirada van a `/databases/…/query` con la versión `2022-06-28`. Notion las mantiene mientras la base tenga una sola fuente de datos; si alguien le añade otra, fallan, y se paran el sync, el receptor y la recuperación (avisa el bus, §9.10). Se cierra pasándolas a `/data_sources/…/query` con `2025-09-03`, como ya hace `planificar.py` |
 | **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus de incidencias (§9.10). Lo ya programado en Postiz sigue en pie; lo editado ese día no llega hasta la siguiente pasada o el botón |
 
 > **Los medios de un post fallido sí se limpian.** El subflow borra lo que acaba de subir si el `POST /posts` falla (§9.2) — el huérfano permanente sólo aparece en la subida parcial y en los ficheros sustituidos de arriba.
