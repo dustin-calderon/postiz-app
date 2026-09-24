@@ -11,9 +11,10 @@
 # URLs locales (la guarda SSRF de Postiz). Ese camino lo cubre la bateria del
 # pipeline (suite-pruebas-postiz.py) con ficheros de Notion.
 #
-# Borrar un media en Postiz solo lo marca: el fichero sigue en el disco. La
-# prueba borra los suyos a mano (sudo, porque los escribe el contenedor como
-# root), o cada pasada dejaria ~250 MB en el Seagate.
+# Borrar un media en Postiz solo lo marca: el fichero lo quita la Phase 2 a los
+# 7 dias, y hasta entonces el espejo nocturno lo copiaria a Drive, que no borra
+# nunca. Por eso la prueba borra los suyos del disco en el acto (sudo: los
+# escribe el contenedor como root). Son ~250 MB por pasada.
 #
 # El HEIC de prueba (fixtures/teselas.heic) lo hizo macOS, como el de un
 # iPhone: una rejilla de teselas HEVC. Aqui no se puede generar: el heif-enc

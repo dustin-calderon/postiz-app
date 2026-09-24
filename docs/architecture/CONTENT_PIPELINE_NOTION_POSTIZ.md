@@ -144,7 +144,6 @@ Lo que el sistema **no** cubre, para que nadie lo descubra a base de sorpresa:
 |---|---|
 | **Colaboradores en `graph.instagram.com`** | Se envían ([POSTIZ_FORK §9](./CONTENT_PIPELINE_POSTIZ_FORK.md)), pero no está comprobado que Meta los acepte en la API de Instagram Login: comprobarlo exige publicar de verdad en una cuenta real. Deuda aceptada; se despejará sola en la primera publicación con colaboradores |
 | **Más de 100 filas accionables en el sync** | La consulta del sync no pagina: **falla a las claras** si `has_more` es `true`, en vez de sincronizar media cola en silencio. Lee solo los estados vivos, que no se acumulan. La de la retirada, que sí crece, pagina ([RECONCILIACION §4](./CONTENT_PIPELINE_RECONCILIACION.md)) |
-| **Ficheros sustituidos** | Al cambiar o reordenar los ficheros de una fila ya subida, el sync sube los nuevos; los anteriores quedan en Postiz sin post, y ninguna limpieza recoge un fichero que nunca se publicó ([MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)). Es el único huérfano permanente: los medios de una subida o una creación fallidas sí se borran ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)) |
 | **Notion caído a la hora del cron** | Tras 3 intentos la pasada se detiene y avisa el bus ([OPERACION §2](../guides/CONTENT_PIPELINE_OPERACION.md)) |
 
 ## 7. Lo que se decidió NO hacer

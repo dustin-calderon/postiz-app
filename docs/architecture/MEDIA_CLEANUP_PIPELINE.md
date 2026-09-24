@@ -185,13 +185,13 @@ El endpoint espeja el borrado de la UI —soft-delete— en vez de inventar sem�
 
 Verificado con un fallo real: 30 medios vivos antes y después.
 
-**Lo que sigue sin cubrir** (y hoy no compensa):
+### La media del pipeline que se queda sin dueño la libera una pasada nocturna
 
-| Caso | Por qué se deja |
-|---|---|
-| Subida parcial de un carrusel (asset 1 sube, asset 2 falla) | El primero queda huérfano. Raro, y arreglarlo obliga a arrastrar estado a medias por el subflow |
-| Los ficheros anteriores de una fila cuyos ficheros cambian | El sync sube los nuevos y los anteriores quedan sin post. Borrarlos exige saber que ningún post vivo los usa |
-| Media subida por un cliente de API que simplemente la abandona | Ya no es nuestro caso; y un barrido genérico por «sin referencia en ningún Post» es peligroso con los FK guards |
+Una fila deja media sin dueño aunque todo salga bien: cuando le cambian los ficheros (el sync sube los nuevos y los anteriores se quedan), cuando se rehace un carrusel replicado (sus láminas anteriores) o cuando se borra la fila. Ningún post vivo la usa, así que la Phase 1 no la ve, y nadie le pone `deletedAt`, así que tampoco la Phase 2.
+
+[`postiz-media-huerfana.py`](./scripts/postiz-media-huerfana.py), cada noche a las 03:10 desde el cron del Beelink, le pone `deletedAt` con `DELETE /public/v1/media/:id` a lo que cumple las cuatro condiciones de su cabecera: lo usó algún post, todos los que lo usaron eran del pipeline (`API`) y están borrados desde hace más de un día, y ninguna fila de Notion lo apunta en `❌ postiz_media`, que es lo que el sync reutiliza cuando una fila aplazada o vaciada vuelve. El fichero lo quita después la Phase 2, a los 7 días: durante esa semana se deshace vaciando `deletedAt`, y el espejo nocturno de [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) ya tiene su copia. Si falla, avisa al bus (`postiz-media-huerfana`).
+
+**Lo que no libera, a propósito:** la media que no usó ningún post. Puede ser la biblioteca de medios (ver la corrección de abajo), y desde fuera no se distingue de una subida abandonada; la subida parcial de un carrusel, que es el único caso del pipeline, ya la borra el subflow al fallar.
 
 ### ⚠️ Corrección: los «11 huérfanos permanentes» no existían
 
@@ -205,9 +205,7 @@ Un primer análisis del 2026-08-04 contó **11 ficheros huérfanos permanentes (
 > ### ⚠️ «No aparece en ningún post» no significa «es basura»
 > Una limpieza automática basada en aquel diagnóstico **habría borrado la biblioteca de medios entera**. La biblioteca es una función del producto: existe precisamente para guardar ficheros que aún no están en ningún post. Es el mismo error simétrico contra el que se diseñaron las protecciones de arriba, cometido desde fuera del código.
 
-El mecanismo de fuga sí es estructural y sigue vigente —Phase 1 sólo recoge lo que aparece en un post **publicado**, Phase 2 sólo lo que tiene `deletedAt`, y un fichero subido y nunca publicado no cumple ninguna—, pero la **proporción real es 1 fichero en 7 semanas de uso**.
-
-**El pipeline comparte esa fuga en un caso concreto.** En el subflow, el camino de recreación ejecuta `Postiz: DELETE post anterior`, que borra **el post, no sus medios**; el único `DELETE media huérfano` está en la rama de error. Si se cambian los ficheros de una fila ya sincronizada, los antiguos quedan vivos para siempre.
+El mecanismo de fuga es estructural —Phase 1 sólo recoge lo que aparece en un post **publicado**, Phase 2 sólo lo que tiene `deletedAt`, y un fichero subido y nunca publicado no cumple ninguna—. Para la media del pipeline lo cierra la pasada nocturna de arriba; la que no usó ningún post se deja, porque puede ser biblioteca.
 
 ---
 
