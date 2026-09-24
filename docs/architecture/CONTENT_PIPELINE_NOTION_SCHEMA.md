@@ -126,7 +126,7 @@ Se añaden a la tabla el día que se necesiten. Añadir una propiedad en Notion 
 
 ### 2.4 Colaboradores — y sus dos restricciones duras
 
-Una pieza compartida entre cuentas es **un solo post**: publica `cuenta` y las demás aparecen como colaboradoras. Eso mantiene el modelo 1:1 con Postiz —un post, un ID, un estado— y evita cualquier fan-out.
+Una pieza compartida entre cuentas es **un solo post**: publica `cuenta` y las demás se invitan como colaboradoras. Eso mantiene el modelo 1:1 con Postiz —un post, un ID, un estado— y evita cualquier fan-out.
 
 `post()` de `instagram.provider.ts` manda a Meta los `label` como usernames:
 
@@ -149,6 +149,8 @@ const collaborators =
 > El worker lo valida **antes** de enviar: `colaboradores` con más de un asset o con `post_type = story` → `Error` con el motivo, sin gastar la llamada.
 
 **Los colaboradores son usernames de Instagram, no canales de Postiz.** No hace falta que esas cuentas estén conectadas a Postiz ni que existan en la tabla de §2.1.
+
+**Cuántos, y qué pasa después.** La referencia de publicación (IG User Media, parámetro `collaborators`) admite hasta **3**; la del objeto publicado (IG Media Collaborators) dice 5. El manual pide como mucho 3, y el worker no lo valida. A cada cuenta le llega una **invitación que tiene que aceptar**: la API la da como `Pending` o `Accepted` (`invite_status`).
 
 ## 3. El primer comentario
 
