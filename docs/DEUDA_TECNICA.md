@@ -68,18 +68,6 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 
 ---
 
-## Protección SSRF de salida de upstream, sin portar
-
-**Qué pasa.** Upstream filtra las URLs internas en los webhooks, en los proveedores con URL propia (Mastodon, Lemmy, WordPress…) y en las descargas de medios por URL (`db65072f`, `05b05fc5`, `1e4c8dd5`, `6c4a8ca4`). Aquí solo está el `ssrfSafeDispatcher` base, que usa `/public/stream`. Sin el resto, quien pueda dar una URL a Postiz puede hacer que el servidor pida recursos de la red de casa o de otros contenedores.
-
-**Por qué se aplaza.** Exige una cuenta de Postiz (detrás de Access) o la API key de la organización (n8n). Portarlo choca con el código de subida propio (streaming, `upload-from-url`), así que no es un cherry-pick.
-
-**Qué la vuelve urgente.** Que alguien fuera del equipo reciba una cuenta o una API key, o que se abra el registro.
-
-**Cómo se cierra.** Portando `getSsrfSafeDispatcher` y `getSsrfSafeAxios` y aplicándolos donde este código pide URLs que da el usuario.
-
----
-
 ## El lint de la raíz no pasa sobre el código existente
 
 **Qué pasa.** La configuración carga (ESLint 9), pero `npx eslint apps libraries`, desde la raíz, sale con errores de código que ya existía. Casi todos son reglas de React Compiler que `eslint-plugin-react-hooks` 7 trae como error dentro de `next/core-web-vitals`. Además:
