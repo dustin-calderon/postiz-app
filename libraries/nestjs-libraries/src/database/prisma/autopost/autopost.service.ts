@@ -135,7 +135,19 @@ export class AutopostService {
 
   async loadXML(url: string) {
     try {
-      const { items } = await parser.parseURL(url);
+      // parser.parseURL() requests with plain http(s).get, which no SSRF guard
+      // can pin: fetch the feed through the dispatcher and only parse here.
+      // Same headers and timeout parseURL used.
+      const feed = await fetch(url, {
+        headers: { 'User-Agent': 'rss-parser', Accept: 'application/rss+xml' },
+        signal: AbortSignal.timeout(60000),
+        // @ts-ignore - undici-only option; blocks SSRF to internal IPs
+        dispatcher: getSsrfSafeDispatcher(),
+      });
+      if (!feed.ok) {
+        throw new Error('Status code ' + feed.status);
+      }
+      const { items } = await parser.parseString(await feed.text());
       const findLast = items.reduce(
         (all: any, current: any) => {
           if (dayjs(current.pubDate).isAfter(all.pubDate)) {
