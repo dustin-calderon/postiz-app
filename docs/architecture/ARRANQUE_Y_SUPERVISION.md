@@ -286,7 +286,7 @@ suelta en el servidor sólo añade una versión más que puede divergir.
 ## ☠️ Borrar un canal borra su historial de publicaciones
 
 **Nunca borres un canal para volver a conectarlo.** El botón de borrar de la UI
-(`DELETE /integrations/`, `integrations.controller.ts:402-417`) hace esto:
+(`DELETE /integrations/`, `deleteChannel` de `integrations.controller.ts`) hace esto:
 
 ```ts
 const isTherePosts = await this._integrationService.getPostsForChannel(org.id, id);
@@ -313,7 +313,7 @@ y `deletedAt: null` — pero nadie deshace el borrado de los posts.
 ### El camino seguro para volver a pasar por OAuth
 
 La UI sólo enseña «Channel disconnected, click to reconnect» cuando
-`refreshNeeded` está activo (`launches.component.tsx:248-253`), y para un canal
+`refreshNeeded` está activo (`launches.component.tsx`), y para un canal
 sano no ofrece ninguna forma de repetir el OAuth. La hay, pero hay que
 provocarla a mano:
 

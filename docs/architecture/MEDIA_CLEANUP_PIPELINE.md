@@ -26,7 +26,7 @@ La retención es configurable vía env var `MEDIA_RETENTION_DAYS`. **El default 
 
 ## ⚠️ Cambiar `MEDIA_RETENTION_DAYS` no es cambiar la variable
 
-**El workflow recibe la retención como argumento al arrancar; no la vuelve a leer nunca.** `infinite.workflow.register.ts:20-27` resuelve el número al iniciar el backend y lo pasa en `args`:
+**El workflow recibe la retención como argumento al arrancar; no la vuelve a leer nunca.** `infinite.workflow.register.ts` resuelve el número al iniciar el backend y lo pasa en `args`:
 
 ```ts
 const retentionDays = Number(process.env.MEDIA_RETENTION_DAYS) || 30;
@@ -37,7 +37,7 @@ await ...workflow?.start('mediaCleanupWorkflow', {
 });
 ```
 
-Y `media.cleanup.workflow.ts:34-48` es un `while (true)` con `sleep('24 hours')` que arrastra **ese mismo** `retentionDays` durante toda su vida.
+Y `mediaCleanupWorkflow` (`media.cleanup.workflow.ts`) es un `while (true)` con `sleep('24 hours')` que arrastra **ese mismo** `retentionDays` durante toda su vida.
 
 No es un descuido: es una obligación de Temporal. El workflow corre en un sandbox determinista de V8 donde **`process.env` no existe** —lo dice el propio JSDoc del fichero—, así que el valor se lee fuera y viaja como argumento.
 
@@ -127,7 +127,7 @@ Identifica y elimina archivos de medios que ya cumplieron su función:
 | **Soft-delete** | Marca `deletedAt = now()` en la DB |
 
 > ### ⚠️ Con la retención en 3650, la Phase 1 está inerte
-> El Step 1 filtra por `createdAt < ahora − retención` (`media.repository.ts:275-282`), así que hoy sólo sería candidato un fichero **subido antes de 2016**. No habrá ninguno hasta **~2036**: la Phase 1 corre cada 24 h y sale siempre con cero candidatos.
+> El Step 1 filtra por `createdAt < ahora − retención` (`findStalePublishedMedia` de `media.repository.ts`), así que hoy sólo sería candidato un fichero **subido antes de 2016**. No habrá ninguno hasta **~2036**: la Phase 1 corre cada 24 h y sale siempre con cero candidatos.
 >
 > **Lo único que borra ficheros hoy es la Phase 2**, y sólo lo que ya tiene `deletedAt` en `Media` —es decir, lo que alguien borró a mano desde la UI o por `DELETE /public/v1/media/:id`—, pasado su periodo de gracia de 7 días. Cualquier razonamiento sobre «qué se está purgando» tiene que partir de ahí, no de la Phase 1.
 

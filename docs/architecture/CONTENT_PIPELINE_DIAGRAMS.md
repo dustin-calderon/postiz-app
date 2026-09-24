@@ -288,7 +288,7 @@ flowchart TD
 
 > ### ⚠️ `releaseURL` manda sobre `state`
 >
-> Si falla el primer comentario —donde van los hashtags—, Postiz marca el post padre como
+> Si falla el primer comentario, Postiz marca el post padre como
 > `ERROR` **pero conserva el permalink**: Instagram ya lo tiene publicado.
 >
 > Con la regla ingenua «`state=ERROR` ⇒ no publicó», la fila iría a `Error`, alguien la

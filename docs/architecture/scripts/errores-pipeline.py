@@ -2,9 +2,9 @@
 """Historial de errores del pipeline Notion → Postiz, leído de n8n. Solo lectura.
 
 `❌ error_log` guarda el último error de cada fila y el sync lo vacía al salir
-bien: el historial solo existe en las ejecuciones de n8n (hasta 90 días o las
-10 000 más recientes, lo que llegue antes: CONTENT_PIPELINE_NOTION_POSTIZ.md §8.1). Este
-script lo saca, una línea por error, con la fecha, de dónde viene y el motivo.
+bien: el historial solo existe en las ejecuciones de n8n, las de los últimos 90
+días (CONTENT_PIPELINE_NOTION_POSTIZ.md §8.1). Este script lo saca, una línea por
+error, con la fecha, de dónde viene y el motivo.
 
     python3 errores-pipeline.py            # en el Beelink; sin las filas de la suite
     python3 errores-pipeline.py --todo     # con ellas

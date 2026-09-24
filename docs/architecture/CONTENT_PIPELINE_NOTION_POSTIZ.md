@@ -89,7 +89,7 @@ Todo lo de esta sección está comprobado contra el código de `custom/postiz-dc
 
 ### 4.1 La URL pública es obligatoria de verdad
 
-`instagram.provider.ts:615-629` construye la llamada a Meta pasando la ruta tal cual:
+`post()` de `instagram.provider.ts` construye la llamada a Meta pasando la ruta tal cual:
 
 ```ts
 ? `video_url=${m.path}&media_type=REELS&thumb_offset=${...}`
@@ -98,7 +98,7 @@ Todo lo de esta sección está comprobado contra el código de `custom/postiz-dc
 
 Meta hace **fetch** de esa URL desde sus servidores. Si no es alcanzable desde internet, falla siempre — aunque subir a mano desde la UI funcione.
 
-Con `STORAGE_PROVIDER=local` esa URL es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts:84,133,193`), y Meta la alcanza: `facebookexternalhit/1.1` recibe **200**.
+Con `STORAGE_PROVIDER=local` esa URL es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<32 hex>.<ext>` (`local.storage.ts`: `uploadSimple`, `uploadFile` y `uploadStream`), y Meta la alcanza: `facebookexternalhit/1.1` recibe **200**.
 
 > ### ⚠️ Este dominio devuelve 403 a los agentes de IA
 > El `robots.txt` sirve la política de Content Signals de Cloudflare, que **bloquea crawlers de IA**. Desde una misma IP y un mismo path: UA vacío → 200, `python-requests` → 200, `facebookexternalhit/1.1` → 200, `ClaudeBot/1.0` → **403**.
@@ -107,7 +107,7 @@ Con `STORAGE_PROVIDER=local` esa URL es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<
 
 ### 4.2 Storage: sólo `local` o `cloudflare`
 
-`upload.factory.ts` no admite nada más, y `cloudflare.storage.ts:45` **hardcodea** el endpoint `https://${accountID}.r2.cloudflarestorage.com`. No hay hueco para MinIO ni para otro S3 compatible: no es que falte soporte, es que no hay dónde ponerlo.
+`upload.factory.ts` no admite nada más, y `cloudflare.storage.ts` **hardcodea** el endpoint `https://${accountID}.r2.cloudflarestorage.com`. No hay hueco para MinIO ni para otro S3 compatible: no es que falte soporte, es que no hay dónde ponerlo.
 
 **Decisión: `local`.** Verificado que Meta alcanza las URLs del dominio . Los medios viven en el Seagate vía bind mount, no hace falta almacenamiento externo.
 
@@ -115,8 +115,8 @@ Con `STORAGE_PROVIDER=local` esa URL es `FRONTEND_URL + /uploads + /YYYY/MM/DD/<
 
 ### 4.3 El rate limit no es el que dice la documentación pública
 
-`app.module.ts:35-43` → `API_LIMIT` o **90 por hora**, TTL 3600 s.
-`throttler.provider.ts:10-16` → sólo se aplica a `POST /public/v1/posts`:
+`apps/backend/src/app.module.ts` (`ThrottlerModule.forRoot`) → `API_LIMIT` o **90 por hora**, TTL 3600 s.
+`canActivate` de `throttler.provider.ts` → sólo se aplica a `POST /public/v1/posts`:
 
 ```ts
 if (method === 'POST' && url.includes('/public/v1/posts')) return super.canActivate(context);
@@ -126,7 +126,7 @@ return true;
 Consecuencias:
 
 - **Los uploads no están limitados.** No existe ninguna cuota de "30 uploads/hora".
-- El único límite es sobre **creaciones de post**, contado **por organización**, no por IP. La clave exacta de `getTracker` (`throttler.provider.ts:18-24`) es `req.org.id + '_' + (url contiene '/posts' ? 'posts' : 'other')`, no el id de organización a secas.
+- El único límite es sobre **creaciones de post**, contado **por organización**, no por IP. La clave exacta de `getTracker` (`throttler.provider.ts`) es `req.org.id + '_' + (url contiene '/posts' ? 'posts' : 'other')`, no el id de organización a secas.
 - El default del código es 90. En producción está en **300** (§14.4).
 
 > ### Por qué se subió a 300
@@ -143,7 +143,7 @@ El batching del worker existe por el límite de **Instagram** (100 publicaciones
 
 ### 4.4 Postiz tiene webhooks
 
-`post.activity.ts:315` (`sendWebhooks`) se dispara desde el workflow del orchestrator (`post.workflow.v1.0.5.ts:272`) con el post completo en el body, filtrable por integración.
+`sendWebhooks` (`post.activity.ts`) se dispara desde el workflow del orchestrator (`post.workflow.v1.0.5.ts`) con el post completo en el body, filtrable por integración.
 
 **Matiz crítico:** hoy sólo dispara **en éxito**. Si se agotan los reintentos, el workflow sale antes de llamarlo.
 
@@ -168,9 +168,9 @@ El invariante "**todo camino terminal emite webhook**" es más fácil de sostene
 
 ### 4.4.1 ⚠️ El webhook se dispara hoy con el cuerpo vacío
 
-`post.workflow.v1.0.5.ts:272-276` llama a `sendWebhooks(postsResults[0].postId, …)`. Ese `postId` es **el ID de la red social** (`mediaId` de Instagram), no el `Post.id` interno — véase `updatePost(postsList[i].id, postsResults[i].postId, …)` en `:196-200`, que los usa como cosas distintas.
+`post.workflow.v1.0.5.ts` llama a `sendWebhooks(postsResults[0].postId, …)`. Ese `postId` es **el ID de la red social** (`mediaId` de Instagram), no el `Post.id` interno — véase `updatePost(postsList[i].id, postsResults[i].postId, …)` en `:196-200`, que los usa como cosas distintas.
 
-Pero `getPostByForWebhookId` (`posts.repository.ts:869-875`) busca por `where: { id: postId }`, es decir **por el id interno**. Con el ID de Instagram no encuentra nada y `findMany` devuelve `[]`.
+Pero `getPostByForWebhookId` (`posts.repository.ts`) busca por `where: { id: postId }`, es decir **por el id interno**. Con el ID de Instagram no encuentra nada y `findMany` devuelve `[]`.
 
 **Resultado: el webhook llega con `[]` como cuerpo.** Se dispara, pero no dice de qué post habla ni en qué estado quedó.
 
@@ -189,13 +189,13 @@ Cero solapamiento: la `v1.0.5` **nunca** pudo encontrar el post. Y la consulta d
 
 ### 4.4.2 La entrega del webhook no está garantizada
 
-`post.activity.ts:326-340` envuelve el `fetch` en `try { … } catch (e) { /**empty**/ }`. Si n8n está caído o hay timeout, **el fallo se traga sin log y sin reintento**, y el `Promise.all` no propaga nada al workflow.
+`sendWebhooks` (`post.activity.ts`) envuelve el `fetch` en `try { … } catch (e) { /**empty**/ }`. Si n8n está caído o hay timeout, **el fallo se traga sin log y sin reintento**, y el `Promise.all` no propaga nada al workflow.
 
 Un `Publicado` perdido no se recupera solo. **Por eso no se puede eliminar el polling del todo** (§9.4).
 
 ### 4.4.3 El `state` no basta para saber si se publicó
 
-`updatePost` (`posts.repository.ts:392-402`) marca `state='PUBLISHED'` **y** guarda `releaseURL`/`releaseId`. Si después falla el primer comentario —el sitio recomendado para los hashtags (§7.3)—, `changeState` pone `ERROR` **sobre el post padre** y `releaseURL` **se conserva**.
+`updatePost` (`posts.repository.ts`) marca `state='PUBLISHED'` **y** guarda `releaseURL`/`releaseId`. Si después falla el primer comentario (§7.3), `changeState` pone `ERROR` **sobre el post padre** y `releaseURL` **se conserva**.
 
 Es decir: `state=ERROR` cubre dos situaciones opuestas.
 
@@ -214,12 +214,12 @@ Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `r
 
 ### 4.5 Postiz valida el post antes de crearlo
 
-`instagram.provider.ts:48-57` rechaza >10 medias y exige al menos una. El API público ejecuta `validatePosts` antes de crear nada y devuelve un 400 legible. La validación en n8n sigue siendo buena idea (fallar antes es mejor), pero no es la última línea de defensa.
+`checkValidity` de `instagram.provider.ts` rechaza >10 medias y exige al menos una. El API público ejecuta `validatePosts` antes de crear nada y devuelve un 400 legible. La validación en n8n sigue siendo buena idea (fallar antes es mejor), pero no es la última línea de defensa.
 
-**Desde el 2026-08-15 `checkValidity` también mide los videos** (`instagram.video.rules.ts`, tras el fallo del trial reel 4K de esa mañana): ffprobe sobre el fichero local y rechazo si excede los límites duros de la Graph API — >1920 px de lado, >25 Mbps, >1 GB, >15 min (>60 s en story). El mensaje incluye los valores medidos y viaja por el webhook hasta `❌ error_log`, así que un video imposible se descubre al crear el post, no el día de la publicación. Es **fail-open**: solo bloquea con evidencia (media remota o no medible pasa de largo), y solo aplica a rutas con storage `local`.
+**`checkValidity` también mide los videos** (`instagram.video.rules.ts`): ffprobe sobre el fichero local y rechazo si pasa de 1920 px en el lado mayor, 25 Mbps, 1 GB o 15 min (60 s en story). Dos de esos topes no son los de la referencia de Meta (IG User Media, especificaciones de reels y stories): allí el peso máximo es 300 MB en un reel y 100 MB en una story, y los 1920 px son de ancho (*columns*), no del lado mayor. El mensaje incluye los valores medidos y viaja por el webhook hasta `❌ error_log`, así que un video imposible se descubre al crear el post, no el día de la publicación. Es **fail-open**: solo bloquea con evidencia (media remota o no medible pasa de largo), y solo aplica a rutas con storage `local`.
 
 > ### ⚠️ …salvo con `modo = borrador`, donde casi no valida nada
-> El resultado de `checkValidity` viaja en `item.errors`, y ese campo **sólo se comprueba dentro de `if (body.type !== 'draft')`** (`public.integrations.controller.ts:267-279`). Fuera de ese bloque queda una sola comprobación: `emptyContent`, que exige que el texto **y** las imágenes estén vacíos **a la vez** (`posts.service.ts:831-835`).
+> El resultado de `checkValidity` viaja en `item.errors`, y ese campo **sólo se comprueba dentro de `if (body.type !== 'draft')`** (`createPost` de `public.integrations.controller.ts`). Fuera de ese bloque queda una sola comprobación: `emptyContent`, que exige que el texto **y** las imágenes estén vacíos **a la vez** (`validatePosts` de `posts.service.ts`).
 >
 > Es decir: un borrador sin ninguna imagen pero con copy pasa sin queja, aunque `checkValidity` lo habría rechazado con *«Should have at least one media»*.
 >
@@ -227,7 +227,7 @@ Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye ahora `r
 
 ### 4.6 `createPost` devuelve un ID por integración
 
-`posts.service.ts:927` → `[{ postId, integration }]`. De ahí la regla **una fila = un post**.
+`createPost` de `posts.service.ts` → `[{ postId, integration }]`. De ahí la regla **una fila = un post**.
 
 ### 4.7 La limpieza de medios, y por qué su retención dejó de ser 30
 
@@ -254,7 +254,7 @@ La afirmación que sí se sostiene, acotada: **para el material que pasa por el 
 
 ### 4.8 Borrar un post termina su workflow
 
-`posts.service.ts:660-677`: `deletePost` busca las ejecuciones de Temporal asociadas y las termina.
+`posts.service.ts`: `deletePost` busca las ejecuciones de Temporal asociadas y las termina.
 
 ```ts
 query: `postId="${post.id}" AND ExecutionStatus="Running"`
@@ -287,9 +287,9 @@ Verificado en la base de datos de producción: las tres integraciones tienen `pr
 
 *(Existe además una integración de TikTok, `cmqjs6xnx0001q07q9aohapuv`, fuera del alcance de este documento.)*
 
-`instagram.standalone.provider.ts:180-193` delega `post()` al provider normal pero con **`graph.instagram.com`** en vez de `graph.facebook.com`. Consecuencias que cambian el diseño:
+`instagram.standalone.provider.ts` delega `post()` al provider normal pero con **`graph.instagram.com`** en vez de `graph.facebook.com`. Consecuencias que cambian el diseño:
 
-**1. `checkValidity` está sobreescrito y valida mucho menos** (`instagram.standalone.provider.ts:46-65`):
+**1. `checkValidity` está sobreescrito y valida mucho menos** (`instagram.standalone.provider.ts`):
 
 ```ts
 override async checkValidity(...) {
@@ -301,9 +301,9 @@ override async checkValidity(...) {
 
 **No comprueba el máximo de 10 medias ni la regla del audio.** Todo lo que el provider normal rechazaría con un 400 legible, aquí llega hasta Meta. **La validación en n8n deja de ser un lujo y pasa a ser la única red** (§7.4).
 
-**2. El audio nunca se aplica.** `instagram.provider.ts:649-654` exige `type === 'graph.facebook.com'`. Con `graph.instagram.com` la condición es falsa y el parámetro **se descarta en silencio**, sin error. No tiene sentido exponer `audio_id` en Notion.
+**2. El audio nunca se aplica.** `audioConfiguration`, en `post()` de `instagram.provider.ts`, exige `type === 'graph.facebook.com'`. Con `graph.instagram.com` la condición es falsa y el parámetro **se descarta en silencio**, sin error. No tiene sentido exponer `audio_id` en Notion.
 
-**3. Los colaboradores sí se envían** — el bloque de `instagram.provider.ts:640-645` no distingue por `type`. Lo que **no está verificado** es que Meta los acepte en la API de Instagram Login. **Se aceptó como deuda técnica y no se va a probar de momento** (decisión #7 de §11): comprobarlo exige publicar de verdad en una cuenta real.
+**3. Los colaboradores sí se envían** — `const collaborators`, en `post()` de `instagram.provider.ts`, no distingue por `type`. Lo que **no está verificado** es que Meta los acepte en la API de Instagram Login. **Se aceptó como deuda técnica y no se va a probar de momento** (decisión #7 de §11): comprobarlo exige publicar de verdad en una cuenta real.
 
 > **Regla general para este documento:** ante cualquier afirmación sobre validación, manda `instagram.standalone.provider.ts`, no `instagram.provider.ts`. Sólo la lógica de publicación y `handleErrors` son compartidas.
 
@@ -398,7 +398,7 @@ Y tres cosas que **no** son propiedades nuevas:
 Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log`) son **territorio exclusivo del worker**. Si alguien se ve editándolos a mano, algo se ha roto.
 
 > ### ⚠️ No basta con la URL: `MediaDto` exige `id` **y** `path`
-> `media.dto.ts:4-13` declara los dos campos como `@IsDefined()`:
+> `MediaDto` (`media.dto.ts`) declara los dos campos como `@IsDefined()`:
 >
 > ```ts
 > @IsString() @IsDefined()                          id: string;
@@ -406,9 +406,9 @@ Los tres campos de n8n (`❌ postiz_post_id`, `❌ postiz_media`, `❌ error_log
 > @Validate(ValidUrlPath) @Validate(ValidUrlExtension) path: string;
 > ```
 >
-> **Son dos validadores, no uno.** `ValidUrlExtension` (`valid.url.path.ts:28-33`) exige además que el path acabe en una extensión de la lista blanca —`png·jpg·jpeg·gif·webp·avif·bmp·tif·tiff` + `mp4·mov·webm·mpeg·mpg`— tras quitar el query string. En la práctica no salta, porque la extensión la deriva `local.storage.ts` del magic-number del fichero; pero es una sexta forma de recibir un 400 y conviene tenerla escrita.
+> **Son dos validadores, no uno.** `ValidUrlExtension` (`valid.url.path.ts`) exige además que el path acabe en una extensión de la lista blanca —`png·jpg·jpeg·gif·webp·avif·bmp·tif·tiff` + `mp4·mov·webm·mpeg·mpg`— tras quitar el query string. En la práctica no salta, porque la extensión la deriva `local.storage.ts` del magic-number del fichero; pero es una sexta forma de recibir un 400 y conviene tenerla escrita.
 >
-> Mandar sólo la URL en `value[0].image[]` devuelve **400**. Por eso el campo guarda el objeto entero que devuelve `POST /public/v1/upload` (`public.integrations.controller.ts:92-97` → `mediaService.saveFile`), no una lista de URLs:
+> Mandar sólo la URL en `value[0].image[]` devuelve **400**. Por eso el campo guarda el objeto entero que devuelve `POST /public/v1/upload` (`uploadSimple` de `public.integrations.controller.ts` → `mediaService.saveFile`), no una lista de URLs:
 >
 > ```json
 > [{"id":"…","path":"https://postiz.dustincalderon.com/uploads/…"}]
@@ -461,7 +461,7 @@ Por defecto, `programar`.
 > **No contradice "nunca se aprueba en Postiz" (§6).** Se aprueba siempre en Notion: una fila en `Listo` con `modo = programar` está aprobada, y una en `borrador` se aprueba pasando `modo` a `programar` —así se aprueban las réplicas (§8)—. `Status` no aprueba un borrador. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
 > ### ⚠️ Un borrador **no pasa por la validación del servidor**
-> `checkValidity`, los ajustes y el límite de 2200 caracteres se comprueban **sólo** dentro de `if (body.type !== 'draft')` (§4.2, `public.integrations.controller.ts:267-279`). Un `borrador` entra con lo único que se mira siempre: que no esté vacío del todo.
+> `checkValidity`, los ajustes y el límite de 2200 caracteres se comprueban **sólo** dentro de `if (body.type !== 'draft')` (§4.2, `createPost` de `public.integrations.controller.ts`). Un `borrador` entra con lo único que se mira siempre: que no esté vacío del todo.
 >
 > Consecuencia: una pieza que en `borrador` se crea sin quejarse puede **fallar al pasarla a `programar`**. El dry-run editorial no es un dry-run técnico. Las validaciones de n8n (§9.2) sí corren en ambos casos, y son las que atrapan casi todo.
 
@@ -473,12 +473,12 @@ Se añaden a la tabla el día que se necesiten. Añadir una propiedad en Notion 
 |---|---|---|---|
 | `is_trial_reel` | Checkbox | `settings.is_trial_reel` | **Exactamente 1 media, debe ser vídeo, y `Tipo` ≠ `Historia`** — ver abajo dónde se comprueba cada una |
 | `graduation_strategy` | Select | `settings.graduation_strategy` | `MANUAL`·`SS_PERFORMANCE`. Sólo con trial reel |
-| `thumbnail_seconds` | Number | `image[].thumbnailTimestamp` | **No declarado en `MediaDto`** — sobrevive porque el ValidationPipe no usa `whitelist` (`main.ts:53-57`). Frágil ante merges. Tampoco se envía en stories |
+| `thumbnail_seconds` | Number | `image[].thumbnailTimestamp` | **No declarado en `MediaDto`** — sobrevive porque el ValidationPipe no usa `whitelist` (`useGlobalPipes` en `apps/backend/src/main.ts`). Frágil ante merges. Tampoco se envía en stories |
 
 > **`audio_id` no está en la lista a propósito.** Con `instagram-standalone` el parámetro se descarta en silencio (§4.9). Exponerlo en Notion sería ofrecer un botón que no hace nada.
 
 > ### ⚠️ Las tres reglas del trial reel no se comprueban en el mismo sitio
-> Leer sólo el código de Postiz lleva a la conclusión equivocada. `instagram.standalone.provider.ts:53-63` valida **dos**: `'Trial Reels can only have one video'` y `'Trial Reels must be a video'`. La tercera **no está ahí**: `instagram.provider.ts:631` añade `trial_params` aunque `isStory` sea `true`, sin guarda.
+> Leer sólo el código de Postiz lleva a la conclusión equivocada. `checkValidity` de `instagram.standalone.provider.ts` valida **dos**: `'Trial Reels can only have one video'` y `'Trial Reels must be a video'`. La tercera **no está ahí**: `trialParams`, en `post()` de `instagram.provider.ts`, añade `trial_params` aunque `isStory` sea `true`, sin guarda.
 >
 > Quien la comprueba es **el subflow de n8n**, antes de llegar a Postiz, con el motivo `trial reel: no puede ser una Historia`. Verificado por `prueba-trial-reels.py` (12/12 el 2026-08-05), que cubre las tres.
 >
@@ -488,7 +488,7 @@ Se añaden a la tabla el día que se necesiten. Añadir una propiedad en Notion 
 
 Una pieza compartida entre cuentas es **un solo post**: publica `cuenta` y las demás aparecen como colaboradoras. Eso mantiene el modelo 1:1 con Postiz —un post, un ID, un estado— y evita cualquier fan-out.
 
-`instagram.provider.ts:640-645` manda a Meta los `label` como usernames:
+`post()` de `instagram.provider.ts` manda a Meta los `label` como usernames:
 
 ```ts
 const collaborators =
@@ -500,7 +500,7 @@ const collaborators =
 |---|---|---|
 | Post de imagen única | ✅ Sí | — |
 | Reel | ✅ Sí | — |
-| **Carrusel** | ❌ **No** | Postiz los manda en cada lámina y Meta los rechaza ahí (`instagram.provider.ts:381-386` traduce el error). La referencia de Meta (`IG User Media`, parámetro `collaborators`) sí los admite en carruseles, en el contenedor del carrusel |
+| **Carrusel** | ❌ **No** | Postiz los manda en cada lámina y Meta los rechaza ahí (`handleErrors` de `instagram.provider.ts` traduce el error). La referencia de Meta (`IG User Media`, parámetro `collaborators`) sí los admite en carruseles, en el contenedor del carrusel |
 | **Story** | ❌ **No** | El código los omite (`!isStory`) |
 
 > ### ⚠️ Un carrusel o una story compartidos son filas separadas
@@ -510,17 +510,17 @@ const collaborators =
 
 **Los colaboradores son usernames de Instagram, no canales de Postiz.** No hace falta que esas cuentas estén conectadas a Postiz ni que existan en la tabla de §7.2.1.
 
-### 7.3 Los hashtags van en el primer comentario — gratis
+### 7.3 El primer comentario — gratis
 
 `value` es un **array** (`PostContent[]`, mínimo 1). `value[0]` es el post; **`value[1..n]` son comentarios**, cada uno con su `content`, sus `image[]` y un `delay` opcional.
 
-Es decir: publicar los hashtags como primer comentario —práctica estándar en Instagram— **no requiere ningún desarrollo**. Es mandar un segundo elemento en `value`.
+Es decir: publicar un primer comentario **no requiere ningún desarrollo**. Es mandar un segundo elemento en `value`.
 
 Por eso `first_comment` es un campo propio y no parte de `copy`: es una decisión editorial distinta y conviene poder verla y editarla por separado.
 
 > **Dos precisiones verificadas:**
-> - **Las imágenes de un comentario se ignoran en Instagram.** `instagram.provider.ts:820-860` sólo manda `message=` a `/comments`. Un comentario con ficheros publica sólo el texto.
-> - **`delay` está en minutos**, no en segundos ni ms: `post.workflow.v1.0.5.ts:179-180` hace `sleep(60000 * delay)`.
+> - **Las imágenes de un comentario se ignoran en Instagram.** `comment()` de `instagram.provider.ts` sólo manda `message=` a `/comments`. Un comentario con ficheros publica sólo el texto.
+> - **`delay` está en minutos**, no en segundos ni ms: `post.workflow.v1.0.5.ts` hace `sleep(60000 * delay)`.
 
 ### 7.4 Reglas de validación previas al envío
 
@@ -530,11 +530,11 @@ El worker las comprueba antes de gastar una llamada. Todas verificadas en `insta
 
 | Regla | ¿La para Postiz? | Dónde |
 |---|---|---|
-| Al menos 1 media | ✅ Sí\* | `instagram.standalone.provider.ts:50-52` |
-| Trial reel: 1 media y vídeo | ✅ Sí\* | `instagram.standalone.provider.ts:53-63` |
+| Al menos 1 media | ✅ Sí\* | `checkValidity` de `instagram.standalone.provider.ts` |
+| Trial reel: 1 media y vídeo | ✅ Sí\* | `checkValidity` de `instagram.standalone.provider.ts` |
 | **Máximo 10 medias** | ❌ **No** | El provider normal sí, el standalone **no**. Llega a Meta |
-| **Carrusel: mínimo 2 medias** | ❌ No | Error de Instagram, traducido en `instagram.provider.ts:362-367` |
-| **Colaboradores en carrusel** | ❌ No | Error de Meta porque Postiz los manda en cada lámina (§7.2.4), traducido en `instagram.provider.ts:381-386` |
+| **Carrusel: mínimo 2 medias** | ❌ No | Error de Instagram, traducido en `handleErrors` de `instagram.provider.ts` |
+| **Colaboradores en carrusel** | ❌ No | Error de Meta porque Postiz los manda en cada lámina (§7.2.4), traducido en `handleErrors` de `instagram.provider.ts` |
 | **Colaboradores en story** | ❌ No | Se **descartan en silencio** (`!isStory`, sin error) |
 | **Audio** | ❌ No | Se **descarta en silencio**: exige `graph.facebook.com` (§4.9) |
 
@@ -551,13 +551,13 @@ El worker las comprueba antes de gastar una llamada. Todas verificadas en `insta
 
 ### 7.5 Zona horaria — decidir y probar
 
-**Sí hay conversión, y ahí está la bomba.** `posts.repository.ts:527` persiste con:
+**Sí hay conversión, y ahí está la bomba.** `writePost` de `posts.repository.ts` persiste con:
 
 ```ts
 publishDate: dayjs(date).toDate()
 ```
 
-`dayjs(string)` sin offset explícito parsea en la **zona local del proceso backend**, no en UTC. Y el DTO sólo exige `@IsDateString()` (`create.post.dto.ts:110-112`), que acepta tanto `2026-08-10T19:00:00` como `2026-08-10T19:00:00+02:00`.
+`dayjs(string)` sin offset explícito parsea en la **zona local del proceso backend**, no en UTC. Y el DTO sólo exige `@IsDateString()` (campo `date` de `create.post.dto.ts`), que acepta tanto `2026-08-10T19:00:00` como `2026-08-10T19:00:00+02:00`.
 
 **Mandar siempre offset explícito.** Si n8n envía una fecha sin zona, el resultado depende del `TZ` del contenedor de Postiz — y cambia solo si algún día se recrea con otra configuración.
 
@@ -628,7 +628,7 @@ Los nodos viven en n8n, no en git; `planificar.py`, en Instalar-Home-Server. La 
 
 | Qué | Dónde | Cómo se lee |
 |---|---|---|
-| Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n: las de los últimos **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server) o las **10 000** más recientes (`EXECUTIONS_DATA_PRUNE_MAX_COUNT`, por defecto), lo que llegue antes. Cada batería de pruebas gasta muchas: lanzarla a menudo acorta el historial | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
+| Cada error escrito en una fila, y cada workflow que falló entero (token, red) | Ejecuciones de n8n: las de los últimos **90 días** (`EXECUTIONS_DATA_MAX_AGE=2160` en el `docker-compose.yml` de Instalar-Home-Server), sin tope por número (`EXECUTIONS_DATA_PRUNE_MAX_COUNT=0`): el tope era de todos los workflows a la vez y uno que fallara en bucle desplazaba el historial de los demás | [`scripts/errores-pipeline.py`](./scripts/errores-pipeline.py) en el Beelink: una línea por error, sin las filas de la batería |
 | Los fallos al publicar | Tabla `Errors` de Postiz (`postiz_db`) | `SELECT "createdAt", platform, message FROM "Errors" ORDER BY 1;` |
 | El archivo en Drive | `/var/log/postiz-archivo.log`, 8 semanas de rotación | [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) |
 | Cada pasada de la réplica de carruseles, con las filas que mandó a `Error` | `~/.local/state/carrusel-ig/replicar.log` en el Beelink | `tail` del log; lo escribe `replicar.sh` |
@@ -895,7 +895,7 @@ n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, 
 >
 > Por eso la retirada (§9.7) hace además una **pasada de recuperación**: para toda fila viva (`Listo`, `Programado` o `En Postiz (borrador)`) con post, `modo` distinto de `borrador` y la `Fecha` pasada hace más de 30 minutos, consulta el estado real en Postiz y corrige: `Publicado` con su enlace si salió; `Error` con su motivo si falló, si Postiz ya no tiene el post o si seguía como borrador porque se aprobó tarde. Es barato —va incluido en el `GET` que ya hace la retirada— y es lo único que evita que una fila con la fecha pasada se quede como estaba para siempre: el sync ya no la toca porque tiene post.
 
-> **`❌ release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration}]` (`posts.service.ts:927`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Si el webhook no está montado, ese campo se queda vacío para siempre.
+> **`❌ release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration}]` (`posts.service.ts`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Si el webhook no está montado, ese campo se queda vacío para siempre.
 
 ### 9.5 Por qué borrar y recrear, y no actualizar
 
@@ -905,8 +905,8 @@ Es seguro por §4.8: `deletePost` termina el workflow de Temporal asociado.
 
 Y **no pone en riesgo los assets** — pero por una razón distinta a la que parece:
 
-- El **Step 2** de la limpieza cuenta los posts soft-deleted como prueba de uso, y eso **convierte el media en candidato a borrado**, no lo protege (`media.repository.ts:304-319`; el comentario del propio código lo dice).
-- Quien **protege** es el **Step 3** (`media.repository.ts:338-350`), que exige `p."deletedAt" IS NULL`.
+- El **Step 2** de la limpieza cuenta los posts soft-deleted como prueba de uso, y eso **convierte el media en candidato a borrado**, no lo protege (`findStalePublishedMedia` de `media.repository.ts`; el comentario del propio código lo dice).
+- Quien **protege** es el **Step 3** (`findStalePublishedMedia` de `media.repository.ts`), que exige `p."deletedAt" IS NULL`.
 
 Un post recreado está vivo y sin borrar, luego protege sus ficheros. La conclusión se sostiene; **el razonamiento intuitivo es el contrario del que aplica el código**, y conviene tenerlo escrito para no equivocarse en el próximo cambio.
 
@@ -986,7 +986,7 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
 > **La retirada sólo toca `API`.** Comprobado: con el post de prueba reclamado, la pasada devuelve «nada que hacer» y el post `WEB` sigue intacto; al vaciar `Status`, se lleva el de la API —y su comentario— y sigue sin tocar el `WEB`.
 
 > ### ⚠️ El endpoint no filtra por estado
-> `posts.repository.ts:129-172` **no filtra por `state`**: devuelve también `PUBLISHED`, `ERROR` y `DRAFT`. Y con `intervalInDays` no nulo puede devolver posts **fuera de la ventana** (`:152-157`).
+> `getPosts` de `posts.repository.ts` **no filtra por `state`**: devuelve también `PUBLISHED`, `ERROR` y `DRAFT`. Y con `intervalInDays` no nulo puede devolver posts **fuera de la ventana** (la rama `intervalInDays: { not: null }`).
 >
 > Si la retirada borrase todo lo que no reconoce, **borraría posts ya publicados**. El filtro por estado lo tiene que hacer n8n.
 
@@ -1044,7 +1044,7 @@ Ejemplo de la forma exacta del cuerpo, para una de las tres cuentas. *(La fecha 
 | `settings.__type` | `@IsIn(...)` | **`instagram-standalone`**, no `instagram` |
 | `settings.post_type` | `@IsDefined()` | `post` o `story` |
 
-> **`__type` decide qué provider resuelve.** `posts.service.ts:883-885` hace `getSocialIntegration(settings.__type)`. Poner `instagram` en una cuenta `instagram-standalone` resolvería el provider equivocado, con otras validaciones y otro host de Meta (§4.9).
+> **`__type` decide qué provider resuelve.** `createPost` de `posts.service.ts` hace `getSocialIntegration(settings.__type)`. Poner `instagram` en una cuenta `instagram-standalone` resolvería el provider equivocado, con otras validaciones y otro host de Meta (§4.9).
 
 > **`value[0].image[]` necesita `id` y `path`.** Sólo la URL da 400 (§7.2). El `id` sale de la respuesta de `POST /public/v1/upload`.
 
@@ -1063,7 +1063,7 @@ Su valor es el **id de la página de Notion**, tal cual lo devuelve la API (con 
 | `DELETE /posts/:id` | **200** | `{"error":true}` ⚠️ |
 
 > ### ⚠️ `DELETE` devuelve `{"error":true}` aunque funcione
-> Confirmado ejecutándolo: el post y su comentario quedaron correctamente soft-deleted, y aun así la respuesta fue `{"error":true}` con 200. `posts.service.ts:683` devuelve eso siempre.
+> Confirmado ejecutándolo: el post y su comentario quedaron correctamente soft-deleted, y aun así la respuesta fue `{"error":true}` con 200. `deletePost` de `posts.service.ts` devuelve eso siempre.
 >
 > **n8n no puede usar el cuerpo como señal de éxito.** Si necesita certeza, tiene que releer el estado; en la práctica basta con no tratar esa respuesta como fallo.
 
@@ -1077,7 +1077,7 @@ El contenedor de Postiz corre en **UTC** (`TZ` vacío) y `dayjs(date).toDate()` 
 
 #### El comentario funciona
 
-`value[1]` creó un `Post` hijo con `parentPostId` no nulo y **la misma `publishDate`**. Los hashtags en primer comentario (§7.3) están confirmados en la práctica, no sólo en el código.
+`value[1]` creó un `Post` hijo con `parentPostId` no nulo y **la misma `publishDate`**. El primer comentario (§7.3) está confirmado en la práctica, no sólo en el código.
 
 ### 9.9 La ventana de 15 días
 
@@ -1251,7 +1251,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 |---|---|
 | `post.workflow.v1.0.6.ts` | `apps/orchestrator/src/workflows/post-workflows/` |
 | Export de la versión | `apps/orchestrator/src/workflows/index.ts` |
-| Arranque de `postWorkflowV106` | `posts.service.ts:729` |
+| Arranque de `postWorkflowV106` | `startWorkflow` de `posts.service.ts` |
 | `releaseId` + `error` en el payload del webhook | `posts.repository.ts` → `getPostByForWebhookId` |
 | Webhook en los 5 caminos previos al bucle | `post.workflow.v1.0.6.ts` |
 | **`DELETE /public/v1/media/:id`** | `public.integrations.controller.ts` |
@@ -1265,7 +1265,7 @@ Esta sección existe para que el plan no vuelva a crecer. Cada línea fue consid
 >
 > Editar una versión existente **sólo es seguro si no hay ninguna ejecución suya corriendo** — se comprueba en Temporal antes de tocarla. Un post programado mantiene su workflow vivo desde que se crea hasta que publica, así que puede haber ejecuciones en vuelo durante semanas.
 >
-> Editar un post desde la UI reinicia su workflow (`posts.service.ts:729`), y entonces pasa a arrancar con la versión actual.
+> Editar un post desde la UI reinicia su workflow (`startWorkflow` de `posts.service.ts`), y entonces pasa a arrancar con la versión actual.
 
 ### 14.2 En Notion · `collection://186a2405-a123-81dc-832f-000b82a65c0c`
 
@@ -1335,7 +1335,7 @@ El planificador `k3QqOu4nQJGJMXuO` **se borró**: lo sustituye `eKxZPM4zjwhNb3vf
 Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH`, `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_REPLICAR_BUTTON_PATH` (el botón «Replicar»).
 
 > ### Por qué el receptor lleva el secreto en la URL y no en una cabecera
-> `post.activity.ts:329-335` manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
+> `sendWebhooks` (`post.activity.ts`) manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro. El valor está en `/opt/homeserver/.env` como `N8N_POSTIZ_WEBHOOK_PATH`.
 
 **Copia durable:** en `/opt/homeserver/n8n-workflows/` (modo `600`), los cuatro workflows del pipeline como `postiz-<id>.json` y el de la réplica como `carruseles-<id>.json`. Al cambiar un workflow en n8n se vuelve a exportar su copia. **No van a este repositorio**: el receptor lleva su ruta secreta dentro, y esto es un fork de un proyecto público (§14.4).
 
@@ -1425,7 +1425,7 @@ Lo que el sistema **no** cubre hoy, para que nadie lo descubra a base de sorpres
 | Integraciones | las 4 conectadas: las 3 de Instagram y el TikTok |
 
 > ### ⚠️ Elegir integraciones concretas es una trampa a futuro
-> El filtro de `sendWebhooks` (`post.activity.ts:316-323`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas **sólo entrega cuando el `integrationId` coincide**.
+> El filtro de `sendWebhooks` (`post.activity.ts`) es `f.integrations.length === 0 || f.integrations.some(...)`. Con integraciones concretas **sólo entrega cuando el `integrationId` coincide**.
 >
 > Hoy están marcadas las cuatro que existen. **El día que se conecte una quinta cuenta habrá que añadirla aquí a mano, o sus avisos no llegarán y no lo dirá nadie.** Con la opción «todas las integraciones» eso no pasa; merece la pena cambiarlo la próxima vez que se conecte una cuenta.
 >
