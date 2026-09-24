@@ -5,7 +5,7 @@
 # y pueden pisarse: un Error con datos viejos encima del resultado de la otra,
 # o una edicion que no llega a Postiz. El sync lo pregunta al empezar y espera
 # mientras la respuesta no sea 0, asi que las pasadas van de una en una, en el
-# orden en que llegaron (CONTENT_PIPELINE_NOTION_POSTIZ.md §9.1).
+# orden en que llegaron (CONTENT_PIPELINE_SYNC.md §1).
 #
 # Uso: turno-sync.sh <id de la ejecucion>
 # Salida: un numero por stdout. Solo lee la base de n8n.

@@ -8,7 +8,7 @@
 #   read -rs "T?Token de Notion: " && echo && printf "%s" "$T" | \
 #     ssh dchomeserver "bash /opt/repos/postiz-fork/docs/architecture/scripts/rotar-token-notion.sh"; unset T
 #
-# Los dos sitios, y quién lee cada uno (§14.4 de CONTENT_PIPELINE_NOTION_POSTIZ.md):
+# Los dos sitios, y quién lee cada uno (§2 de docs/reference/CONTENT_PIPELINE_INVENTARIO.md):
 #   1. Credencial de n8n 5rCv9a6s5FyI0swq (cabecera Authorization) → sync, retirada y receptor.
 #   2. NOTION_API_KEY en /opt/homeserver/.env → archivador de Drive, pruebas y réplica de carruseles.
 # No deja copias: el token viejo ya no sirve y las .bak con secretos son un riesgo.

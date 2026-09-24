@@ -121,7 +121,7 @@ y sale como «saltar» en vez de `Error` — lo contrario de la regla.
 
 Y el margen lleva un **`Y ya tiene ❌ postiz_post_id`** que no es adorno: sin él, una fila
 nueva aprobada para dentro de 2 h se salta en cada pasada —la fecha sólo se acerca— y
-nunca llega a crearse. Protege el borrar-y-recrear, no el crear (§9.3 del plan).
+nunca llega a crearse. Protege el borrar-y-recrear, no el crear ([CONTENT_PIPELINE_SYNC.md](./CONTENT_PIPELINE_SYNC.md) §3).
 
 ```mermaid
 flowchart TD
@@ -434,7 +434,7 @@ flowchart TD
 
     subgraph EXT["☁️ Fuera del repo"]
         E1["n8n · 4 workflows del pipeline + la réplica"]
-        E2["Notion · propiedades, 3 vistas y 2 botones (§14.2)"]
+        E2["Notion · propiedades, 3 vistas y 2 botones (CONTENT_PIPELINE_NOTION_SCHEMA.md §8)"]
         E3["Postiz · webhook registrado"]
     end
 

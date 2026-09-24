@@ -1,7 +1,7 @@
 # Archivo de medios en Google Drive
 
 > **Qué es esto:** las dos pasadas nocturnas que copian a Google Drive los medios de Postiz —un espejo del disco entero y un archivo ordenado de lo publicado—, y por qué están hechas así.
-> **Relacionado:** [CONTENT_PIPELINE_NOTION_POSTIZ.md](./CONTENT_PIPELINE_NOTION_POSTIZ.md) §4.7 · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
+> **Relacionado:** [CONTENT_PIPELINE_POSTIZ_FORK.md](./CONTENT_PIPELINE_POSTIZ_FORK.md) §7 · [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md)
 
 ## 1. Por qué existe
 

@@ -25,7 +25,7 @@ def api(u, d=None, m=None, h=None, raw=False):
 
 def hit(url, body="{}", hdr=None):
     # El User-Agent NO es opcional: Cloudflare bloquea `Python-urllib` en este
-    # dominio y devuelve 403 sin que la peticion llegue a n8n (§4.1). Sin esto
+    # dominio y devuelve 403 sin que la peticion llegue a n8n (CONTENT_PIPELINE_POSTIZ_FORK.md §1). Sin esto
     # la bateria entera falla —y los checks que esperan 403 PASAN por el motivo
     # equivocado, que es peor.
     h = {"Content-Type": "application/json", "User-Agent": "curl/8.5.0"}
