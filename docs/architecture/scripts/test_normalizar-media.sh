@@ -88,6 +88,10 @@ echo "== foto WebP -> JPEG"
 ffmpeg -v error -f lavfi -i testsrc2=s=800x1000 -frames:v 1 "$T/foto.webp"
 convertir foto.webp && es codec "$(sonda "$SALIDA" "$v.codec_name")" mjpeg
 
+echo "== foto GIF -> JPEG"
+ffmpeg -v error -f lavfi -i testsrc2=s=800x1000 -frames:v 1 "$T/foto.gif"
+convertir foto.gif && es codec "$(sonda "$SALIDA" "$v.codec_name")" mjpeg
+
 echo "== foto AVIF -> JPEG"
 ffmpeg -v error -f lavfi -i testsrc2=s=800x1000 -frames:v 1 -c:v libaom-av1 "$T/foto.avif"
 convertir foto.avif && es codec "$(sonda "$SALIDA" "$v.codec_name")" mjpeg
