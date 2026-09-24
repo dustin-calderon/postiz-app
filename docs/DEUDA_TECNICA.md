@@ -16,11 +16,13 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 ---
 
-## Credenciales generadas con `Math.random`: hay que rotarlas
+## Credenciales generadas con `Math.random`: no se rotan, decisión de Dustin
 
-**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. Además, `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` un `makeId(10)`, que son diez salidas de ese mismo generador por petición. Quien las recogiera en bloque mientras vivía un proceso del backend podía reconstruir su estado y predecir las credenciales que ese proceso generara. No se puede demostrar que nadie lo hiciera. Las credenciales nuevas ya salen de `crypto`, y lo que `/t` siga filtrando ya no predice nada.
+**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` diez salidas de ese mismo generador por petición. Con suficientes, se reconstruye el estado del generador y, como es invertible, también sus salidas anteriores: quien las recogiera mientras vivía el proceso que creó una clave podía calcularla. No se puede acotar cuánto vivieron esos procesos ni desde cuándo `/t` era alcanzable, así que no se puede demostrar que nadie lo hiciera. Las tres claves vivas (Test y dos de CITEM) son de antes del arreglo; las nuevas ya salen de `crypto`, y `/t` pide Access.
 
-**Cómo se cierra.** Regenerando las API keys que había antes del despliegue de `8fb61ee4` (pantalla de API pública de cada organización, `POST /user/api-key/rotate`) y actualizando en n8n la de la organización que usa. La incidencia `postiz-api-keys` del bus de Instalar-Home-Server guarda la huella de cada una y el comando que la calcula; el triage la da por resuelta cuando ninguna coincide. `updatedAt` no sirve de prueba: cambia con cualquier edición de la organización.
+**Decisión.** Dustin decide el 2026-09-24 mantenerlas: acepta ese riesgo. **No se vuelve a proponer rotarlas** salvo por lo de abajo.
+
+**Qué la reabre.** Un post, un canal conectado o una llamada a `/api/public/v1` que nadie reconozca. Entonces se rotan: pantalla de API pública de cada organización (`POST /user/api-key/rotate`) y la nueva de CITEM en su credencial de n8n.
 
 ---
 
