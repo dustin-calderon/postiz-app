@@ -151,7 +151,7 @@ healthcheck:
 
 Vive en `/opt/homeserver/postiz/docker-compose.yml` (copia previa:
 `docker-compose.yml.bak-20260805-healthcheck`). Se usa `node -e` porque la
-imagen no trae `wget` ni `curl`. El compose ya no lleva contraseñas: las de
+imagen no trae `wget` ni `curl`. El compose no lleva contraseñas: las de
 las bases las lee Compose del `.env` de al lado (`POSTIZ_DB_PASSWORD`,
 `TEMPORAL_DB_PASSWORD`), y las de la app están en `postiz.env`. Esos dos y el
 `.bak` van en `600`, como el `.env` del homeserver, y ninguno va a git. `build.sh`
