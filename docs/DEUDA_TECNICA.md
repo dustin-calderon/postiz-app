@@ -79,3 +79,15 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 **Qué la vuelve urgente.** Que el lint tenga que hacer de puerta (CI, o antes de desplegar). Hoy no puede.
 
 **Cómo se cierra.** Borrar `usePageVisibility`, excluir `apps/frontend/public/` y decidir si las reglas de React Compiler son error o aviso. Luego, limpiar las devDependencies y los `.eslintrc.json` que sobran, y arreglar lo que quede hasta que `npx eslint apps libraries` salga con 0.
+
+---
+
+## Restos en la base de Postiz: un nombre de canal viejo y dos organizaciones vacías
+
+**Qué pasa.** La integración de Instagram de CITEM (`cmqjqapu00003mw7yrudcwklj`) se llama en Postiz «CITEM Conservatorio Iberoamericano de Teatro Musical», un nombre retirado del ecosistema: la cuenta real es `citem.teatromusical` · «CITEM - Ecosistema Digital de Teatro Musical». Postiz cachea el nombre al conectar la integración y no lo refresca, así que lo arrastra cualquier informe o `post.txt` del archivo en Drive. Además, `Organization` tiene tres filas: la del pipeline (`CITEM`, `30c506a6…`, con las cuatro integraciones) y dos sin contenido (`CITEM`, `8019c9c4…`, y `Test`, `4d1bbcd5…`), cada una con su API key viva.
+
+**Por qué se aplaza.** Nada del pipeline depende de ello: publica por el id de la integración y con la API key de `30c506a6…`.
+
+**Qué la vuelve urgente.** Que un informe con el nombre viejo llegue a alguien de fuera, o lo que reabre la entrada de las credenciales de `Math.random`.
+
+**Cómo se cierra.** El nombre, reconectando la integración de Instagram de CITEM desde la UI de Postiz (no editando la base). Las dos organizaciones, retirándolas después de comprobar que no tienen posts, medios ni integraciones.
