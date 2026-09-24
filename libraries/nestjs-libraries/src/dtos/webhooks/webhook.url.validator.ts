@@ -46,12 +46,19 @@ export function isBlockedIp(ip: string): boolean {
     return isBlockedIPv4(ip);
   }
   if (version === 6) {
-    // IPv4-mapped IPv6 (::ffff:a.b.c.d) — extract and check as IPv4
-    const mapped = ip.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    // The URL parser rewrites [::ffff:127.0.0.1] as [::ffff:7f00:1], so an
+    // IPv4-mapped address reaches us in either form. Canonicalize it the same
+    // way and check the embedded IPv4.
+    const canonical = new URL(`http://[${ip}]`).hostname.slice(1, -1);
+    const mapped = canonical.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
     if (mapped) {
-      return isBlockedIPv4(mapped[1]);
+      const high = parseInt(mapped[1], 16);
+      const low = parseInt(mapped[2], 16);
+      return isBlockedIPv4(
+        `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`
+      );
     }
-    return isBlockedIPv6(ip);
+    return isBlockedIPv6(canonical);
   }
   return true;
 }
