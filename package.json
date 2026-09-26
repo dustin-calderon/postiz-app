@@ -339,6 +339,8 @@
       "path-to-regexp@^8": "^8.4.0",
       "prismjs@^1": "^1.30.0",
       "qs@^6": "^6.16.0",
+      "image-size@^2": "^2.0.3",
+      "metro@^0.83": "^0.83.8",
       "@crxjs/vite-plugin>rollup": "^2.80.0",
       "viem>ws": "^8.21.0",
       "engine.io-client>ws": "^8.21.0"
