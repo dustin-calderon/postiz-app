@@ -1,3 +1,53 @@
 packages:
   - apps/*
   - libraries/*
+
+# Ajustes de pnpm. Viven aquí y no en el campo `pnpm` de package.json porque
+# pnpm 11 ya no lee ese campo y los perdería sin avisar.
+#
+# En `overrides`, los `$paquete` atan una dependencia a la versión que declara
+# package.json. Los demás son SUELOS (`^x.y.z`), nunca un número exacto: un
+# número exacto envejece solo y acaba sujetando la versión vieja. Cada suelo
+# sube un paquete que otra dependencia deja por debajo de su arreglo de
+# seguridad (.fork/STRATEGY.md, «Qué se trae de upstream»).
+overrides:
+  next: '$next'
+  react: '$react'
+  react-dom: '$react-dom'
+  '@types/react': '$@types/react'
+  '@types/react-dom': '$@types/react-dom'
+  protobufjs: '^7.6.5'
+  shell-quote: '^1.11.0'
+  'request>form-data': '^2.5.6'
+  handlebars: '^4.7.10'
+  '@nestjs/core@^11': '^11.2.5'
+  '@opentelemetry/core@^2': '^2.8.0'
+  '@opentelemetry/propagator-jaeger@^2': '^2.9.0'
+  '@aws-sdk/xml-builder>fast-xml-parser': '^5.7.0'
+  'file-type@^21': '^21.3.2'
+  'ip-address@^10': '^10.3.1'
+  'js-yaml@^4': '^4.3.2'
+  'lodash@^4': '^4.18.0'
+  'multer@^2': '^2.3.0'
+  'path-to-regexp@^8': '^8.4.0'
+  'prismjs@^1': '^1.30.0'
+  'qs@^6': '^6.16.0'
+  'image-size@^2': '^2.0.3'
+  'proxy-addr@^2': '^2.0.8'
+  'metro@^0.83': '^0.83.8'
+  '@crxjs/vite-plugin>rollup': '^2.80.0'
+  'viem>ws': '^8.21.0'
+  'engine.io-client>ws': '^8.21.0'
+  '@fastify/busboy@^3': '^3.2.2'
+  'compression@^1': '^1.8.2'
+  'dompurify@^3': '^3.4.16'
+  'fast-copy@^3': '^3.1.0'
+  'fast-copy@^4': '^4.1.0'
+  'pbkdf2@^3': '^3.1.7'
+  'probe-image-size@^7': '^7.4.0'
+  'source-map-js@^1': '^1.2.2'
+  'graphql-yoga@^5': '^5.24.4'
+  '@graphql-yoga/plugin-defer-stream@^3': '^3.24.4'
+
+onlyBuiltDependencies:
+  - bcrypt
