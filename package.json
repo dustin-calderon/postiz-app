@@ -69,10 +69,10 @@
     "@modelcontextprotocol/sdk": "^1.22.0",
     "@nest-lab/throttler-storage-redis": "^1.2.0",
     "@nestjs/cli": "^11.0.21",
-    "@nestjs/common": "^11.1.21",
-    "@nestjs/core": "^11.1.21",
-    "@nestjs/microservices": "^11.1.21",
-    "@nestjs/platform-express": "^11.1.21",
+    "@nestjs/common": "^11.2.5",
+    "@nestjs/core": "^11.2.5",
+    "@nestjs/microservices": "^11.2.5",
+    "@nestjs/platform-express": "^11.2.5",
     "@nestjs/schedule": "^6.1.3",
     "@nestjs/swagger": "^11.4.3",
     "@nestjs/throttler": "^6.5.0",
@@ -154,7 +154,7 @@
     "class-validator": "^0.14.1",
     "class-validator-jsonschema": "^5.1.0",
     "clsx": "^2.1.0",
-    "compression": "^1.8.1",
+    "compression": "^1.8.2",
     "concat-stream": "^2.0.0",
     "cookie-parser": "^1.4.7",
     "copy-to-clipboard": "^3.3.3",
@@ -185,7 +185,7 @@
     "mime": "^3.0.0",
     "mime-types": "^2.1.35",
     "multer": "^2.3.0",
-    "music-metadata": "^7.14.0",
+    "music-metadata": "^11.16.0",
     "nestjs-command": "^3.1.4",
     "nestjs-real-ip": "^3.0.1",
     "nestjs-temporal-core": "^3.2.0",
@@ -257,7 +257,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.32",
     "@nestjs/schematics": "^11.1.0",
-    "@nestjs/testing": "^11.1.21",
+    "@nestjs/testing": "^11.2.5",
     "@pmmmwh/react-refresh-webpack-plugin": "^0.5.7",
     "@svgr/webpack": "^8.0.1",
     "@swc-node/register": "1.9.2",
@@ -315,39 +315,5 @@
   "jest-junit": {
     "outputDirectory": "./reports",
     "outputName": "junit.xml"
-  },
-  "pnpm": {
-    "overrides": {
-      "next": "$next",
-      "react": "$react",
-      "react-dom": "$react-dom",
-      "@types/react": "$@types/react",
-      "@types/react-dom": "$@types/react-dom",
-      "protobufjs": "^7.6.5",
-      "shell-quote": "^1.11.0",
-      "request>form-data": "^2.5.6",
-      "handlebars": "^4.7.10",
-      "@nestjs/core@^11": "^11.1.18",
-      "@opentelemetry/core@^2": "^2.8.0",
-      "@opentelemetry/propagator-jaeger@^2": "^2.9.0",
-      "@aws-sdk/xml-builder>fast-xml-parser": "^5.7.0",
-      "file-type@^21": "^21.3.2",
-      "ip-address@^10": "^10.3.1",
-      "js-yaml@^4": "^4.3.2",
-      "lodash@^4": "^4.18.0",
-      "multer@^2": "^2.3.0",
-      "path-to-regexp@^8": "^8.4.0",
-      "prismjs@^1": "^1.30.0",
-      "qs@^6": "^6.16.0",
-      "image-size@^2": "^2.0.3",
-      "proxy-addr@^2": "^2.0.8",
-      "metro@^0.83": "^0.83.8",
-      "@crxjs/vite-plugin>rollup": "^2.80.0",
-      "viem>ws": "^8.21.0",
-      "engine.io-client>ws": "^8.21.0"
-    },
-    "onlyBuiltDependencies": [
-      "bcrypt"
-    ]
   }
 }
