@@ -17,6 +17,7 @@ import { Integration } from '@prisma/client';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 
 // Meta retires each Graph API version about two years after its release, and a
 // call to a retired version is served by the next oldest one. v25.0 is
@@ -326,6 +327,7 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
+  @DashboardFunction()
   async pages(accessToken: string) {
     const seenIds = new Set<string>();
     const allPages: any[] = [];
