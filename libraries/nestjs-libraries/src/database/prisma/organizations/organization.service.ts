@@ -80,9 +80,16 @@ export class OrganizationService {
   async inviteTeamMember(orgId: string, body: AddTeamMemberDto) {
     const timeLimit = dayjs().add(1, 'hour').format('YYYY-MM-DD HH:mm:ss');
     const id = makeId(5);
+    // only the invite fields, the body can carry undeclared properties
     const url =
       process.env.FRONTEND_URL +
-      `/?org=${AuthService.signJWT({ ...body, orgId, timeLimit, id })}`;
+      `/?org=${AuthService.signJWT({
+        email: body.email,
+        role: body.role,
+        orgId,
+        timeLimit,
+        id,
+      })}`;
     if (body.sendEmail) {
       await this._notificationsService.sendEmail(
         body.email,
