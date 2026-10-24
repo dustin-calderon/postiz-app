@@ -20,6 +20,7 @@ import { META_GRAPH_API_VERSION } from '@gitroom/nestjs-libraries/integrations/s
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { isVideo } from '@gitroom/helpers/utils/has.extension';
 import { checkInstagramMedia } from '@gitroom/nestjs-libraries/integrations/social/instagram.media.rules';
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 
 @Rules(
   "Instagram should have at least one attachment, if it's a story, it can have only one picture"
@@ -504,6 +505,7 @@ export class InstagramProvider
     };
   }
 
+  @DashboardFunction()
   async pages(token: string) {
     const [accessToken, userToken] = token.split('___');
     const seenPageIds = new Set<string>();

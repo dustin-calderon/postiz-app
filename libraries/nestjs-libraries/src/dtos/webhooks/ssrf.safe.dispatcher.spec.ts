@@ -111,6 +111,11 @@ describe('isBlockedIp', () => {
     // What the URL parser turns [::ffff:127.0.0.1] and [::ffff:10.0.0.1] into
     '::ffff:7f00:1',
     '::ffff:a00:1',
+    // 127.0.0.1 inside NAT64, 6to4 and IPv4-compatible, and site-local
+    '64:ff9b::7f00:1',
+    '2002:7f00:1::',
+    '::7f00:1',
+    'fec0::1',
   ])('blocks %s', (ip) => {
     expect(isBlockedIp(ip)).toBe(true);
   });
@@ -126,6 +131,7 @@ describe('isBlockedIp', () => {
     // Notion's signed file bucket
     '3.5.78.244',
     '::ffff:8.8.8.8',
+    '64:ff9b::808:808',
   ])('lets %s through', (ip) => {
     expect(isBlockedIp(ip)).toBe(false);
   });

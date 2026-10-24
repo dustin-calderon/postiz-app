@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join, normalize, sep } from 'node:path';
+import { DashboardFunction } from '@gitroom/nestjs-libraries/integrations/dashboard.function.decorator';
 
 const execFileAsync = promisify(execFile);
 
@@ -259,6 +260,7 @@ export abstract class SocialAbstract {
     }
   }
 
+  @DashboardFunction()
   public async mention(
     token: string,
     d: { query: string },
