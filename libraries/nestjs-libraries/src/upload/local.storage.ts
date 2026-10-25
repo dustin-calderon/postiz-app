@@ -6,6 +6,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'fs';
+import { resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
@@ -239,8 +240,16 @@ export class LocalStorage implements IUploadProvider {
       return;
     }
 
+    // Callers can pass a stored media name or path, so only a file inside the
+    // upload directory is ever deleted: resolve() collapses any `..` segments
+    // before the comparison
+    const localPath = resolve(diskPath);
+    if (!localPath.startsWith(resolve(String(this.uploadDirectory)) + sep)) {
+      throw new Error('Unsafe file path');
+    }
+
     return new Promise((resolve, reject) => {
-      unlink(diskPath, (err) => {
+      unlink(localPath, (err) => {
         if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
           // File already gone — not an error for cleanup
           resolve();

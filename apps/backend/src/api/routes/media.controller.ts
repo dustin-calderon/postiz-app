@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -117,6 +118,19 @@ export class MediaController {
     if (!name) {
       return false;
     }
+
+    // the uploader only sends the bare object name the bucket upload returned,
+    // anything else would make the stored path point outside the bucket
+    if (
+      !process.env.CLOUDFLARE_BUCKET_URL ||
+      typeof name !== 'string' ||
+      /[\\/]/.test(name) ||
+      name === '.' ||
+      name === '..'
+    ) {
+      throw new BadRequestException('Invalid file name');
+    }
+
     return this._mediaService.saveFile(
       org.id,
       name,

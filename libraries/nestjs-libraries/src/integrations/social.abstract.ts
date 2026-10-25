@@ -1,7 +1,10 @@
 import { timer } from '@gitroom/helpers/utils/timer';
 import { Integration } from '@prisma/client';
 import { ApplicationFailure } from '@temporalio/activity';
-import { readOrFetch } from '@gitroom/helpers/utils/read.or.fetch';
+import {
+  localMediaPath,
+  readOrFetch,
+} from '@gitroom/helpers/utils/read.or.fetch';
 import {
   getSsrfSafeAxios,
   getSsrfSafeDispatcher,
@@ -119,6 +122,23 @@ export abstract class SocialAbstract {
   // axios with a user-influenced URL.
   protected getSsrfSafeAxios() {
     return getSsrfSafeAxios();
+  }
+
+  // Media that isn't a remote url is read from the worker's disk, and the
+  // stored path is user-influenced: only a file inside UPLOAD_DIRECTORY is
+  // ever handed to a reader.
+  protected localMediaPath(path: string, identifier = '') {
+    const filePath = localMediaPath(path);
+    if (!filePath) {
+      throw new BadBody(
+        identifier,
+        JSON.stringify({ path }),
+        Buffer.from('{}'),
+        'The media for this post is not in the upload directory, so it was not published'
+      );
+    }
+
+    return filePath;
   }
 
   /** Reads the pixel dimensions of an image via sharp (works for http or local paths). */
