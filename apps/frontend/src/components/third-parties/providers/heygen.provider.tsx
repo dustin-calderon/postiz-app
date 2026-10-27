@@ -12,7 +12,7 @@ import { FC, useCallback, useState } from 'react';
 import { deleteDialog } from '@gitroom/react/helpers/delete.dialog';
 import clsx from 'clsx';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { object, string } from 'zod';
+import { object, string, union, literal } from 'zod';
 import { Select } from '@gitroom/react/form/select';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 
@@ -121,6 +121,9 @@ const HeygenProviderComponent = () => {
         selectedVoice: string().min(1, 'Voice is required'),
         aspect_ratio: string().min(1, 'Aspect ratio is required'),
         captions: string().min(1, 'Captions is required'),
+        // Sin él en el esquema, zod lo quitaría al validar y el backend
+        // (heygen.provider.ts, sendData) mandaría todo como talking_photo.
+        type: union([literal('talking_photo'), literal('avatar')]),
       })
     ),
   });
