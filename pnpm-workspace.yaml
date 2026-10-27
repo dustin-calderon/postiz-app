@@ -49,6 +49,7 @@ overrides:
   'source-map-js@^1': '^1.2.2'
   'graphql-yoga@^5': '^5.24.4'
   '@graphql-yoga/plugin-defer-stream@^3': '^3.24.4'
+  'postcss-selector-parser@^6': '^6.1.5'
 
 onlyBuiltDependencies:
   - bcrypt
