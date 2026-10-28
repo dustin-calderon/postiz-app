@@ -157,11 +157,14 @@ las bases las lee Compose del `.env` de al lado (`POSTIZ_DB_PASSWORD`,
 `.bak` van en `600`, como el `.env` del homeserver, y ninguno va a git. `build.sh`
 y `desplegar.sh` cambian la imagen del compose con `sed -i`, que conserva el modo.
 
-> **`autoheal` no reinicia este contenedor.** Corre con
-> `AUTOHEAL_CONTAINER_LABEL=autoheal` y `postiz` no lleva esa etiqueta. Un
-> chequeo en rojo lo deja *unhealthy* y quieto — visible, pero sin bucle de
-> reinicios. Si algún día se quiere que se auto-reinicie, hay que añadir la
-> etiqueta a propósito.
+> **`autoheal` sí reinicia este contenedor.** Corre con
+> `AUTOHEAL_CONTAINER_LABEL=all` (ADR-006 de Instalar-Home-Server): vigila todo
+> contenedor en marcha con healthcheck salvo el que lleva `autoheal=False`, y
+> `postiz` no la lleva. Tras un reinicio no vuelve a ser candidato hasta agotar
+> el `start_period` y los reintentos del chequeo de arriba, así que un fallo que
+> no se cura da un reinicio cada pocos minutos, no un bucle ciego: cada uno llega
+> al bus de incidencias como `autoheal-postiz`, que lo agrupa en una sola para
+> el triage. Sacarlo de autoheal es añadirle `autoheal=False`, con su motivo.
 
 **Quién se entera si cae y quién lo arregla:** el monitor `Postiz` de Uptime
 Kuma encola la caída en el bus de incidencias como `kuma-postiz`. El triage la
