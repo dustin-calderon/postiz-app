@@ -516,6 +516,25 @@ export class PostsRepository {
   }
 
   /**
+   * How many of these post ids exist under another organization. The editor
+   * sends a client-made id (makeId) for a post that does not exist yet and the
+   * upsert creates it with its own id, so an unknown id is legitimate; only an
+   * id that belongs to someone else must be refused.
+   */
+  countPostsOfOtherOrganizations(orgId: string, ids: string[]) {
+    return this._post.model.post.count({
+      where: {
+        organizationId: {
+          not: orgId,
+        },
+        id: {
+          in: ids,
+        },
+      },
+    });
+  }
+
+  /**
    * The shared Prisma client. PrismaRepository<'post'>.model is typed as
    * Pick<PrismaService, 'post'> for DI ergonomics, but at runtime it IS the full
    * PrismaService, which extends PrismaClient. Same cast as media.repository.ts.
@@ -745,6 +764,7 @@ export class PostsRepository {
       ? (
           await db.post.findFirst({
             where: {
+              organizationId: orgId,
               group: body.group,
               deletedAt: null,
               parentPostId: null,
@@ -759,6 +779,7 @@ export class PostsRepository {
     if (body.group) {
       await db.post.updateMany({
         where: {
+          organizationId: orgId,
           group: body.group,
           deletedAt: null,
         },
