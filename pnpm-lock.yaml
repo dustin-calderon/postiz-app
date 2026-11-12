@@ -11,7 +11,7 @@ overrides:
   react-dom: 19.2.4
   '@types/react': 19.1.8
   '@types/react-dom': 19.1.6
-  protobufjs: ^7.6.5
+  protobufjs@^7: ^7.6.5
   shell-quote: ^1.11.0
   request>form-data: ^2.5.6
   handlebars: ^4.7.10
@@ -27,7 +27,7 @@ overrides:
   path-to-regexp@^8: ^8.4.0
   prismjs@^1: ^1.30.0
   qs@^6: ^6.16.1
-  node-forge@^1: ^1.4.1
+  node-forge@^1: ^1.4.3
   image-size@^2: ^2.0.3
   proxy-addr@^2: ^2.0.8
   metro@^0.83: ^0.83.8
@@ -180,7 +180,7 @@ importers:
         version: 10.78.0(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))
       '@sentry/nextjs':
         specifier: ^10.78.0
-        version: 10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(next@16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3))(react@19.2.4)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+        version: 10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(next@16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3))(react@19.2.4)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       '@sentry/profiling-node':
         specifier: ^10.78.0
         version: 10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))
@@ -209,20 +209,20 @@ importers:
         specifier: ^4.1.7
         version: 4.2.1
       '@temporalio/activity':
-        specifier: ^1.14.0
-        version: 1.15.0
+        specifier: ^1.25.0
+        version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@temporalio/client':
-        specifier: ^1.14.0
-        version: 1.15.0
+        specifier: ^1.25.0
+        version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@temporalio/common':
-        specifier: ^1.14.0
-        version: 1.15.0
+        specifier: ^1.25.0
+        version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@temporalio/worker':
-        specifier: ^1.14.0
-        version: 1.15.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(tslib@2.8.1)
+        specifier: ^1.25.0
+        version: 1.25.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(lightningcss@1.31.1)(long@5.3.2)(postcss@8.5.23)(protobufjs@8.8.1)(sharp@0.35.5(@types/node@18.16.9))(tslib@2.8.1)
       '@temporalio/workflow':
-        specifier: ^1.14.0
-        version: 1.15.0
+        specifier: ^1.25.0
+        version: 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       '@tiptap/extension-bold':
         specifier: ^3.30.5
         version: 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))
@@ -498,7 +498,7 @@ importers:
         version: 3.0.1(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))
       nestjs-temporal-core:
         specifier: ^3.2.0
-        version: 3.2.3(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@temporalio/client@1.15.0)(@temporalio/common@1.15.0)(@temporalio/worker@1.15.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(tslib@2.8.1))(@temporalio/workflow@1.15.0)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+        version: 3.2.3(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.1))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.1))(@temporalio/worker@1.25.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(lightningcss@1.31.1)(long@5.3.2)(postcss@8.5.23)(protobufjs@8.8.1)(sharp@0.35.5(@types/node@18.16.9))(tslib@2.8.1))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.1))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       next:
         specifier: 16.4.3
         version: 16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3)
@@ -703,7 +703,7 @@ importers:
         version: 11.2.7(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@nestjs/microservices@11.2.7)(@nestjs/platform-express@11.2.7)
       '@pmmmwh/react-refresh-webpack-plugin':
         specifier: ^0.5.7
-        version: 0.5.17(react-refresh@0.10.0)(type-fest@4.41.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+        version: 0.5.17(react-refresh@0.10.0)(type-fest@4.41.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       '@svgr/webpack':
         specifier: ^8.0.1
         version: 8.1.0(typescript@5.5.4)
@@ -2923,18 +2923,9 @@ packages:
     resolution: {integrity: sha512-j/EgVfZSzKA2lVeiZ0un8E2eVIqWa9Woyqta4A40ht1M93ui9CDVHU6pmphoQTpFa92BNbMVexXdOtMQk8LCjA==}
     engines: {node: '>=18.0.0'}
 
-  '@grpc/grpc-js@1.14.5':
-    resolution: {integrity: sha512-7VZM+SVdEcUUqSQeNI3zM8Qs/BhQKZndPo2h5VkYkAM8Iz0wJIa8mKV5ekQGqG8UUsnkQ0NMxIxwkIHYvj0qOw==}
-    engines: {node: '>=12.10.0'}
-
   '@grpc/grpc-js@1.14.7':
     resolution: {integrity: sha512-W4W/fcBMGRVtG6dW2c7cw2mnpS3hvbBd+oQXjh2iYFTZDk1JJmcNqkM5KSaPubQpamlUUurrlb7G1s9NJeERmQ==}
     engines: {node: '>=12.10.0'}
-
-  '@grpc/proto-loader@0.8.0':
-    resolution: {integrity: sha512-rc1hOQtjIWGxcxpb9aHAfLpIctjEnsDehj0DAiVfBlmT84uvR0uUtN2hEi/ecvWVjXUGf5qPF4qEgiLOx1YIMQ==}
-    engines: {node: '>=6'}
-    hasBin: true
 
   '@grpc/proto-loader@0.8.1':
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
@@ -8048,37 +8039,58 @@ packages:
   '@tanstack/virtual-core@3.13.21':
     resolution: {integrity: sha512-ww+fmLHyCbPSf7JNbWZP3g7wl6SdNo3ah5Aiw+0e9FDErkVHLKprYUrwTm7dF646FtEkN/KkAKPYezxpmvOjxw==}
 
-  '@temporalio/activity@1.15.0':
-    resolution: {integrity: sha512-kKEIrHMTsANiEpDVZd+v3OT6kU20UtcvAK7iibJNzQnoZUGC7XnqdKQlBuGYBxgpJzD9ppGgskXRczW+XU5Kng==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/activity@1.25.0':
+    resolution: {integrity: sha512-IBz6/pqfwlZpZcw2KBFSQa5iu7B9gH6/RUCI/VCqywP9gfj0KVs6rGVAQj1/48oY63eIU5WcAllWdbaRDWY1+A==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/client@1.15.0':
-    resolution: {integrity: sha512-SxTGqRIa2+Vy4P9+06ZpUf4u7ZZmOXfx/kr9XvNqAApLxTMKjTQIg5OH5Wt4JLUtIR7dFkuHIyhewdRyG+hSsQ==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/client@1.25.0':
+    resolution: {integrity: sha512-IbWlxzQiQg2fuIum+d2PkQWOGPVPyeN294sKdBCylKxVsGc1IoixXjWjEZ0dxVuYNFZq+16Vn9Fh2UNVDfXePA==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/common@1.15.0':
-    resolution: {integrity: sha512-tBfC3fdOExsNoS5krkMUXnaMtCRKj05Jts4+TH+cgHpbys68nslFvUQLqwPIw2x6155Divb9MF219a/75itbTg==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/common@1.25.0':
+    resolution: {integrity: sha512-R9q/5wJZLi47kktJ3GfGh+eMO2HleRxKQGDysCvoObdVjK7Q+F+Vq0M1EeMu4EMHQZdT9A4vgN5rQ9L8cTgU8w==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/core-bridge@1.15.0':
-    resolution: {integrity: sha512-Qdrs5zju5MiOwmERCWzQ6uHZwn1JaQk/ppS2UHbxqZndjbAEFPDU9KQqFLkxWAicHMy7+LGPnA4DpVOANGlTZA==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/core-bridge@1.25.0':
+    resolution: {integrity: sha512-4C7lOpBXo9nTTwuEZwlPWGEZy3dchSbEgp+HeX87EbovC4QlPf1Th9iWz7jcce0C9l/O3kaXfA34uPMGRu15DA==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/nexus@1.15.0':
-    resolution: {integrity: sha512-E6CdIjskkbK2aObxcb76Z4V3o1D3QDxEtsxmuHX5D7HEABuYGdV+oeOzDyxMlfeY9GyIM9Nvky4XCiSz2h2XRA==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/nexus@1.25.0':
+    resolution: {integrity: sha512-uUq7FK0WdCQcwj57Tt1wIeLc51fn8FgAPN6+hiFD1A/o+EDpao7YZ2A/holuJ9cjFZk4c9lswKJaNZYTznE2fw==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/proto@1.15.0':
-    resolution: {integrity: sha512-Awy4Fjzyba7Pg/CVZjjQ3x2CWkDL1qELyTZWcLlyjXq8bX694JVfBsmiMmF6tHn5/ySOIxDTcc0MSScZ0oKX5A==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/proto@1.25.0':
+    resolution: {integrity: sha512-cZF6C1F4ZHWrVwrDNW6hTB7HvBi1sofqPWxQrqJq0b9hPE21y5IU5rTNEUx3Ju6G03xqdpwdH0LECAul0KAi2Q==}
+    engines: {node: '>= 20.3.0'}
 
-  '@temporalio/worker@1.15.0':
-    resolution: {integrity: sha512-9e0AWP2OxYFgeztMdkoWYbDVqmNubreRkG7/frVKFT3xHdIOrFQ2W6Yomv61q3oKMXTIrpvjClHtiTjAUr70uA==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/worker@1.25.0':
+    resolution: {integrity: sha512-I4b/OwhDb/UhyoHLJDCnuKqROSlT95xHACRxOsg0UjH6qgcYCusch+9mLol1IN7ml2cNkSbnm+5hvzpVuywP3Q==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
-  '@temporalio/workflow@1.15.0':
-    resolution: {integrity: sha512-VaMhVtlA0hLLM/pna26vFSdn5W1Arq2+ccgItdbdRdZUa0X8eW2B7sl/PcUYQOWc4aMUGnvPATKUGUoFKyCxSg==}
-    engines: {node: '>= 20.0.0'}
+  '@temporalio/workflow@1.25.0':
+    resolution: {integrity: sha512-2Z5BvOtsfOHL3Dy+4cewXEHDu9NeseEn4FeaaitNwn704POgEfshz0zxyZB8ofxbna2P0wsC5l3rnYHkOvtX9A==}
+    engines: {node: '>= 20.3.0'}
+    peerDependencies:
+      long: ^5.3.2
+      protobufjs: ^8.7.1
 
   '@testing-library/dom@10.4.1':
     resolution: {integrity: sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg==}
@@ -11127,6 +11139,10 @@ packages:
     resolution: {integrity: sha512-/ce7+jQ1PQ6rVXwe+jKEg5hW5ciicHwIQUagZkp6IufBoY3YDgdTTY1azVs0qoRgVmvsNB+rbjLJxDAeHHtwsQ==}
     engines: {node: '>=10.13.0'}
 
+  enhanced-resolve@5.27.0:
+    resolution: {integrity: sha512-Do6BB2xzlcc/odFg+XEYyneAx4T/WfywO71yw9ePS2tVfRsf7JVR4mUeELadIeHzixkzbG5DpluiEFPi2WGfYQ==}
+    engines: {node: '>=10.13.0'}
+
   entities@2.2.0:
     resolution: {integrity: sha512-p92if5Nz619I0w+akJrLZH0MX0Pb5DX39XOwQTtXSdQQOaYH03S1uIQp4mhOZtAXrxq4ViO67YTiLBo2638o9A==}
 
@@ -11179,6 +11195,9 @@ packages:
 
   es-module-lexer@2.0.0:
     resolution: {integrity: sha512-5POEcUuZybH7IdmGsD8wlf0AI55wMecM9rVBTI/qEAy2c1kTOm3DjFYjrBdI2K3BaJjJYfYFeRtM0t9ssnRuxw==}
+
+  es-module-lexer@2.3.2:
+    resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
 
   es-object-atoms@1.1.1:
     resolution: {integrity: sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA==}
@@ -14178,6 +14197,61 @@ packages:
   minimist@1.2.8:
     resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
 
+  minimizer-webpack-plugin@5.14.0:
+    resolution: {integrity: sha512-PnvQXCJxhgH2ZVVO7Lj0sM6q8L1XGxnUvd8wVQIRwi8khMCLq5wg0Ngxe44bcuZL2FSN81RdVE7YHEVzTKsQDQ==}
+    engines: {node: '>= 10.13.0'}
+    peerDependencies:
+      '@minify-html/node': '*'
+      '@napi-rs/image': '*'
+      '@swc/core': '*'
+      '@swc/css': '*'
+      '@swc/html': '*'
+      clean-css: '*'
+      cssnano: '*'
+      csso: '*'
+      esbuild: '*'
+      html-minifier-terser: '*'
+      imagemin: '*'
+      lightningcss: '*'
+      postcss: '*'
+      sharp: '*'
+      svgo: '*'
+      uglify-js: '*'
+      webpack: ^5.1.0
+    peerDependenciesMeta:
+      '@minify-html/node':
+        optional: true
+      '@napi-rs/image':
+        optional: true
+      '@swc/core':
+        optional: true
+      '@swc/css':
+        optional: true
+      '@swc/html':
+        optional: true
+      clean-css:
+        optional: true
+      cssnano:
+        optional: true
+      csso:
+        optional: true
+      esbuild:
+        optional: true
+      html-minifier-terser:
+        optional: true
+      imagemin:
+        optional: true
+      lightningcss:
+        optional: true
+      postcss:
+        optional: true
+      sharp:
+        optional: true
+      svgo:
+        optional: true
+      uglify-js:
+        optional: true
+
   minipass@3.3.6:
     resolution: {integrity: sha512-DxiNidxSEK+tHG6zOIklvNOwm3hvCrbUrdtzY74U6HKTJxvIDfOUL5W5P2Ghd3DTkhhKPYGqeNUIh5qcM4YBfw==}
     engines: {node: '>=8'}
@@ -14247,9 +14321,9 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  ms@3.0.0-canary.1:
-    resolution: {integrity: sha512-kh8ARjh8rMN7Du2igDRO9QJnqCb2xYTJxyQYK7vJJS4TvLLmsbyhiKpSW+t+y26gyOyMd0riphX0GeWKU3ky5g==}
-    engines: {node: '>=12.13'}
+  ms@3.0.0-canary.202508261828:
+    resolution: {integrity: sha512-NotsCoUCIUkojWCzQff4ttdCfIPoA1UGZsyQbi7KmqkNRfKCrvga8JJi2PknHymHOuor0cJSn/ylj52Cbt2IrQ==}
+    engines: {node: '>=18'}
 
   multer@2.5.0:
     resolution: {integrity: sha512-BsqOzYGVq49JcW2IzoSAxeKYRevb+dGGPPWleOR8Lrlk4igwxu1/9pwSXlByhCb7MVZDrNJFC0IBP5/O5nLYRw==}
@@ -14392,9 +14466,9 @@ packages:
       sass:
         optional: true
 
-  nexus-rpc@0.0.1:
-    resolution: {integrity: sha512-hAWn8Hh2eewpB5McXR5EW81R3pR/ziuGhKCF3wFyUVCklanPqrIgMNr7jKCbzXeNVad0nUDfWpFRqh2u+zxQtw==}
-    engines: {node: '>= 18.0.0'}
+  nexus-rpc@0.0.3:
+    resolution: {integrity: sha512-ksIBeYHDv6FHAR1h3Vwk0kQ6REhdo1STqDHXMzu/yn/VN/XzgOor2IUjewG6paoA7IgxlIPZoOU/PD78PC6HTg==}
+    engines: {node: '>= 20.0.0'}
 
   nice-grpc-client-middleware-retry@3.1.13:
     resolution: {integrity: sha512-Q9I/wm5lYkDTveKFirrTHBkBY137yavXZ4xQDXTPIycUp7aLXD8xPTHFhqtAFWUw05aS91uffZZRgdv3HS0y/g==}
@@ -14450,8 +14524,8 @@ packages:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  node-forge@1.4.2:
-    resolution: {integrity: sha512-rRtAR5XLJ8gCKd9du4qrKAsgCG1ObGP4gLeNJMa4vYSeq4bmBMOJk5IHkrviBV0q7uoAJlVd8HEQYQSVUb4FGQ==}
+  node-forge@1.4.3:
+    resolution: {integrity: sha512-P6wzfh6t70avmV8FrVEAd/36sOPJQ+hkaJVX1Laap9J/77m7M0eyozDvc8SwnDf4P7MP94gwbAAo0rg3YVXT+g==}
     engines: {node: '>= 6.13.0'}
 
   node-gyp-build@4.8.4:
@@ -15340,12 +15414,12 @@ packages:
   proto-list@1.2.4:
     resolution: {integrity: sha512-vtK/94akxsTMhe0/cbfpR+syPuszcuwhqVjJq26CuNDgFGj682oRBXOP5MJpv2r7JtE8MsiepGIqvvOTBwn2vA==}
 
-  proto3-json-serializer@2.0.2:
-    resolution: {integrity: sha512-SAzp/O4Yh02jGdRc+uIrGoe87dkN/XtwxfZ4ZyafJHymd79ozp5VG5nyZ7ygqPM5+cpLDjjGnYFUkngonyDPOQ==}
-    engines: {node: '>=14.0.0'}
-
   protobufjs@7.6.6:
     resolution: {integrity: sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==}
+    engines: {node: '>=12.0.0'}
+
+  protobufjs@8.8.1:
+    resolution: {integrity: sha512-d9e9179bjXSJdpJ3+R9fP8hzXsnKLyxTjHLG1dUzje8a27pPyXCe6PrcRtgx2rjoM3IZzHd2vAs+6J/BsO1k7Q==}
     engines: {node: '>=12.0.0'}
 
   proxy-addr@2.0.8:
@@ -16175,6 +16249,16 @@ packages:
     resolution: {integrity: sha512-eflK8wEtyOE6+hsaRVPxvUKYCpRgzLqDTb8krvAsRIwOGlHoSgYLgBXoubGgLd2fT41/OUYdb48v4k4WWHQurA==}
     engines: {node: '>= 10.13.0'}
 
+  schema-utils@4.8.3:
+    resolution: {integrity: sha512-qIfo3f+lRNqnMPgpXSKvUhsT3pY5U+ppmgGr4j8LanFP3W/Ze+xj8DY/dPb5qVu3m6qFIMyMWKVRLNKxrNhxWg==}
+    engines: {node: '>= 10.13.0'}
+    hasBin: true
+    peerDependencies:
+      webpack: ^5.0.0
+    peerDependenciesMeta:
+      webpack:
+        optional: true
+
   scroll-into-view-if-needed@2.2.31:
     resolution: {integrity: sha512-dGCXy99wZQivjmjIqihaBQNjryrz5rueJY7eHfTdyWEiR4ttYpsajb14rn9s5d4DY4EcY6+4+U/maARBXJedkA==}
 
@@ -16444,9 +16528,9 @@ packages:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
 
-  source-map-loader@4.0.2:
-    resolution: {integrity: sha512-oYwAqCuL0OZhBoSgmdrLa7mv9MjommVMiQIWgcztf+eS4+8BfcUee6nenFnDhKOhzAVnk5gpZdfnz1iiBv+5sg==}
-    engines: {node: '>= 14.15.0'}
+  source-map-loader@5.0.0:
+    resolution: {integrity: sha512-k2Dur7CbSLcAH73sBcIkV5xjPV4SzqO1NJ7+XaQl8if3VODDUj3FNchNGpqgJSKbvUfJuhVdv8K2Eu8/TNl2eA==}
+    engines: {node: '>= 18.12.0'}
     peerDependencies:
       webpack: ^5.72.1
 
@@ -16803,6 +16887,10 @@ packages:
 
   tapable@2.3.0:
     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
+    engines: {node: '>=6'}
+
+  tapable@2.3.3:
+    resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
 
   tar@6.2.1:
@@ -17775,6 +17863,10 @@ packages:
     resolution: {integrity: sha512-Zn5uXdcFNIA1+1Ei5McRd+iRzfhENPCe7LeABkJtNulSxjma+l7ltNx55BWZkRlwRnpOgHqxnjyaDgJnNXnqzg==}
     engines: {node: '>=10.13.0'}
 
+  watchpack@2.6.4:
+    resolution: {integrity: sha512-5H3Tce2GfzWbcr9VnSqyak2whFaONw4BdmI5BDnMXold4qSlCFd64XaMQESRh2vkDKmdUkv6rUo17UvZ9f9nXw==}
+    engines: {node: '>=10.13.0'}
+
   wcwidth@1.0.1:
     resolution: {integrity: sha512-XHPEwS0q6TaxcvG85+8EYkbiCux2XtWG2mkc47Ng2A77BQu9+DqIOJldST4HgPkuea7dvKSj5VgX3P1d4rW8Tg==}
 
@@ -17818,8 +17910,12 @@ packages:
     resolution: {integrity: sha512-7tP1PdV4vF+lYPnkMR0jMY5/la2ub5Fc/8VQrrU+lXkiM6C4TjVfGw7iKfyhnTQOsD+6Q/iKw0eFciziRgD58Q==}
     engines: {node: '>=10.13.0'}
 
-  webpack@5.105.4:
-    resolution: {integrity: sha512-jTywjboN9aHxFlToqb0K0Zs9SbBoW4zRUlGzI2tYNxVYcEi/IPpn+Xi4ye5jTLvX2YeLuic/IvxNot+Q1jMoOw==}
+  webpack-sources@3.7.0:
+    resolution: {integrity: sha512-PdUhbCycwEgiS1hB/FBDksWKg/ashAIuJKqwdbPn8/dFVgU5LxQiBvG0js6VRRIzPujMrStYCczywp82P0KWng==}
+    engines: {node: '>=10.13.0'}
+
+  webpack@5.106.0:
+    resolution: {integrity: sha512-Pkx5joZ9RrdgO5LBkyX1L2ZAJeK/Taz3vqZ9CbcP0wS5LEMx5QkKsEwLl29QJfihZ+DKRBFldzy1O30pJ1MDpA==}
     engines: {node: '>=10.13.0'}
     hasBin: true
     peerDependencies:
@@ -17828,8 +17924,8 @@ packages:
       webpack-cli:
         optional: true
 
-  webpack@5.106.0:
-    resolution: {integrity: sha512-Pkx5joZ9RrdgO5LBkyX1L2ZAJeK/Taz3vqZ9CbcP0wS5LEMx5QkKsEwLl29QJfihZ+DKRBFldzy1O30pJ1MDpA==}
+  webpack@5.112.2:
+    resolution: {integrity: sha512-B2tp1LI9D8GVpPDqprdt12ukTkXXahj9MzqSWJq4faSPgOUM7CdZaGAB6HrL/8E6UwbBpdj4vzWDbKoFnVoU6g==}
     engines: {node: '>=10.13.0'}
     hasBin: true
     peerDependencies:
@@ -21108,22 +21204,10 @@ snapshots:
       '@repeaterjs/repeater': 3.0.6
       tslib: 2.8.1
 
-  '@grpc/grpc-js@1.14.5':
-    dependencies:
-      '@grpc/proto-loader': 0.8.0
-      '@js-sdsl/ordered-map': 4.4.2
-
   '@grpc/grpc-js@1.14.7':
     dependencies:
       '@grpc/proto-loader': 0.8.1
       '@js-sdsl/ordered-map': 4.4.2
-
-  '@grpc/proto-loader@0.8.0':
-    dependencies:
-      lodash.camelcase: 4.3.0
-      long: 5.3.2
-      protobufjs: 7.6.6
-      yargs: 17.7.2
 
   '@grpc/proto-loader@0.8.1':
     dependencies:
@@ -24163,7 +24247,7 @@ snapshots:
     dependencies:
       playwright: 1.58.2
 
-  '@pmmmwh/react-refresh-webpack-plugin@0.5.17(react-refresh@0.10.0)(type-fest@4.41.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))':
+  '@pmmmwh/react-refresh-webpack-plugin@0.5.17(react-refresh@0.10.0)(type-fest@4.41.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))':
     dependencies:
       ansi-html: 0.0.9
       core-js-pure: 3.48.0
@@ -24173,7 +24257,7 @@ snapshots:
       react-refresh: 0.10.0
       schema-utils: 4.3.3
       source-map: 0.7.6
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
     optionalDependencies:
       type-fest: 4.41.0
 
@@ -25363,7 +25447,7 @@ snapshots:
       '@sentry/replay': 10.78.0
       '@sentry/replay-canvas': 10.78.0
 
-  '@sentry/bundler-plugins@10.78.0(rollup@4.65.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))':
+  '@sentry/bundler-plugins@10.78.0(rollup@4.65.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))':
     dependencies:
       '@babel/core': 7.29.7
       '@sentry/cli': 2.58.6
@@ -25374,7 +25458,7 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       rollup: 4.65.0
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -25448,12 +25532,12 @@ snapshots:
       - '@opentelemetry/exporter-trace-otlp-http'
       - supports-color
 
-  '@sentry/nextjs@10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(next@16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3))(react@19.2.4)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))':
+  '@sentry/nextjs@10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(next@16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3))(react@19.2.4)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))':
     dependencies:
       '@opentelemetry/api': 1.9.1
       '@rollup/plugin-commonjs': 28.0.1(rollup@4.65.0)
       '@sentry/browser-utils': 10.78.0
-      '@sentry/bundler-plugins': 10.78.0(rollup@4.65.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+      '@sentry/bundler-plugins': 10.78.0(rollup@4.65.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       '@sentry/conventions': 0.16.0
       '@sentry/core': 10.78.0
       '@sentry/node': 10.78.0(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/exporter-trace-otlp-http@0.203.0(@opentelemetry/api@1.9.0))
@@ -25461,7 +25545,7 @@ snapshots:
       '@sentry/react': 10.78.0(react@19.2.4)
       '@sentry/server-utils': 10.78.0
       '@sentry/vercel-edge': 10.78.0
-      '@sentry/webpack-plugin': 5.4.1(rollup@4.65.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+      '@sentry/webpack-plugin': 5.4.1(rollup@4.65.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       next: 16.4.3(@babel/core@7.29.7)(@opentelemetry/api@1.9.0)(@playwright/test@1.58.2)(@types/node@18.16.9)(babel-plugin-macros@3.1.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(sass@1.97.3)
       rollup: 4.65.0
       stacktrace-parser: 0.1.11
@@ -25553,10 +25637,10 @@ snapshots:
       '@opentelemetry/api': 1.9.1
       '@sentry/core': 10.78.0
 
-  '@sentry/webpack-plugin@5.4.1(rollup@4.65.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))':
+  '@sentry/webpack-plugin@5.4.1(rollup@4.65.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))':
     dependencies:
-      '@sentry/bundler-plugins': 10.78.0(rollup@4.65.0)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      '@sentry/bundler-plugins': 10.78.0(rollup@4.65.0)(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
     transitivePeerDependencies:
       - encoding
       - rollup
@@ -26771,83 +26855,102 @@ snapshots:
 
   '@tanstack/virtual-core@3.13.21': {}
 
-  '@temporalio/activity@1.15.0':
+  '@temporalio/activity@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
     dependencies:
-      '@temporalio/client': 1.15.0
-      '@temporalio/common': 1.15.0
-      abort-controller: 3.0.0
-
-  '@temporalio/client@1.15.0':
-    dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@temporalio/common': 1.15.0
-      '@temporalio/proto': 1.15.0
-      abort-controller: 3.0.0
+      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       long: 5.3.2
+      protobufjs: 8.8.1
+
+  '@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
+    dependencies:
+      '@grpc/grpc-js': 1.14.7
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/proto': 1.25.0
+      long: 5.3.2
+      nexus-rpc: 0.0.3
+      protobufjs: 8.8.1
       uuid: 11.1.1
 
-  '@temporalio/common@1.15.0':
+  '@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
     dependencies:
-      '@temporalio/proto': 1.15.0
+      '@temporalio/proto': 1.25.0
       long: 5.3.2
-      ms: 3.0.0-canary.1
-      nexus-rpc: 0.0.1
-      proto3-json-serializer: 2.0.2
+      ms: 3.0.0-canary.202508261828
+      nexus-rpc: 0.0.3
+      protobufjs: 8.8.1
 
-  '@temporalio/core-bridge@1.15.0':
+  '@temporalio/core-bridge@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
     dependencies:
-      '@grpc/grpc-js': 1.14.5
-      '@temporalio/common': 1.15.0
-
-  '@temporalio/nexus@1.15.0':
-    dependencies:
-      '@temporalio/client': 1.15.0
-      '@temporalio/common': 1.15.0
-      '@temporalio/proto': 1.15.0
+      '@grpc/grpc-js': 1.14.7
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       long: 5.3.2
-      nexus-rpc: 0.0.1
+      protobufjs: 8.8.1
 
-  '@temporalio/proto@1.15.0':
+  '@temporalio/nexus@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
+    dependencies:
+      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/proto': 1.25.0
+      long: 5.3.2
+      nexus-rpc: 0.0.3
+      protobufjs: 8.8.1
+
+  '@temporalio/proto@1.25.0':
     dependencies:
       long: 5.3.2
-      protobufjs: 7.6.6
+      protobufjs: 8.8.1
 
-  '@temporalio/worker@1.15.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(tslib@2.8.1)':
+  '@temporalio/worker@1.25.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(lightningcss@1.31.1)(long@5.3.2)(postcss@8.5.23)(protobufjs@8.8.1)(sharp@0.35.5(@types/node@18.16.9))(tslib@2.8.1)':
     dependencies:
-      '@grpc/grpc-js': 1.14.5
+      '@grpc/grpc-js': 1.14.7
       '@swc/core': 1.5.7(@swc/helpers@0.5.13)
-      '@temporalio/activity': 1.15.0
-      '@temporalio/client': 1.15.0
-      '@temporalio/common': 1.15.0
-      '@temporalio/core-bridge': 1.15.0
-      '@temporalio/nexus': 1.15.0
-      '@temporalio/proto': 1.15.0
-      '@temporalio/workflow': 1.15.0
-      abort-controller: 3.0.0
+      '@temporalio/activity': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/core-bridge': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/nexus': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/proto': 1.25.0
+      '@temporalio/workflow': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       heap-js: 2.7.1
+      long: 5.3.2
       memfs: 4.56.11(tslib@2.8.1)
-      nexus-rpc: 0.0.1
-      proto3-json-serializer: 2.0.2
-      protobufjs: 7.6.6
+      nexus-rpc: 0.0.3
+      protobufjs: 8.8.1
       rxjs: 7.8.2
       source-map: 0.7.6
-      source-map-loader: 4.0.2(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+      source-map-loader: 5.0.0(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       supports-color: 8.1.1
-      swc-loader: 0.2.7(@swc/core@1.5.7(@swc/helpers@0.5.13))(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
+      swc-loader: 0.2.7(@swc/core@1.5.7(@swc/helpers@0.5.13))(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
       unionfs: 4.6.0
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
     transitivePeerDependencies:
+      - '@minify-html/node'
+      - '@napi-rs/image'
+      - '@swc/css'
       - '@swc/helpers'
+      - '@swc/html'
+      - clean-css
+      - cssnano
+      - csso
       - esbuild
+      - html-minifier-terser
+      - imagemin
+      - lightningcss
+      - postcss
+      - sharp
+      - svgo
       - tslib
       - uglify-js
       - webpack-cli
 
-  '@temporalio/workflow@1.15.0':
+  '@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.1)':
     dependencies:
-      '@temporalio/common': 1.15.0
-      '@temporalio/proto': 1.15.0
-      nexus-rpc: 0.0.1
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/proto': 1.25.0
+      long: 5.3.2
+      nexus-rpc: 0.0.3
+      protobufjs: 8.8.1
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -30780,6 +30883,11 @@ snapshots:
       graceful-fs: 4.2.11
       tapable: 2.3.0
 
+  enhanced-resolve@5.27.0:
+    dependencies:
+      graceful-fs: 4.2.11
+      tapable: 2.3.3
+
   entities@2.2.0: {}
 
   entities@4.5.0: {}
@@ -30895,6 +31003,8 @@ snapshots:
   es-module-lexer@1.7.0: {}
 
   es-module-lexer@2.0.0: {}
+
+  es-module-lexer@2.3.2: {}
 
   es-object-atoms@1.1.1:
     dependencies:
@@ -32188,7 +32298,7 @@ snapshots:
 
   google-p12-pem@4.0.1:
     dependencies:
-      node-forge: 1.4.2
+      node-forge: 1.4.3
 
   googleapis-common@7.2.0:
     dependencies:
@@ -35069,6 +35179,19 @@ snapshots:
 
   minimist@1.2.8: {}
 
+  minimizer-webpack-plugin@5.14.0(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))):
+    dependencies:
+      jest-worker: 27.5.1
+      schema-utils: 4.8.3(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
+      terser: 5.51.2
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
+    optionalDependencies:
+      '@swc/core': 1.5.7(@swc/helpers@0.5.13)
+      esbuild: 0.27.7
+      lightningcss: 1.31.1
+      postcss: 8.5.23
+      sharp: 0.35.5(@types/node@18.16.9)
+
   minipass@3.3.6:
     dependencies:
       yallist: 4.0.0
@@ -35123,7 +35246,7 @@ snapshots:
 
   ms@2.1.3: {}
 
-  ms@3.0.0-canary.1: {}
+  ms@3.0.0-canary.202508261828: {}
 
   multer@2.5.0:
     dependencies:
@@ -35212,14 +35335,14 @@ snapshots:
       '@nestjs/common': 11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@supercharge/request-ip': 1.2.0
 
-  nestjs-temporal-core@3.2.3(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@temporalio/client@1.15.0)(@temporalio/common@1.15.0)(@temporalio/worker@1.15.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(tslib@2.8.1))(@temporalio/workflow@1.15.0)(reflect-metadata@0.2.2)(rxjs@7.8.2):
+  nestjs-temporal-core@3.2.3(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.7)(@temporalio/client@1.25.0(long@5.3.2)(protobufjs@8.8.1))(@temporalio/common@1.25.0(long@5.3.2)(protobufjs@8.8.1))(@temporalio/worker@1.25.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(lightningcss@1.31.1)(long@5.3.2)(postcss@8.5.23)(protobufjs@8.8.1)(sharp@0.35.5(@types/node@18.16.9))(tslib@2.8.1))(@temporalio/workflow@1.25.0(long@5.3.2)(protobufjs@8.8.1))(reflect-metadata@0.2.2)(rxjs@7.8.2):
     dependencies:
       '@nestjs/common': 11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.2.7(@nestjs/common@11.2.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.2.7)(@nestjs/platform-express@11.2.7)(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@temporalio/client': 1.15.0
-      '@temporalio/common': 1.15.0
-      '@temporalio/worker': 1.15.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(tslib@2.8.1)
-      '@temporalio/workflow': 1.15.0
+      '@temporalio/client': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/common': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
+      '@temporalio/worker': 1.25.0(@swc/helpers@0.5.13)(esbuild@0.27.7)(lightningcss@1.31.1)(long@5.3.2)(postcss@8.5.23)(protobufjs@8.8.1)(sharp@0.35.5(@types/node@18.16.9))(tslib@2.8.1)
+      '@temporalio/workflow': 1.25.0(long@5.3.2)(protobufjs@8.8.1)
       ms: 2.1.3
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
@@ -35260,7 +35383,7 @@ snapshots:
       - '@types/node'
       - babel-plugin-macros
 
-  nexus-rpc@0.0.1: {}
+  nexus-rpc@0.0.3: {}
 
   nice-grpc-client-middleware-retry@3.1.13:
     dependencies:
@@ -35273,7 +35396,7 @@ snapshots:
 
   nice-grpc@2.1.14:
     dependencies:
-      '@grpc/grpc-js': 1.14.5
+      '@grpc/grpc-js': 1.14.7
       abort-controller-x: 0.4.3
       nice-grpc-common: 2.0.2
 
@@ -35318,7 +35441,7 @@ snapshots:
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
 
-  node-forge@1.4.2: {}
+  node-forge@1.4.3: {}
 
   node-gyp-build@4.8.4: {}
 
@@ -36364,10 +36487,6 @@ snapshots:
 
   proto-list@1.2.4: {}
 
-  proto3-json-serializer@2.0.2:
-    dependencies:
-      protobufjs: 7.6.6
-
   protobufjs@7.6.6:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
@@ -36380,6 +36499,10 @@ snapshots:
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
       '@types/node': 18.16.9
+      long: 5.3.2
+
+  protobufjs@8.8.1:
+    dependencies:
       long: 5.3.2
 
   proxy-addr@2.0.8:
@@ -37510,6 +37633,15 @@ snapshots:
       ajv-formats: 2.1.1(ajv@8.20.0)
       ajv-keywords: 5.1.0(ajv@8.20.0)
 
+  schema-utils@4.8.3(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))):
+    dependencies:
+      '@types/json-schema': 7.0.15
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
+      ajv-keywords: 5.1.0(ajv@8.20.0)
+    optionalDependencies:
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
+
   scroll-into-view-if-needed@2.2.31:
     dependencies:
       compute-scroll-into-view: 1.0.20
@@ -37880,11 +38012,11 @@ snapshots:
 
   source-map-js@1.2.2: {}
 
-  source-map-loader@4.0.2(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)):
+  source-map-loader@5.0.0(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))):
     dependencies:
       iconv-lite: 0.6.3
       source-map-js: 1.2.2
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
 
   source-map-support@0.5.13:
     dependencies:
@@ -38196,11 +38328,11 @@ snapshots:
     dependencies:
       '@scarf/scarf': 1.4.0
 
-  swc-loader@0.2.7(@swc/core@1.5.7(@swc/helpers@0.5.13))(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)):
+  swc-loader@0.2.7(@swc/core@1.5.7(@swc/helpers@0.5.13))(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))):
     dependencies:
       '@swc/core': 1.5.7(@swc/helpers@0.5.13)
       '@swc/counter': 0.1.3
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
+      webpack: 5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))
 
   sweetalert2@11.4.8: {}
 
@@ -38261,6 +38393,8 @@ snapshots:
 
   tapable@2.3.0: {}
 
+  tapable@2.3.3: {}
+
   tar@6.2.1:
     dependencies:
       chownr: 2.0.0
@@ -38269,17 +38403,6 @@ snapshots:
       minizlib: 2.1.2
       mkdirp: 1.0.4
       yallist: 4.0.0
-
-  terser-webpack-plugin@5.3.17(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)):
-    dependencies:
-      '@jridgewell/trace-mapping': 0.3.31
-      jest-worker: 27.5.1
-      schema-utils: 4.3.3
-      terser: 5.46.0
-      webpack: 5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)
-    optionalDependencies:
-      '@swc/core': 1.5.7(@swc/helpers@0.5.13)
-      esbuild: 0.27.7
 
   terser-webpack-plugin@5.3.17(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(webpack@5.106.0(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)):
     dependencies:
@@ -39252,6 +39375,10 @@ snapshots:
       glob-to-regexp: 0.4.1
       graceful-fs: 4.2.11
 
+  watchpack@2.6.4:
+    dependencies:
+      graceful-fs: 4.2.11
+
   wcwidth@1.0.1:
     dependencies:
       defaults: 1.0.4
@@ -39290,37 +39417,7 @@ snapshots:
 
   webpack-sources@3.3.4: {}
 
-  webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7):
-    dependencies:
-      '@types/eslint-scope': 3.7.7
-      '@types/estree': 1.0.9
-      '@types/json-schema': 7.0.15
-      '@webassemblyjs/ast': 1.14.1
-      '@webassemblyjs/wasm-edit': 1.14.1
-      '@webassemblyjs/wasm-parser': 1.14.1
-      acorn: 8.19.0
-      acorn-import-phases: 1.0.4(acorn@8.19.0)
-      browserslist: 4.29.0
-      chrome-trace-event: 1.0.4
-      enhanced-resolve: 5.20.0
-      es-module-lexer: 2.0.0
-      eslint-scope: 5.1.1
-      events: 3.3.0
-      glob-to-regexp: 0.4.1
-      graceful-fs: 4.2.11
-      json-parse-even-better-errors: 2.3.1
-      loader-runner: 4.3.1
-      mime-types: 2.1.35
-      neo-async: 2.6.2
-      schema-utils: 4.3.3
-      tapable: 2.3.0
-      terser-webpack-plugin: 5.3.17(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(webpack@5.105.4(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7))
-      watchpack: 2.5.1
-      webpack-sources: 3.3.4
-    transitivePeerDependencies:
-      - '@swc/core'
-      - esbuild
-      - uglify-js
+  webpack-sources@3.7.0: {}
 
   webpack@5.106.0(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7):
     dependencies:
@@ -39352,6 +39449,43 @@ snapshots:
     transitivePeerDependencies:
       - '@swc/core'
       - esbuild
+      - uglify-js
+
+  webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)):
+    dependencies:
+      '@types/estree': 1.0.9
+      '@types/json-schema': 7.0.15
+      '@webassemblyjs/ast': 1.14.1
+      '@webassemblyjs/wasm-edit': 1.14.1
+      '@webassemblyjs/wasm-parser': 1.14.1
+      browserslist: 4.29.0
+      chrome-trace-event: 1.0.4
+      enhanced-resolve: 5.27.0
+      es-module-lexer: 2.3.2
+      events: 3.3.0
+      graceful-fs: 4.2.11
+      mime-db: 1.54.0
+      minimizer-webpack-plugin: 5.14.0(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9))(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
+      schema-utils: 4.8.3(webpack@5.112.2(@swc/core@1.5.7(@swc/helpers@0.5.13))(esbuild@0.27.7)(lightningcss@1.31.1)(postcss@8.5.23)(sharp@0.35.5(@types/node@18.16.9)))
+      tapable: 2.3.0
+      watchpack: 2.6.4
+      webpack-sources: 3.7.0
+    transitivePeerDependencies:
+      - '@minify-html/node'
+      - '@napi-rs/image'
+      - '@swc/core'
+      - '@swc/css'
+      - '@swc/html'
+      - clean-css
+      - cssnano
+      - csso
+      - esbuild
+      - html-minifier-terser
+      - imagemin
+      - lightningcss
+      - postcss
+      - sharp
+      - svgo
       - uglify-js
 
   webrtc-adapter@7.7.1:
