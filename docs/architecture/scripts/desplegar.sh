@@ -125,8 +125,11 @@ INICIO=$(date +%s)
 usar_imagen "$NUEVA"
 if ! sano_desde "$INICIO"; then
   log "no queda sano: vuelta a $ANTERIOR"
+  # La hora, antes del `up`: sano_desde exige un missing-post-workflow
+  # arrancado después de ella.
+  VUELTA=$(date +%s)
   usar_imagen "$ANTERIOR"
-  if sano_desde "$(date +%s)"; then
+  if sano_desde "$VUELTA"; then
     fallo "$NUEVA no quedó sano en $ESPERA_MAX s y se volvió a $ANTERIOR, que está sano.
 Si el commit cambió el esquema, la base ya está migrada: volcado previo en $VOLCADO."
   fi
