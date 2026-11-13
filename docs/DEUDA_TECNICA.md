@@ -44,9 +44,9 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 - `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. Esto no tiene que imprimir nada:
   `docker exec postiz sh -c 'grep -rl happy-dom /app/apps/frontend/.next/server /app/apps/backend/dist /app/apps/orchestrator/dist'`
 
-En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` atadas a la imagen, así que cada build nuevo las vuelve a sacar y se juzgan otra vez con estas dos comprobaciones.
+En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) atadas al aviso, al paquete, a su versión y a las rutas donde está en la imagen: un build nuevo con eso igual no las vuelve a sacar; una versión distinta o una copia en otra ruta, sí. Estas dos comprobaciones van escritas en cada veredicto como su `prueba`, y `check-imagenes-publicas.py` las repite cada noche contra el contenedor: si una da otra cosa, avisa al bus.
 
-**Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
+**Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor) —lo detecta la prueba nocturna de arriba—, o un aviso nuevo sobre ellos que no necesite ese camino.
 
 **Cómo se cierra.** Cuando quien los trae suba de mayor (`node-pre-gyp` 2 usa `tar` 7; `@wyw-in-js/transform` 2.5 usa `happy-dom` 20), o con la imagen de producción de la entrada siguiente.
 
@@ -56,11 +56,11 @@ En Dependabot, sus avisos (críticos, altos y medios) están descartados como `t
 
 **Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: el runtime de Go dentro de `esbuild` y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm, todos procesos de node, y nginx. Esto tiene que listar solo `node`, `nginx` y la shell del propio comando (`dash`, `sort`), nunca `esbuild`:
 `docker exec postiz sh -c 'for p in /proc/[0-9]*; do readlink $p/exe; done 2>/dev/null | sort -u'`
-pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista de cada imagen, con su motivo, está en `vulnerabilidades-aceptadas.json`.
+pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista, con el motivo y la prueba de cada una, está en `vulnerabilidades-aceptadas.json`; la de los procesos es la prueba del veredicto de `esbuild`.
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada despliegue es una imagen nueva, y estos hallazgos vuelven a salir en la pasada nocturna de `check-imagenes-publicas.py`. Cuando el escáner los manda al bus, el triage del Beelink los juzga otra vez (`revalidar-veredictos.prompt.md` en Instalar-Home-Server), repitiendo las comprobaciones de este documento: es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** La imagen pesa 7 GB y arrastra críticas aceptadas en código que no se ejecuta. Mientras sus paquetes no cambien de versión ni de sitio, `check-imagenes-publicas.py` calla; cuando cambien, o cuando la prueba de un veredicto deje de dar lo que dice, el escáner lo manda al bus y el triage del Beelink lo juzga (`revalidar-veredictos.prompt.md` en Instalar-Home-Server). Hasta el 2026-11-13 las aceptaciones iban atadas a la etiqueta de la imagen y eso pasaba en cada despliegue.
 
 **Qué la vuelve urgente.** Que la lista crezca, o que un hallazgo cambie de versión y ya no se pueda volver a aceptar con las mismas comprobaciones.
 
