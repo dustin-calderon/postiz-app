@@ -26,6 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # desplegar.sh decide qué corre en producción y cuándo se vuelve atrás. Su
+      # prueba usa un docker de mentira y tarda segundos. Va dentro de `puerta`,
+      # que es el check que exige la protección de la rama.
+      - run: bash docs/architecture/scripts/test_desplegar.sh
+
       # La versión de pnpm sale de `packageManager` y la de Node de `volta`,
       # las dos de package.json: las mismas que usa la imagen.
       - uses: pnpm/action-setup@v6
