@@ -44,7 +44,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 - `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. Esto no tiene que imprimir nada:
   `docker exec postiz sh -c 'grep -rl happy-dom /app/apps/frontend/.next/server /app/apps/backend/dist /app/apps/orchestrator/dist'`
 
-En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` atadas a la imagen, así que cada build nuevo las vuelve a sacar y se juzgan otra vez con estas dos comprobaciones.
+En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) atadas al aviso, al paquete, a su versión y a las rutas donde está en la imagen: un build nuevo con eso igual no las vuelve a sacar; una versión distinta o una copia en otra ruta, sí, y entonces se juzgan otra vez con estas dos comprobaciones.
 
 **Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor), o un aviso nuevo sobre ellos que no necesite ese camino.
 
@@ -60,7 +60,7 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** Cada despliegue es una imagen nueva, y estos hallazgos vuelven a salir en la pasada nocturna de `check-imagenes-publicas.py`. Cuando el escáner los manda al bus, el triage del Beelink los juzga otra vez (`revalidar-veredictos.prompt.md` en Instalar-Home-Server), repitiendo las comprobaciones de este documento: es el precio de que las aceptaciones caduquen.
+**El coste de no hacerlo.** La imagen pesa 7 GB y arrastra críticas aceptadas en código que no se ejecuta. Mientras sus paquetes no cambien de versión ni de sitio, `check-imagenes-publicas.py` calla; cuando cambien, el escáner los manda al bus y el triage del Beelink los juzga (`revalidar-veredictos.prompt.md` en Instalar-Home-Server) con las comprobaciones de este documento. Hasta el 2026-11-13 las aceptaciones iban atadas a la etiqueta de la imagen y eso pasaba en cada despliegue.
 
 **Qué la vuelve urgente.** Que la lista crezca, o que un hallazgo cambie de versión y ya no se pueda volver a aceptar con las mismas comprobaciones.
 
