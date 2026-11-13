@@ -18,9 +18,9 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 
 ## Credenciales generadas con `Math.random`: no se rotan, decisión de Dustin
 
-**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. `POST /api/public/t` estuvo abierto sin login hasta el 23-09-2026 y devuelve en la cookie `track` diez salidas de ese mismo generador por petición. Con suficientes, se reconstruye el estado del generador y, como es invertible, también sus salidas anteriores: quien las recogiera mientras vivía el proceso que creó una clave podía calcularla. No se puede acotar cuánto vivieron esos procesos ni desde cuándo `/t` era alcanzable, así que no se puede demostrar que nadie lo hiciera. Las tres claves vivas (Test y dos de CITEM) son de antes del arreglo; las nuevas ya salen de `crypto`, y `/t` pide Access.
+**Qué pasa.** Hasta `8fb61ee4` (arreglo portado de PSA-2026-TD98KY) las API keys de organización salían de `Math.random`. `POST /api/public/t` estuvo abierto sin login y devuelve en la cookie `track` diez salidas de ese mismo generador por petición. Con suficientes, se reconstruye el estado del generador y, como es invertible, también sus salidas anteriores: quien las recogiera mientras vivía el proceso que creó una clave podía calcularla. No se puede acotar cuánto vivieron esos procesos ni desde cuándo `/t` era alcanzable, así que no se puede demostrar que nadie lo hiciera. Las tres claves vivas (Test y dos de CITEM) son de antes del arreglo; las nuevas ya salen de `crypto`, y `/t` pide Access.
 
-**Decisión.** Dustin decide el 2026-09-24 mantenerlas: acepta ese riesgo. **No se vuelve a proponer rotarlas** salvo por lo de abajo.
+**Decisión.** Dustin decidió mantenerlas: acepta ese riesgo. **No se vuelve a proponer rotarlas** salvo por lo de abajo.
 
 **Qué la reabre.** Un post, un canal conectado o una llamada a `/api/public/v1` que nadie reconozca. Entonces se rotan: pantalla de API pública de cada organización (`POST /user/api-key/rotate`) y la nueva de CITEM en su credencial de n8n.
 
@@ -44,7 +44,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://postiz.dustincalderon.com/api/p
 - `happy-dom` lo usa `@wyw-in-js/transform` para evaluar el CSS-in-JS de `@pigment-css` durante `next build`, sobre nuestro propio código. Esto no tiene que imprimir nada:
   `docker exec postiz sh -c 'grep -rl happy-dom /app/apps/frontend/.next/server /app/apps/backend/dist /app/apps/orchestrator/dist'`
 
-En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) atadas al aviso, al paquete, a su versión y a las rutas donde está en la imagen: un build nuevo con eso igual no las vuelve a sacar; una versión distinta o una copia en otra ruta, sí. Estas dos comprobaciones van escritas en cada veredicto como su `prueba`, y `check-imagenes-publicas.py` las repite cada noche contra el contenedor: si una da otra cosa, avisa al bus.
+En Dependabot, sus avisos (críticos, altos y medios) están descartados como `tolerable_risk` con este motivo. En trivy, aceptadas en `vulnerabilidades-aceptadas.json` (Instalar-Home-Server) atadas al aviso, al paquete, a su versión y a las rutas donde está en la imagen: un build nuevo con eso igual no las vuelve a sacar; una versión distinta o una copia en otra ruta, sí. Cada veredicto lleva estas comprobaciones como su `prueba`, y `check-imagenes-publicas.py` la repite cada noche contra el contenedor: si da otra cosa, avisa al bus.
 
 **Qué la vuelve urgente.** Que algo en ejecución empiece a cargar `tar` o `happy-dom` (una importación de archivos, un renderizado de HTML en el servidor) —lo detecta la prueba nocturna de arriba—, o un aviso nuevo sobre ellos que no necesite ese camino.
 
@@ -56,11 +56,11 @@ En Dependabot, sus avisos (críticos, altos y medios) están descartados como `t
 
 **Qué pasa.** `Dockerfile.dev` hace un `pnpm install` completo con devDependencies, instala `pnpm` y `pm2` con npm y compila dentro de la imagen. Además, `next` deja la caché de Turbopack en `apps/frontend/.next/cache`. Por eso trivy encuentra críticas en código que no se ejecuta: el runtime de Go dentro de `esbuild` y el `tar` que traen npm y pnpm. En ejecución solo corren `next-server`, el backend, el orchestrator, pm2 y pnpm, todos procesos de node, y nginx. Esto tiene que listar solo `node`, `nginx` y la shell del propio comando (`dash`, `sort`), nunca `esbuild`:
 `docker exec postiz sh -c 'for p in /proc/[0-9]*; do readlink $p/exe; done 2>/dev/null | sort -u'`
-pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista, con el motivo y la prueba de cada una, está en `vulnerabilidades-aceptadas.json`; la de los procesos es la prueba del veredicto de `esbuild`.
+pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`) viene del registro de npm por TLS. La lista, con el motivo y la prueba de cada una, está en `vulnerabilidades-aceptadas.json`; la prueba del veredicto de `esbuild` comprueba lo mismo que la de los procesos: que ninguno sea `esbuild`.
 
 **Por qué se aplaza.** Pasar a una imagen de varias etapas (compilar en una y copiar a otra solo lo que se ejecuta) cambia el arranque (`pm2-run`, `prisma db push`, nginx) y exige probarlo a fondo.
 
-**El coste de no hacerlo.** La imagen pesa 7 GB y arrastra críticas aceptadas en código que no se ejecuta. Mientras sus paquetes no cambien de versión ni de sitio, `check-imagenes-publicas.py` calla; cuando cambien, o cuando la prueba de un veredicto deje de dar lo que dice, el escáner lo manda al bus y el triage del Beelink lo juzga (`revalidar-veredictos.prompt.md` en Instalar-Home-Server). Hasta el 2026-11-13 las aceptaciones iban atadas a la etiqueta de la imagen y eso pasaba en cada despliegue.
+**El coste de no hacerlo.** La imagen arrastra devDependencies, herramientas de build y críticas aceptadas en código que no se ejecuta. Mientras sus paquetes no cambien de versión ni de sitio, `check-imagenes-publicas.py` calla; cuando cambien, o cuando la prueba de un veredicto deje de dar lo que dice, el escáner lo manda al bus y el triage del Beelink lo juzga (`revalidar-veredictos.prompt.md` en Instalar-Home-Server).
 
 **Qué la vuelve urgente.** Que la lista crezca, o que un hallazgo cambie de versión y ya no se pueda volver a aceptar con las mismas comprobaciones.
 
