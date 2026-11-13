@@ -87,7 +87,7 @@ VOLCADO="$VOLCADOS/postiz-$(date +%F-%H%M).dump"
 sano_desde() {
   # Sano = el healthcheck (nginx y backend) en verde, las tres apps de pm2
   # online, el frontend contestando por nginx, y el orchestrator de ESTE
-  # contenedor escuchando la cola de Temporal.
+  # contenedor escuchando la cola de Temporal y ejecutando de verdad.
   local inicio=$1 fin=$(( $(date +%s) + ESPERA_MAX ))
   while [ "$(date +%s)" -lt "$fin" ]; do
     sleep "$PAUSA"
@@ -99,6 +99,17 @@ sano_desde() {
     # tubería antes de tiempo convierte el acierto en fallo.
     pollers=$(docker exec temporal temporal task-queue describe --task-queue main --address temporal:7233 2>/dev/null) || continue
     grep -q "@$(docker inspect -f '{{.Config.Hostname}}' postiz) .*\(now\|second\)" <<<"$pollers" || continue
+    # Escuchar no es ejecutar: un SDK de Temporal que no casa con el servidor
+    # o un bundle de workflows roto deja los pollers vivos y nada avanza. El
+    # backend arranca missing-post-workflow en cada arranque y su primera
+    # pasada es una actividad: sano solo si esa ejecución es de este arranque
+    # y la actividad terminó bien.
+    historia=$(docker exec temporal temporal workflow show -w missing-post-workflow \
+      --address temporal:7233 --output json 2>/dev/null) || continue
+    jq -e --argjson ini "$inicio" '
+      (.events[0].eventTime[0:19] + "Z" | fromdateiso8601) >= $ini
+      and any(.events[]; .eventType == "EVENT_TYPE_ACTIVITY_TASK_COMPLETED")' \
+      <<<"$historia" > /dev/null 2>&1 || continue
     log "sano (desde el arranque: $(( $(date +%s) - inicio )) s)"
     return 0
   done

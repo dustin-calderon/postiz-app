@@ -29,6 +29,15 @@ case "$*" in
   "exec postiz node -e "*) echo 307 ;;
   "exec temporal temporal task-queue describe "*)
     echo "  UNVERSIONED  workflow  1@c-$(tag)  now  100000" ;;
+  # Una imagen en «mudas» escucha la cola pero no ejecuta: el missing-post que
+  # ve Temporal es el de antes del arranque y nunca llegó a su actividad.
+  "exec temporal temporal workflow show -w missing-post-workflow "*)
+    if grep -qx "$(tag)" "$E/mudas" 2>/dev/null; then
+      echo '{"events":[{"eventTime":"2020-01-01T00:00:00.000Z","eventType":"EVENT_TYPE_WORKFLOW_EXECUTION_STARTED"}]}'
+    else
+      printf '{"events":[{"eventTime":"%s","eventType":"EVENT_TYPE_WORKFLOW_EXECUTION_STARTED"},{"eventTime":"%s","eventType":"EVENT_TYPE_ACTIVITY_TASK_COMPLETED"}]}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%S.123456789Z)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    fi ;;
   "compose -f "*" up -d --no-deps postiz")
     sed -n 's|^[[:space:]]*image: ||p' "$3" > "$E/imagen"; echo "up $(cat "$E/imagen")" >> "$E/ups" ;;
   *) echo "docker de mentira: no sé hacer «$*»" >&2; exit 99 ;;
@@ -75,7 +84,7 @@ export PATH="$T/bin:$PATH" ESTADO="$T/estado" DESPLEGAR_REPO="$T/repo" \
 
 corriendo() { echo "postiz-custom:local-$1" > "$T/estado/imagen"
   printf 'services:\n  postiz:\n    image: postiz-custom:local-%s\n' "$1" > "$T/postiz/docker-compose.yml"
-  rm -f "$T/estado/avisos" "$T/estado/ups" "$T/estado/rotas" "$T/estado/build-falla" "$T/postiz/.desplegar-fallido"; }
+  rm -f "$T/estado/avisos" "$T/estado/ups" "$T/estado/rotas" "$T/estado/mudas" "$T/estado/build-falla" "$T/postiz/.desplegar-fallido"; }
 es() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "MAL  $1: esperaba «$3», hay «$2»"; fallos=$((fallos+1)); fi; }
 aviso() { cat "$T/estado/avisos" 2>/dev/null; }
 
@@ -154,6 +163,13 @@ es "la etiqueta distinta no es deriva" "$(aviso)" ""
 corriendo "$BASE"; echo "    restart: always" >> "$T/postiz/docker-compose.yml"
 bash "$SCRIPT" > /dev/null
 aviso | grep -q "docker-compose.yml" && echo "ok   un cambio de verdad en el compose sí lo es" || { echo "MAL  no ve el cambio del compose"; fallos=$((fallos+1)); }
+
+echo "-- 12. Sana por fuera pero Temporal no ejecuta nada: vuelve sola a la anterior"
+corriendo "$BASE"; echo "local-$OTRO" > "$T/estado/mudas"
+bash "$SCRIPT" > /dev/null; rc=$?
+es "sale con error" "$rc" "1"
+es "vuelve a correr la anterior" "$(cat "$T/estado/imagen")" "postiz-custom:local-$BASE"
+aviso | grep -q "se volvió a local-$BASE, que está sano" && echo "ok   la anterior, que sí ejecuta, cuenta como sana" || { echo "MAL  no da por sana la anterior"; fallos=$((fallos+1)); }
 
 echo
 [ "$fallos" -eq 0 ] && echo "TODO BIEN" || { echo "$fallos FALLOS"; exit 1; }

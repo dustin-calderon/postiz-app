@@ -208,8 +208,12 @@ o un `.md`, hace el despliegue entero:
 3. vuelca la base con `volcar-app.sh postiz` en `/opt/homeserver/ops/volcados-actualizacion/`;
 4. recrea solo `postiz` (`up -d --no-deps`) y espera a que quede **sano**: el
    healthcheck en verde, las tres apps de pm2 `online`, `/` contestando 307 por
-   nginx y el orchestrator del contenedor nuevo escuchando la cola `main` de
-   Temporal;
+   nginx, el orchestrator del contenedor nuevo escuchando la cola `main` de
+   Temporal y, además, ejecutando: el `missing-post-workflow` que el backend
+   arranca en cada arranque tiene que ser de este arranque y haber terminado
+   su primera actividad. Escuchar no basta: un SDK de Temporal que no casa con
+   el servidor, o un bundle de workflows roto, deja los pollers vivos y ningún
+   post sale (lo que había que mirar a mano tras subir Temporal a 1.25);
 5. si en 10 minutos no queda sano, vuelve solo a la imagen que corría y
    comprueba que esa sí lo esté.
 
