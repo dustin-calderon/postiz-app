@@ -258,7 +258,7 @@ ssh dchomeserver 'nohup /opt/homeserver/postiz/desplegar.sh >> /opt/homeserver/o
   desplegar difieren, se encola una incidencia (`postiz-copias`). Cuáles se
   comparan lo dice `desplegar.sh`; del compose no cuenta la línea `image`. `desplegar.sh` se prueba
   entero, sin tocar nada real, con `bash docs/architecture/scripts/test_desplegar.sh`
-  en Linux.
+  en Linux; la CI lo corre en cada push (job `despliegue`).
 
 > **Recrear el contenedor no cambia la retención de medios.** `workflow.start`
 > con un `workflowId` ya vivo lanza `WorkflowExecutionAlreadyStarted` y el

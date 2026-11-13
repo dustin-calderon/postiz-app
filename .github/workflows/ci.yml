@@ -20,6 +20,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # desplegar.sh decide qué corre en producción y cuándo se vuelve atrás; su
+  # prueba usa un docker de mentira y tarda segundos. En la puerta, para que no
+  # se quede atrás del script.
+  despliegue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash docs/architecture/scripts/test_desplegar.sh
+
   puerta:
     runs-on: ubuntu-latest
     timeout-minutes: 45
