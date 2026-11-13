@@ -43,8 +43,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Jest corre las suites en un solo proceso (--detectOpenHandles) y ts-jest
-      # guarda en memoria los tipos de cada proyecto. Con los de Temporal 1.25
-      # el pico son 4,3 GB, por encima de los 4,2 GB que Node se da por defecto.
+      # guarda en memoria los tipos de cada proyecto. Con los de Temporal, el
+      # pico pasa del montón que Node se da por defecto en el runner.
       - run: pnpm test
         env:
           NODE_OPTIONS: --max-old-space-size=8192

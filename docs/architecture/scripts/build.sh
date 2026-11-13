@@ -4,14 +4,11 @@
 # Uso: bash /opt/homeserver/postiz/build.sh
 # Produce: postiz-custom:local-<short-sha>
 #
-# Una etiqueta por commit, y no una fija como postiz-custom:local, porque
-# check-imagenes-publicas.py (Instalar-Home-Server) ata cada vulnerabilidad
-# aceptada a la imagen que corre el contenedor. Con una etiqueta reutilizada, la
-# aceptación sobreviviría al código que la justificaba; con el SHA, reconstruir
-# desde otro commit hace que los hallazgos vuelvan a salir y se juzguen de nuevo.
+# Una etiqueta por commit, y no una fija como postiz-custom:local, para que el
+# build no pise la imagen que corre: es la vuelta atrás de desplegar.sh.
 #
 # Copia versionada de /opt/homeserver/postiz/build.sh: si se toca una, se
-# actualiza la otra (se comparan con md5sum).
+# actualiza la otra (desplegar.sh las compara al desplegar).
 
 set -euo pipefail
 
