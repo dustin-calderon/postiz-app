@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
@@ -913,6 +914,19 @@ export class PostsService {
   ): Promise<any[]> {
     const postList = [];
     for (const post of body.posts) {
+      // a post of another organization can never be updated from here
+      const postIds = [
+        ...new Set((post.value || []).map((p) => p.id).filter(Boolean)),
+      ];
+      if (
+        postIds.length &&
+        (await this._postRepository.countPostsOfOtherOrganizations(
+          orgId,
+          postIds
+        )) > 0
+      ) {
+        throw new NotFoundException('Post not found');
+      }
       const provider = this._integrationManager.getSocialIntegration(
         (post.settings as any)?.__type
       );

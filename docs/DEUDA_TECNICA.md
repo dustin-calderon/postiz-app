@@ -91,3 +91,17 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 **Qué la vuelve urgente.** Que un informe con el nombre viejo llegue a alguien de fuera, o lo que reabre la entrada de las credenciales de `Math.random`.
 
 **Cómo se cierra.** El nombre, reconectando la integración de Instagram de CITEM desde la UI de Postiz (no editando la base). Las dos organizaciones, retirándolas después de comprobar que no tienen posts, medios ni integraciones.
+
+---
+
+## Rutas de facturación sin política de admin (arreglo de arriba #2421, no portado)
+
+**Qué pasa.** En v2.26.0, arriba (`8cee785e`) pone `@CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])` en las rutas de `billing.controller.ts` (cancelar, cambiar de plan, acabar la prueba, reembolsos): cualquier miembro de una organización podía llamarlas. Aquí tampoco la llevan.
+
+**Por qué no se porta.** Aquí no cambiaría nada: sin `STRIPE_PUBLISHABLE_KEY`, `PermissionsService.check` concede todas las políticas, también `ADMIN`, y sin `STRIPE_SECRET_KEY` esas rutas no tienen proveedor de pago al que llamar. Las dos van vacías en producción; esto tiene que imprimir `0`:
+`docker exec postiz sh -c 'env | grep -cE "^STRIPE_(SECRET|PUBLISHABLE)_KEY=."'`
+Además, el controlador de aquí tiene otra forma (sin `/invoices`, con `/charges`, `/refund-charges`, `/cancel-subscription` y `/add-subscription`, que ya exigen superadmin), y el commit choca en sus seis ficheros.
+
+**Qué la reabre.** Configurar Stripe en Postiz.
+
+**Cómo se cierra.** Al configurar Stripe, la política de admin en cada ruta de `billing.controller.ts` que no exija ya superadmin, y el mensaje de `Sections.ADMIN` en `subscription.exception.ts`.
