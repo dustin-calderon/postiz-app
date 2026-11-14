@@ -52,6 +52,9 @@ overrides:
   '@graphql-yoga/plugin-defer-stream@^3': '^3.24.4'
   'postcss-selector-parser@^6': '^6.1.5'
   'follow-redirects@^1': '^1.16.2'
+  'hono@^4': '^4.13.16'
+  '@hono/node-server@^2': '^2.1.6'
+  'get-uri>basic-ftp': '^6.2.4'
 
 onlyBuiltDependencies:
   - bcrypt
