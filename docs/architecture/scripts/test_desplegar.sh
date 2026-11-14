@@ -101,7 +101,10 @@ es "sin despliegue" "$(cat "$T/estado/ups" 2>/dev/null)" ""
 
 echo "-- 3. Cambió código y queda sano: se despliega"
 NUEVO=$(commit apps/b.ts "arreglo")
+mkdir -p "$T/volcados"; echo viejo > "$T/volcados/postiz-2020-01-01-0000.dump"; echo ajeno > "$T/volcados/n8n-2020-01-01-0000.dump"
 bash "$SCRIPT" --si-hay-cambios
+es "de postiz queda solo el volcado de este despliegue" "$(ls "$T/volcados" | grep -c '^postiz-')" "1"
+es "y el de otra app no se toca" "$(cat "$T/volcados/n8n-2020-01-01-0000.dump")" "ajeno"; rm "$T/volcados/n8n-2020-01-01-0000.dump"
 es "corre la nueva" "$(cat "$T/estado/imagen")" "postiz-custom:local-$NUEVO"
 es "un despliegue bueno no avisa a nadie" "$(aviso)" ""
 es "volcado antes" "$(cat "$T/volcados"/*.dump)" "volcado-de-postiz"

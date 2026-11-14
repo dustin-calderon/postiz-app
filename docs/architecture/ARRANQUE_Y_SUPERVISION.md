@@ -183,7 +183,9 @@ o un `.md`, hace el despliegue entero:
 
 1. trae la rama al clon (`/opt/repos/postiz-fork`, solo fast-forward);
 2. construye la imagen con `build.sh`, que deja el compose apuntando a ella;
-3. vuelca la base con `volcar-app.sh postiz` en `/opt/homeserver/ops/volcados-actualizacion/`;
+3. vuelca la base con `volcar-app.sh postiz` en `/opt/homeserver/ops/volcados-actualizacion/`
+   y borra los volcados anteriores de Postiz: son la base en claro, y la vuelta
+   atrás de un despliegue es solo el último;
 4. recrea solo `postiz` (`up -d --no-deps`) y espera a que quede **sano**: el
    healthcheck en verde, las tres apps de pm2 `online`, `/` contestando 307 por
    nginx, el orchestrator del contenedor nuevo escuchando la cola `main` de

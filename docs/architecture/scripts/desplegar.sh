@@ -80,9 +80,14 @@ bash "$DIR/build.sh" || fallo "build.sh falló: la imagen no se construyó y sig
 NUEVA=local-$OBJETIVO
 
 # El arranque aplica el esquema con `prisma db push`: volver a la imagen
-# anterior no deshace un cambio de esquema, este volcado sí. Se queda.
+# anterior no deshace un cambio de esquema, este volcado sí. Se queda, y con
+# él escrito sobran los anteriores: son la base en claro, y la vuelta atrás de
+# un despliegue es solo el último.
 VOLCADO="$VOLCADOS/postiz-$(date +%F-%H%M).dump"
-"$VOLCAR" postiz > "$VOLCADO" || fallo "No se pudo volcar la base: no se despliega."
+"$VOLCAR" postiz > "$VOLCADO" && [ -s "$VOLCADO" ] || fallo "No se pudo volcar la base: no se despliega."
+for viejo in "$VOLCADOS"/postiz-*.dump; do
+  [ "$viejo" = "$VOLCADO" ] || rm -f "$viejo"
+done
 
 sano_desde() {
   # Sano = el healthcheck (nginx y backend) en verde, las tres apps de pm2
