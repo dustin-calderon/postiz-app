@@ -61,7 +61,7 @@ No es un descuido: es una obligación de Temporal. El workflow corre en un sandb
 
 ### Aplicado el 2026-08-04: de 30 a 3650 días
 
-`MEDIA_RETENTION_DAYS=3650` añadida a `/opt/homeserver/postiz/postiz.env` (copia previa: `postiz.env.bak-20260804-retention`). El workflow anterior se terminó y el nuevo arrancó con `retentionDays = ['3650']`, **verificado en el historial de Temporal**. La pasada inmediata no borró nada: 35 medios vivos y 54 ficheros en disco, antes y después.
+`MEDIA_RETENTION_DAYS=3650` añadida a `/opt/homeserver/postiz/postiz.env`. El workflow anterior se terminó y el nuevo arrancó con `retentionDays = ['3650']`, **verificado en el historial de Temporal**. La pasada inmediata no borró nada: 35 medios vivos y 54 ficheros en disco, antes y después.
 
 **Por qué se subió.** El argumento de que 30 días eran seguros descansa entero en que Notion guarda el máster ([CONTENT_PIPELINE_POSTIZ_FORK.md](./CONTENT_PIPELINE_POSTIZ_FORK.md) §7). Es cierto para lo que pasa por el pipeline y **falso para todo lo anterior**: los 18 posts publicados desde la UI de Postiz no tienen fila en Notion, así que la caché del Seagate era su única copia. Nueve ya habían perdido sus ficheros —todo junio—; los otros nueve conservaban **201,0 MB** (191,7 MiB) en **18 ficheros distintos** que se habrían empezado a purgar el 2026-08-05.
 

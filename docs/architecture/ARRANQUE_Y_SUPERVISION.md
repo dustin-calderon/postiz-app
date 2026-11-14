@@ -131,8 +131,8 @@ healthcheck:
 Vive en `/opt/homeserver/postiz/docker-compose.yml`. Se usa `node -e` porque la
 imagen no trae `wget` ni `curl`. El compose no lleva contraseñas: las de
 las bases las lee Compose del `.env` de al lado (`POSTIZ_DB_PASSWORD`,
-`TEMPORAL_DB_PASSWORD`), y las de la app están en `postiz.env`. Esos dos y sus
-copias `.bak-*` van en `600`, como el `.env` del homeserver, y ninguno va a git. `build.sh`
+`TEMPORAL_DB_PASSWORD`), y las de la app están en `postiz.env`. Esos dos van en
+`600`, como el `.env` del homeserver, y ninguno va a git. `build.sh`
 y `desplegar.sh` cambian la imagen del compose con `sed -i`, que conserva el modo.
 
 > **`autoheal` sí reinicia este contenedor.** Corre con
@@ -258,10 +258,15 @@ no se limpia hasta el reinicio, que en este servidor tarda semanas.
   grep -rlE 'IGAA[A-Za-z0-9]{20}|EAA[A-Za-z0-9]{20}|ntn_[A-Za-z0-9]{20}' /tmp 2>/dev/null
   ```
 
-Los ficheros de trabajo que sí se conservan a propósito son las copias `.bak-*`
-de lo que **no** está en git: `.env` y `postiz.env`. Todo lo demás —el compose,
-los scripts, las suites— vive en `docs/architecture/scripts/`, así que una copia
-suelta en el servidor sólo añade una versión más que puede divergir.
+Una copia `.bak-*` solo se hace de lo que **no** está en git (`.env` y
+`postiz.env`), en `600`, y se borra en cuanto el cambio queda validado: duplica
+los secretos fuera del backup y de toda rotación. La regla, y el vigilante que
+manda al bus la que se queda, están en `Instalar-Home-Server`
+(`docs/guides/DEPLOY.md`, «Copias de antes de editar»). Todo lo demás —el
+compose, los scripts, las suites— vive en `docs/architecture/scripts/`, y su
+versión de antes es `git show`. De un workflow de n8n tampoco se guarda la
+exportación anterior: la copia durable es una por workflow
+([INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)).
 
 ## ☠️ Borrar un canal borra su historial de publicaciones
 
