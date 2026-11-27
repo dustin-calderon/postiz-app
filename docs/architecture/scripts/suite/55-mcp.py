@@ -11,7 +11,7 @@ print(); print("=" * 62); print("6d · EL WEBHOOK DEL MCP DE REDES"); print("=" 
 MCP_TOKEN = os.environ["N8N_MCP_TOKEN"]
 
 def mcp(cuerpo, token=MCP_TOKEN, espera=30):
-    """Llama al webhook por local (sin Cloudflare: la espera de `sincronizar` pasa de lo que corta el túnel).
+    """Llama al webhook por local (sin Cloudflare).
     Devuelve (status, cuerpo ya leído como JSON)."""
     h = {"Content-Type": "application/json", "User-Agent": "curl/8.5.0"}
     if token: h["X-MCP-Token"] = token
@@ -49,8 +49,13 @@ pid_mcp = fila({"Status": {"select": {"name": "Por aprobar"}}, "cuenta": {"selec
 esperar_indice([pid_mcp])
 c, antes = mcp({"operacion": "postiz", "fila": pid_mcp})
 check("postiz de una fila sin post: ningún post y la ventana dicha", c == 200 and antes["posts"] == [] and antes["ventana"] == {"atras_dias": 30, "adelante_dias": 15}, "(%d)" % c)
-c, s = mcp({"operacion": "sincronizar"}, espera=130)
-check("sincronizar espera a que la pasada acabe", c == 200 and s == {"estado": "terminada"}, "(%d, %s)" % (c, s))
+t0 = time.time()
+c, s = mcp({"operacion": "sincronizar"})
+check("sincronizar lanza la pasada y responde al momento, sin esperarla", c == 200 and s == {"estado": "lanzada"} and time.time() - t0 < 10, "(%d, %s, %.1fs)" % (c, s, time.time() - t0))
+# La pasada sigue por detrás: se espera a que la fila tenga su borrador (hasta 3 min), que es lo que antes esperaba la propia llamada.
+for _ in range(36):
+    if leer(pid_mcp)["post_id"]: break
+    time.sleep(5)
 post_mcp = leer(pid_mcp)["post_id"]
 c, despues = mcp({"operacion": "postiz", "fila": pid_mcp})
 posts_mcp = despues["posts"] if c == 200 else []

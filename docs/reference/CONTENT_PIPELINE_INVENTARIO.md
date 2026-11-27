@@ -29,10 +29,10 @@
 | `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | `200` al terminar | Sync a demanda (scripts, curl) |
 | `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | **`202` al instante** | El botón `Sync now` de Notion ([SYNC §1](../architecture/CONTENT_PIPELINE_SYNC.md)) |
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | `200` al terminar | Retirada/recuperación a demanda |
-| `POST /webhook/postiz-mcp` | `X-MCP-Token` (**distinto** del `X-Sync-Token`) | `200` al terminar; `sincronizar` responde `en_curso` si la pasada pasa de 90 s | El Worker `redes-mcp`. Como los demás webhooks que llama alguien de fuera, la ruta está en la app de Access «n8n Webhooks (API externa)» (*bypass*) y en `rutas_abiertas` de `n8n` en `server/config/apps-publicas.json` de Instalar-Home-Server: la autenticación es la del webhook (`CLOUDFLARE_SECURITY_GUIDE` §3.2) |
+| `POST /webhook/postiz-mcp` | `X-MCP-Token` (**distinto** del `X-Sync-Token`) | `200` en el acto: `sincronizar` solo lanza la pasada (llama a la ruta del botón, que responde `202`) y responde `lanzada` | El Worker `redes-mcp`. Como los demás webhooks que llama alguien de fuera, la ruta está en la app de Access «n8n Webhooks (API externa)» (*bypass*) y en `rutas_abiertas` de `n8n` en `server/config/apps-publicas.json` de Instalar-Home-Server: la autenticación es la del webhook (`CLOUDFLARE_SECURITY_GUIDE` §3.2) |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | `200` al terminar | Destino del webhook de Postiz |
 
-Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH`, `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_REPLICAR_BUTTON_PATH` (el botón «Replicar»).
+Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH`, `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_REPLICAR_BUTTON_PATH` (el botón «Replicar»), y cada ruta está además en el workflow que la sirve; la del botón del sync, también en «Pipeline · MCP», que la llama para lanzar la pasada.
 
 > ### Por qué el receptor lleva el secreto en la URL y no en una cabecera
 > `sendWebhooks` (`post.activity.ts`) manda el webhook con **una sola cabecera**, `Content-Type`. No hay firma, ni HMAC, ni campo de secreto en el modelo `Webhooks` (id, name, url, organizationId). Con un emisor que no puede autenticarse, meter el secreto en la ruta es la única opción; sobre HTTPS la ruta no viaja en claro.
@@ -59,7 +59,7 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 > |---|---|---|
 > | **Token de Notion** — integración interna **`Notion SM - Postiz`** del espacio *DC Brand*, conectada a la base *Calendario Social Media* y al *Manual de uso — Social Media* | **Credencial de n8n** `5rCv9a6s5FyI0swq` (cabecera `Authorization: Bearer …`), cifrada | Sync, retirada y receptor |
 > | | **`NOTION_API_KEY`** en `/opt/homeserver/.env`, mismo valor | Archivador de Drive, [`scripts/`](../architecture/scripts/) de pruebas y la réplica de carruseles (`Instalar-Home-Server`) |
-> | **`X-Sync-Token`** de los webhooks con cabecera | **Credencial de n8n** `4jg5NXem2BvjFtFO` | Los webhooks del sync y de la retirada, y «Pipeline · MCP», que la usa para llamar al sync |
+> | **`X-Sync-Token`** de los webhooks con cabecera | **Credencial de n8n** `4jg5NXem2BvjFtFO` | Los webhooks del sync y de la retirada |
 > | | `/opt/homeserver/.env`, **con dos nombres y el mismo valor**: `N8N_SYNC_IG_TOKEN` y `POSTIZ_SYNC_TOKEN` | Los scripts de pruebas leen el primero; `replicar.sh` (Instalar-Home-Server), el segundo |
 > | **Token de Notion del MCP de redes** — integración interna **propia** (`redes-mcp`), distinta de la de n8n: conectada solo a la base *Calendario Social Media* y al manual. Una integración tiene sus capacidades (leer, actualizar, insertar) en todo lo que se le conecta, no por página: que el manual solo se lea lo garantiza el código del Worker, que no escribe más que filas del calendario | **Secreto del Worker** `redes-mcp`, `NOTION_TOKEN` (solo ahí: ni en n8n ni en el `.env`) | El Worker |
 > | **Clave de las URL de subida** | **Secreto del Worker** `redes-mcp`, `SUBIDAS_CLAVE` (solo ahí) | El Worker: firma y comprueba las URL con las que Claude Code sube los diseños por partes |
