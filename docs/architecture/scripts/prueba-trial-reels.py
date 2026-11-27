@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Prueba de trial reels. modo=borrador SIEMPRE: nada puede salir a Instagram."""
+"""Prueba de trial reels. Status=Por aprobar SIEMPRE: nada puede salir a Instagram."""
 import json, urllib.request, os, uuid, subprocess, time, sys, datetime
 
 TOK = os.environ["NOTION_API_KEY"]
@@ -59,8 +59,7 @@ def subir(fichero, tipo):
 
 def fila(props):
     base = {"Name": {"title": [{"text": {"content": "__ZZ trial (borrar)"}}]},
-            "Plataforma": {"multi_select": [{"name": "Instagram"}]},
-            "modo": {"select": {"name": "borrador"}}}   # nunca publica
+            "Plataforma": {"multi_select": [{"name": "Instagram"}]}}
     base.update(props)
     return api("https://api.notion.com/v1/pages", {"parent": {"type": "data_source_id", "data_source_id": DS}, "properties": base})["id"]
 
@@ -93,7 +92,8 @@ print("  video: %d B · imagen: %d B" % (os.path.getsize("/tmp/v1.mp4"), os.path
 vid1, vid2, img1 = subir("v1.mp4", "video/mp4"), subir("v1.mp4", "video/mp4"), subir("i1.jpg", "image/jpeg")
 
 M = lambda i, n: {"files": [{"type": "file_upload", "file_upload": {"id": i}, "name": n}]}
-BASE = {"Status": {"select": {"name": "Listo"}}, "cuenta": {"select": {"name": "AMORISMO VOL III"}},
+BASE = {"Status": {"select": {"name": "Por aprobar"}},   # draft: nunca publica
+        "cuenta": {"select": {"name": "AMORISMO VOL III"}},
         "Fecha": {"date": {"start": F}}, "copy": {"rich_text": [{"text": {"content": "Prueba trial."}}]}}
 
 print(); print("=" * 66); print("1 · LO QUE DEBE FALLAR, CON MOTIVO LEGIBLE"); print("=" * 66)
@@ -124,7 +124,7 @@ pid = fila({**BASE, "Tipo": {"select": {"name": "Reel"}},
 esperar_indice([pid])
 hit(L + "postiz-sync-ig", hdr={"X-Sync-Token": TOKEN})
 r = leer(pid)
-check("se crea (como borrador)", r["Status"] == "En Postiz (borrador)" and bool(r["post_id"]),
+check("se crea (como borrador, y la fila sigue en Por aprobar)", r["Status"] == "Por aprobar" and bool(r["post_id"]),
       "(Status=%s · %s)" % (r["Status"], r["error"][:60]))
 if r["post_id"]:
     st = sql("SELECT state FROM \"Post\" WHERE id='%s';" % r["post_id"])

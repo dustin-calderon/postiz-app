@@ -59,12 +59,15 @@ Duplicar tampoco puede, y no por el turno: el margen de seguridad (§3) cubre la
 | `Plataforma` no contiene Instagram | Invisible para el worker |
 | `Status` vacío | No crear nada — **la retirada lo borra de Postiz si existía** ([RECONCILIACION §4](./CONTENT_PIPELINE_RECONCILIACION.md)) |
 | `Status` = `Publicado` | **No tocar jamás** |
+| `Status` = `Por aprobar` | Crear o recrear como **borrador** (`draft`) si la `Fecha` cae dentro de los 15 días; la fila sigue en `Por aprobar` |
+| `Status` = `Listo` o `Programado` | Crear o recrear como **programado** (`schedule`) |
+| `Status` cambia entre que se lee la cola y se crea | Manda el que el subflow relee; uno que no sea `Por aprobar`, `Listo` ni `Programado` no se sincroniza |
 | Dentro del margen de seguridad **y ya tiene `❌ postiz_post_id`** (§3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
 | `❌ postiz_post_id` vacío | Crear |
 | Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** ([RECONCILIACION §2](./CONTENT_PIPELINE_RECONCILIACION.md)) |
 | `❌ postiz_media` con los mismos ficheros, en el mismo orden | No re-subir los assets |
 | `Fecha` sin hora | `Error` — nunca se adivina la hora |
-| `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo |
+| `Fecha` ya pasó y nunca se sincronizó | `Error` + motivo, que dice que se vuelva a poner el estado que tenía la fila (`Por aprobar` o `Listo`) |
 
 > ⚠️ La segunda fila **no es "ignorar y seguir"**. Sin la retirada, vaciar `Status` de una fila ya sincronizada deja el post programado en Postiz y **sale publicado igual**. Las dos partes son una sola.
 
@@ -105,15 +108,16 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
            mira el agregado, no cada item (ver recuadro abajo).
       └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts                  (cuerpo exacto: API_POSTIZ)
-      type                        = modo
+      type                        = schedule si Status es Listo o Programado,
+                                    draft en cualquier otro caso (Por aprobar)
       posts[0].externalId         = id de la página de Notion
       value[0].content            = copy
       value[0].image[]            = ❌ postiz_media
       value[1].content            = first_comment        (si lo hay)
       settings.collaborators[]    = colaboradores        (si los hay)
       └──► ESCRIBE ❌ postiz_post_id                        [write 2]
-           Status = Programado           si modo = programar
-           Status = En Postiz (borrador) si modo = borrador
+           Status = Programado           si era Listo o Programado
+           (Por aprobar no se escribe: sigue en Por aprobar)
 
    si el paso 5 falla:
       Status = Error · ❌ error_log = motivo
@@ -145,7 +149,7 @@ Las dos escrituras van separadas: guardar `❌ postiz_media` en cuanto sube hace
 > Lo que exige decidir a una persona —la duración de un video, la proporción de una foto— no se convierte: lo rechaza Postiz al crear el post ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)). La prueba del script es [`test_normalizar-media.sh`](./scripts/test_normalizar-media.sh) ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)).
 
 > ### ⚠️ El veredicto es de la fila, no de cada asset
-> Un IF **por item** con 10 assets y 2 correctos partiría la ejecución en dos ramas vivas: n8n ejecuta primero la buena, y una excepción ahí mata la ejecución antes de que la rama de error escriba nada. La fila se quedaría en `Listo`, con `❌ error_log` vacío y medios huérfanos — un fallo invisible desde Notion, que es peor que el fallo.
+> Un IF **por item** con 10 assets y 2 correctos partiría la ejecución en dos ramas vivas: n8n ejecuta primero la buena, y una excepción ahí mata la ejecución antes de que la rama de error escriba nada. La fila se quedaría sin cambiar de estado, con `❌ error_log` vacío y medios huérfanos — un fallo invisible desde Notion, que es peor que el fallo.
 >
 > Por eso la agregación va **antes** del IF: `Recolectar media` recibe los N items del SSH, no lanza nunca, y emite **un solo item** con `n_fallos`, el `media_json` y los `media_ids` que sí se subieron. El IF mira `n_fallos == 0`. Un carrusel a medias no se publica, así que el veredicto no puede ser por asset.
 >

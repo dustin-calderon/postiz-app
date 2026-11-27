@@ -24,7 +24,7 @@ n8n **no mira el `state`**: mira `releaseURL`/`releaseId`. Si vienen con valor, 
 > ### ⚠️ El webhook es el camino rápido, no el único
 > La entrega es best-effort y sin reintento ([POSTIZ_FORK §4.2](./CONTENT_PIPELINE_POSTIZ_FORK.md)): si n8n está caído cuando Postiz publica, ese aviso **se pierde para siempre**.
 >
-> Por eso la retirada (§4) hace además una **pasada de recuperación**: para toda fila viva (`Listo`, `Programado` o `En Postiz (borrador)`) con post, `modo` distinto de `borrador` y la `Fecha` pasada hace más de 30 minutos, consulta el estado real en Postiz y corrige: `Publicado` con su enlace si salió; `Error` con su motivo si falló, si Postiz ya no tiene el post o si seguía como borrador porque se aprobó tarde. Es barato —va incluido en el `GET` que ya hace la retirada— y es lo único que evita que una fila con la fecha pasada se quede como estaba para siempre: el sync ya no la toca porque tiene post.
+> Por eso la retirada (§4) hace además una **pasada de recuperación**: para toda fila aprobada (`Listo` o `Programado`) con post y la `Fecha` pasada hace más de 30 minutos, consulta el estado real en Postiz y corrige: `Publicado` con su enlace si salió; `Error` con su motivo si falló, si Postiz ya no tiene el post o si seguía como borrador porque se aprobó tarde. **Nunca juzga una fila en `Por aprobar`**: un borrador no se publica, así que no hay nada que recuperar. Es barato —va incluido en el `GET` que ya hace la retirada— y es lo único que evita que una fila con la fecha pasada se quede como estaba para siempre: el sync ya no la toca porque tiene post.
 
 > **`❌ release_url` sólo puede venir de aquí.** `createPost` devuelve únicamente `[{postId, integration, alreadyClaimed}]` (`posts.service.ts`); el permalink no existe hasta que el post sale de verdad, y lo escribe `updatePost` en el workflow. Sin el webhook o la recuperación, ese campo se queda vacío para siempre.
 
@@ -83,7 +83,7 @@ El subflow itera sobre las filas de Notion. Todo lo que desaparece de esa lista 
 | Acción en Notion | Sin pasada de retirada |
 |---|---|
 | Se borra la fila | El post se publica igualmente |
-| `Status` vuelve de `Listo` a vacío | El post se publica igualmente |
+| `Status` vuelve de `Por aprobar` o `Listo` a vacío | El post se publica igualmente |
 | La `Fecha` se mueve a más de 15 días | Se publica en la fecha vieja |
 
 El segundo es el más traicionero: alguien retira un post para repensarlo, y sin retirada sale publicado.
@@ -99,7 +99,8 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
           (cualquier Status puesto, Publicado y Error incluidos,
            salvo una fila viva cuya Fecha está a más de 15 días)
           no ──► DELETE /public/v1/posts/:id
-                 y si su fila estaba en Programado o En Postiz ──► Listo
+                 y si su fila estaba en Programado ──► Listo
+                 (una fila en Por aprobar conserva Por aprobar)
 ```
 
 **Cuándo corre.** Es un workflow aparte, `Retirada y recuperación (IG)` ([INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)). El sync lo llama **una vez por pasada, antes de crear** (cron y botón): así aplazar una pieza o vaciar su `Status` y pulsar `Sync now` la retira en el acto. Y corre solo a las **06:20**, 20 minutos después del cron del sync, cuando éste ya ha escrito los `❌ postiz_post_id` que ella va a leer. Separado del camino de creación corre siempre, también el día que no hay filas que crear (en n8n los nodos sin items no se ejecutan).

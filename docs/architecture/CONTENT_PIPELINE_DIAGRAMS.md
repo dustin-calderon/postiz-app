@@ -127,7 +127,7 @@ nunca llega a crearse. Protege el borrar-y-recrear, no el crear ([CONTENT_PIPELI
 flowchart TD
     START(["fila de Notion"]) --> P1{"Status<br/>= Publicado?"}
     P1 -->|sí| NT["no tocar jamás"]
-    P1 -->|no| P2{"estado vivo?<br/>Listo · Programado<br/>En Postiz borrador"}
+    P1 -->|no| P2{"estado vivo?<br/>Por aprobar · Listo<br/>Programado"}
     P2 -->|no| IG1["ignorar"]
 
     P2 -->|sí| V["Validaciones estructurales<br/>· Fecha con hora y offset<br/>· cuenta con integration.id<br/>· copy no vacío<br/>· 1 a 10 media<br/>· colaboradores: ni carrusel ni story"]
@@ -230,7 +230,7 @@ flowchart TD
     RECON -->|"nada"| NN["Nada que hacer"]
 
     QR --> DP["Postiz: DELETE post huérfano"]
-    QREC --> CE["Notion: corregir estado<br/>Publicado o Error;<br/>Listo si se aplazó"]
+    QREC --> CE["Notion: corregir estado<br/>Publicado o Error;<br/>Programado aplazada vuelve a Listo"]
 
     style RECON fill:#553c9a,stroke:#b794f4,color:#fff
     style DP fill:#742a2a,stroke:#fc8181,color:#fff
@@ -298,31 +298,33 @@ flowchart TD
 
 ## 6. La propiedad `Status`, estado a estado
 
-Las personas escriben **`Listo`** y **`Por replicar`**. Lo que sale de `Por replicar` lo escribe la réplica; todo lo demás, n8n.
+Las personas escriben **`Por aprobar`**, **`Listo`** y **`Por replicar`**. Lo que sale de `Por replicar` lo escribe la réplica; todo lo demás, n8n.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Vacio: fila nueva
     Vacio: (vacío)
 
-    Vacio --> Listo: 👤 el equipo aprueba
+    Vacio --> PorAprobar: 👤 el equipo la prepara
+    Vacio --> Listo: 👤 el equipo la aprueba directamente
+    PorAprobar: Por aprobar
+    PorAprobar --> Listo: 👤 una persona la aprueba
     Vacio --> PorReplicar: 👤 post ajeno en URL
     PorReplicar: Por replicar
-    PorReplicar --> Listo: 🤖 la réplica la prepara · siempre modo=borrador
+    PorReplicar --> PorAprobar: 🤖 la réplica la prepara
     PorReplicar --> Error: 🤖 la réplica no pudo
-    Listo --> Programado: 🤖 sync · modo=programar
-    Listo --> EnPostiz: 🤖 sync · modo=borrador
-    EnPostiz: En Postiz (borrador)
+    Listo --> Programado: 🤖 sync · schedule
+    PorAprobar --> PorAprobar: 🤖 sync · el borrador (draft) se crea y la fila no cambia
 
     Programado --> Publicado: 🤖 webhook o recuperación
     Programado --> Listo: 🤖 aplazada a más de 15 días
-    EnPostiz --> Listo: 🤖 aplazada a más de 15 días
-    EnPostiz --> Error: 🤖 aprobada cuando ya había pasado la fecha
+    Listo --> Error: 🤖 aprobada cuando ya había pasado la fecha
     Programado --> Error: 🤖 falló la publicación
     Listo --> Error: 🤖 no pasó las validaciones, o su fecha pasó sin publicarse
-    EnPostiz --> Programado: 🤖 al cambiar modo
+    PorAprobar --> Error: 🤖 no pasó las validaciones
 
-    Error --> Listo: 👤 se corrige y se reenvía
+    Error --> PorAprobar: 👤 se corrige y se reenvía sin aprobar
+    Error --> Listo: 👤 se corrige y se reenvía aprobada
     Programado --> Vacio: 👤 retira la pieza
     Listo --> Vacio: 👤 se arrepiente
 

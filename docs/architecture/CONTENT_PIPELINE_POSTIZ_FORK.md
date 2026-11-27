@@ -98,12 +98,12 @@ Para que el consumidor pueda aplicarla, `getPostByForWebhookId` incluye `release
 
 **`checkValidity` también mide los ficheros** (`instagram.media.rules.ts`) contra la referencia de Meta (IG User Media, especificaciones de imagen, reels y stories): un video de más de 1920 px de ancho o 25 Mbps; un reel de más de 300 MiB o 15 min, una story de más de 100 MiB o 60 s, y cualquiera de los dos de menos de 3 s; y una foto del feed (post o carrusel) fuera de la proporción 4:5–1,91:1, que Meta rechaza al publicar con el error 2207009. Un video dentro de un carrusel solo se mide en ancho y bitrate: la referencia no le da tamaño ni duración propios. Solo mira lo que exige decidir a una persona —acortar un video, recortar una foto—: lo que se arregla convirtiendo lo hace antes `normalizar-media.sh` ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)). El mensaje lleva los valores medidos y llega a `❌ error_log` como «Postiz rechazó la pieza» ([NOTION_SCHEMA §7.1](./CONTENT_PIPELINE_NOTION_SCHEMA.md)), así que el problema se descubre al sincronizar y no a la hora de publicar. Es **fail-open**: solo bloquea con evidencia —lo que no se puede medir pasa, y una foto girada por su orientación EXIF o un video girado 90° no se juzgan por sus medidas, porque Meta no dice cuáles mira—, y solo aplica con storage `local`.
 
-> ### ⚠️ …salvo con `modo = borrador`, donde casi no valida nada
+> ### ⚠️ …salvo con `Status = Por aprobar` (`draft`), donde casi no valida nada
 > El resultado de `checkValidity` viaja en `item.errors`, y ese campo **sólo se comprueba dentro de `if (body.type !== 'draft')`** (`createPost` de `public.integrations.controller.ts`). Ahí dentro van también los ajustes y el límite de 2200 caracteres. Fuera de ese bloque queda una sola comprobación: `emptyContent`, que exige que el texto **y** las imágenes estén vacíos **a la vez** (`validatePosts` de `posts.service.ts`).
 >
 > Es decir: un borrador sin ninguna imagen pero con copy pasa sin queja, aunque `checkValidity` lo habría rechazado con *«Should have at least one media»*.
 >
-> **Con `modo = borrador`, n8n es la única defensa**, incluso para las reglas que [NOTION_SCHEMA §4](./CONTENT_PIPELINE_NOTION_SCHEMA.md) marca como «✅ Sí». Por eso el borrador es un dry-run editorial, no técnico ([NOTION_SCHEMA §2.2](./CONTENT_PIPELINE_NOTION_SCHEMA.md)).
+> **Con `Por aprobar`, n8n es la única defensa**, incluso para las reglas que [NOTION_SCHEMA §4](./CONTENT_PIPELINE_NOTION_SCHEMA.md) marca como «✅ Sí». Por eso el borrador es un dry-run editorial, no técnico ([NOTION_SCHEMA §2.2](./CONTENT_PIPELINE_NOTION_SCHEMA.md)).
 
 ## 6. `createPost` devuelve un ID por integración
 

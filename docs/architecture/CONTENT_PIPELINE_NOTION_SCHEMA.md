@@ -34,8 +34,7 @@ Las demás propiedades del calendario (`Name`, `Brand`, `Plataforma`, `Tipo`, `F
 | `copy` | Text | equipo / agente | `value[0].content` |
 | `media` | **Files** | equipo | `value[0].image[]` — **en orden** |
 | `first_comment` | Text | equipo / agente | `value[1].content` (§3) |
-| `modo` | Select: `borrador`·`programar` | equipo | **`type`** (§2.2) |
-| `Status` | Select | equipo → n8n | ✗ — el estado del pipeline (§7) |
+| `Status` | Select | equipo → n8n | **`type`** (§2.2) — y el estado del pipeline (§7) |
 | `❌ postiz_post_id` | Text | **n8n** | — el post actual en Postiz |
 | `❌ postiz_media` | Text | **n8n** | — JSON `[{id, path, src}]`, mismo orden que `media`; `src` es el id del fichero en Notion |
 | `❌ error_log` | Text | **n8n** | — último error (§7.1) |
@@ -64,7 +63,7 @@ Los campos `❌` son **territorio exclusivo de n8n**. Si alguien se ve editándo
 > Mandar sólo la URL en `value[0].image[]` devuelve **400**. Por eso `❌ postiz_media` guarda el objeto entero que devuelve la subida, no una lista de URLs. El detalle de los validadores: [API_POSTIZ §2](../reference/CONTENT_PIPELINE_API_POSTIZ.md).
 
 > ### `Status` es un *select*, y es la única propiedad de estado
-> Tiene que ser *select* y no del tipo *status* de Notion: **al tipo *status* la API de Notion no le puede añadir opciones**, así que no habría forma de meterle `Listo`, `Programado` ni `Error` desde un script. Con *select*, si algún día hace falta vocabulario de producción (`Sin empezar`, `En progreso`), se añade por API.
+> Tiene que ser *select* y no del tipo *status* de Notion: **al tipo *status* la API de Notion no le puede añadir opciones**, así que no habría forma de meterle `Por aprobar`, `Listo`, `Programado` ni `Error` desde un script. Con *select*, si algún día hace falta vocabulario de producción (`Sin empezar`, `En progreso`), se añade por API.
 >
 > Y es **una sola**, para el equipo y para el pipeline: un ciclo de producción aparte hacía convivir dos vocabularios que se pisaban («Borrador» y «Publicado» con sentidos distintos en cada propiedad), y el calendario es casi entero de Instagram.
 
@@ -85,25 +84,25 @@ Añadir una cuenta es una línea aquí, una opción en el select y, si el webhoo
 
 > Se guarda el ID, no el nombre. Resolver por nombre contra `GET /public/v1/integrations` parece más cómodo, pero se rompe **en silencio** el día que alguien renombre un canal en Postiz.
 
-### 2.2 `modo` — borrador o programar
+### 2.2 `Status` — borrador o programar
 
-Va directo al campo `type` de `POST /public/v1/posts`:
+`Status` decide el campo `type` de `POST /public/v1/posts`. No hay otra propiedad que lo cambie:
 
-| `modo` | `type` | Qué hace Postiz |
+| `Status` | `type` | Qué hace Postiz |
 |---|---|---|
-| `programar` | `schedule` | Queda programado y se publica solo |
-| `borrador` | `draft` | Se crea en Postiz y **no se publica nunca** |
+| `Por aprobar` | `draft` | Se crea en Postiz dentro de la ventana de 15 días y **no se publica nunca**; la fila sigue en `Por aprobar` |
+| `Listo` · `Programado` | `schedule` | Queda programado y se publica solo; la fila pasa a `Programado` |
 
-Por defecto, `programar`.
+Cualquier otro estado no crea nada, y ante un dato que falta el worker elige `draft`, nunca `schedule`.
 
-`borrador` sirve para el **dry-run** editorial y para revisar una pieza en la vista real de Postiz antes de soltarla. Cambiar de `borrador` a `programar` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
+`Por aprobar` sirve para el **dry-run** editorial, para revisar una pieza en la vista real de Postiz antes de soltarla, y es donde la réplica de carruseles deja sus filas. **`Listo` siempre quiere decir «publícalo»**: que la pieza esté ya en Postiz o no lo dice `❌ postiz_post_id`, no el estado. Pasar de `Por aprobar` a `Listo` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
 
-> **No contradice "nunca se aprueba en Postiz"** ([NOTION_POSTIZ §5](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). Se aprueba siempre en Notion: una fila en `Listo` con `modo = programar` está aprobada, y una en `borrador` se aprueba pasando `modo` a `programar` —así se aprueban las réplicas (§7)—. `Status` no aprueba un borrador. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
+> **No contradice "nunca se aprueba en Postiz"** ([NOTION_POSTIZ §5](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). Se aprueba siempre en Notion y con un gesto de una persona: `Por aprobar` → `Listo`. **Ningún camino automático escribe `Listo` sobre una fila que estaba en `Por aprobar`** —ni el sync, ni la retirada, ni la recuperación, ni la réplica—: sería aprobar sin que nadie lo haya visto. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
 > ### ⚠️ Un borrador **no pasa por la validación del servidor**
-> Postiz sólo valida los `schedule` ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)): un `borrador` entra con lo único que se mira siempre, que no esté vacío del todo.
+> Postiz sólo valida los `schedule` ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)): un `draft` (`Por aprobar`) entra con lo único que se mira siempre, que no esté vacío del todo.
 >
-> Consecuencia: una pieza que en `borrador` se crea sin quejarse puede **fallar al pasarla a `programar`**. El dry-run editorial no es un dry-run técnico. Las validaciones de n8n ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)) sí corren en ambos casos, y son las que atrapan casi todo.
+> Consecuencia: una pieza que en `Por aprobar` se crea sin quejarse puede **fallar al pasarla a `Listo`**. El dry-run editorial no es un dry-run técnico. Las validaciones de n8n ([SYNC §2](./CONTENT_PIPELINE_SYNC.md)) sí corren en ambos casos, y son las que atrapan casi todo.
 
 ### 2.3 Ajustes opcionales de Instagram
 
@@ -175,7 +174,7 @@ El worker las comprueba antes de gastar una llamada. Son las de **`instagram-sta
 | **Colaboradores en story** | ❌ No | Se **descartan en silencio** (`!isStory`, sin error) |
 | **Audio** | ❌ No | Se **descarta en silencio**: exige `graph.facebook.com` ([POSTIZ_FORK §9](./CONTENT_PIPELINE_POSTIZ_FORK.md)) |
 
-> **\* Sólo con `modo = programar`.** Con `borrador`, Postiz se salta `checkValidity` entero ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)), así que **ninguna** de las siete la para: son 7 de 7 a cargo de n8n.
+> **\* Sólo con `Status = Listo` o `Programado`** (`type: schedule`). Con `Por aprobar` (`type: draft`), Postiz se salta `checkValidity` entero ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)), así que **ninguna** de las siete la para: son 7 de 7 a cargo de n8n.
 
 > ### ⚠️ Cinco de estas siete no dan error, o lo dan tarde
 > **n8n es la única validación real.** Lo que no compruebe el worker, o lo rechaza Meta a mitad de la publicación, o —peor— se aplica a medias sin avisar.
@@ -215,34 +214,30 @@ Lo que sí se valida es el rango: cada foto del feed, carruseles incluidos, tien
 Las opciones de la propiedad `Status` (§2):
 
 ```
-                                      modo = programar
-  (vacío) ─────► Listo ══╦══════════► Programado ══► Publicado
-      ▲            ▲     ║                 ║             ║
-      │            │     ║                 ╚═► Error ◄═══╝
-      │            │     ║                       │
-      │            │     ╚═► En Postiz (borrador)
-      │            │              modo = borrador
-      └────────────┴───────────────────┴─────────┘
-              se corrige y se devuelve a Listo
+  (vacío) ──┬─► Por aprobar ──► Listo ═════► Programado ══► Publicado
+            └───────────────────►▲                ║              ║
+                                                  ╚═══► Error ◄══╝
+        Por aprobar y Listo también pasan a Error si no validan.
+        Error se corrige y se devuelve a Por aprobar o a Listo.
 
    ──►  lo mueve una persona        ══►  lo escribe n8n
 ```
 
-**El equipo sólo escribe `Listo`** (y `Por replicar`, abajo). Vaciar la propiedad retira el post de Postiz ([RECONCILIACION §4](./CONTENT_PIPELINE_RECONCILIACION.md)). Todo lo demás es del worker.
+**El equipo escribe `Por aprobar`, `Listo` y `Por replicar`** (este último, abajo). Vaciar la propiedad retira el post de Postiz ([RECONCILIACION §4](./CONTENT_PIPELINE_RECONCILIACION.md)). Todo lo demás es del worker.
 
 A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir editando el contenido**: el sync propaga los cambios mientras el post no se haya publicado ([SYNC](./CONTENT_PIPELINE_SYNC.md)).
 
-`Programado → Publicado` y `Programado → Error` los escribe n8n al recibir el webhook de Postiz ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)).
+`Programado → Publicado` y `Programado → Error` los escribe n8n al recibir el webhook de Postiz ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)). Una fila en `Por aprobar` no cambia de estado por sí sola: ni con su borrador creado, ni aplazada a más de 15 días, ni con la `Fecha` pasada.
 
-**Con `modo = borrador`** (§2.2) la fila sincronizada no va a `Programado` sino a **`En Postiz (borrador)`**. Es un estado propio a propósito: si reutilizara `Programado`, alguien daría por hecho que va a salir y no saldría nunca. Desde ahí se pasa a `Programado` cambiando `modo`, no la propiedad `Status`.
+**Con `Por aprobar`** (§2.2) la fila sincronizada **sigue en `Por aprobar`**: si pasara a `Programado`, alguien daría por hecho que va a salir y no saldría nunca. Se pasa a `Listo` —y de ahí a `Programado` en la siguiente pasada— cuando una persona la aprueba.
 
-**Postiz no se entera de que la pieza existe hasta que `Status = Listo`.** El borrador *editorial* vive en Notion y no sale de ahí.
+**Postiz no se entera de que la pieza existe hasta que `Status` es `Por aprobar` (como borrador) o `Listo` (programada).** Con la propiedad vacía, el borrador *editorial* vive en Notion y no sale de ahí.
 
-> **`Por replicar`.** Una opción previa a `Listo` para la réplica de carruseles: una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica la prepara (workflow `Carruseles · Replicar`, [INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)). **El sync no la lee**: lee `Listo`, `Programado` y `En Postiz (borrador)`, y la recuperación, `Programado`. La retirada reclama el post de toda fila con `Status` puesto, `Por replicar` incluida: el de una fila que se rehace sigue en Postiz hasta que el sync lo sustituye al terminar la réplica. **La réplica la deja en `Listo` siempre con `modo = borrador`, y la aprueba una persona —María— cambiando `modo` a `programar`**: un LLM no aprueba su propia salida. El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
+> **`Por replicar`.** Una opción previa a `Listo` para la réplica de carruseles: una persona la escribe con el post ajeno en `URL` y la cuenta que lo publicó en `cuenta origen`, y la réplica la prepara (workflow `Carruseles · Replicar`, [INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)). **El sync no la lee**: lee `Por aprobar`, `Listo` y `Programado`, y la recuperación, `Listo` y `Programado`. La retirada reclama el post de toda fila con `Status` puesto, `Por replicar` incluida: el de una fila que se rehace sigue en Postiz hasta que el sync lo sustituye al terminar la réplica. **La réplica la deja en `Por aprobar`, y la aprueba una persona —María— pasándola a `Listo`**: un LLM no aprueba su propia salida. El proceso vive en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
 ### 7.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Listo`; el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha; con él el sync la ignora, y la recuperación dice qué fue de su post ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)).
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Por aprobar` o a `Listo`, según la pieza estuviera o no aprobada (el mensaje de `❌ error_log` dice cuál); el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha; con él el sync la ignora, y la recuperación dice qué fue de su post ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)).
 
 **Qué dice `❌ error_log`, y de quién es el fallo.** Lo lee una persona, así que dice el porqué y qué hacer; el detalle técnico (el JSON de Postiz, el stack de axios) se queda en la ejecución de n8n.
 
@@ -273,11 +268,11 @@ Al reintentar, el worker **reutiliza `❌ postiz_media` si son los mismos ficher
 
 | Vista | Filtro | Columnas | Orden |
 |---|---|---|---|
-| `▶ Publicar en IG` | `Plataforma` contiene `Instagram` | `Name`, `Fecha`, `cuenta`, `Tipo`, `Status`, **`modo`**, `Sync now`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log` | `Fecha` ascendente |
+| `▶ Publicar en IG` | `Plataforma` contiene `Instagram` | `Name`, `Fecha`, `cuenta`, `Tipo`, **`Status`**, `Sync now`, `copy`, `media`, `colaboradores`, `first_comment`, `❌ error_log` | `Fecha` ascendente |
 | `⚠️ Averías` | `Status` es `Error` | `Name`, `Fecha`, `cuenta`, `Status`, `❌ error_log`, `❌ postiz_post_id` | `Fecha` ascendente |
 | `🔁 Por replicar` | `Status` es `Por replicar` | `Name`, `URL`, `cuenta`, `Fecha`, `Status`, `❌ error_log` | `Fecha` ascendente |
 
-De las tres, `▶ Publicar en IG` es la que enseña `modo`, y es donde el manual manda a aprobar un borrador (§2.2).
+De las tres, `▶ Publicar en IG` es donde se aprueba: el manual manda a pasar `Status` de `Por aprobar` a `Listo` (§2.2).
 
 **2 propiedades más de la réplica:** `cuenta origen` (texto), la cuenta de Instagram del post ajeno de una fila `Por replicar`, y `plantilla` (1, 2 o 3), la plantilla de CITEM que le tocó. Ningún workflow del pipeline las lee: las lee y escribe la réplica. `cuenta origen` existe porque un enlace `/p/…` no dice de quién es el post y la Graph API no lo resuelve sin revisión de Meta; `plantilla`, porque la siguiente de la rueda sale de la última declarada.
 
