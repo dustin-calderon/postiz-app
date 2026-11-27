@@ -237,7 +237,7 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 
 ### 7.1 El camino de vuelta desde `Error`
 
-`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Por aprobar` o a `Listo`, según la pieza estuviera o no aprobada (el mensaje de `❌ error_log` dice cuál); el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha; con él el sync la ignora, y la recuperación dice qué fue de su post ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)).
+`Error` **no es un sumidero**. Se corrige lo que falló y se devuelve `Status` a `Por aprobar` o a `Listo`, según la pieza estuviera o no aprobada (el mensaje de `❌ error_log` dice cuál); con el MCP de redes, `aprobar_pieza` acepta una fila en `Error` ya corregida, con la misma confirmación del cliente; el sync vacía `❌ error_log` cuando la pasada sale bien. **Si la `Fecha` ya pasó, hay que poner otra**: sin `❌ postiz_post_id` la fila vuelve a `Error` por la fecha; con él el sync la ignora, y la recuperación dice qué fue de su post ([RECONCILIACION §1](./CONTENT_PIPELINE_RECONCILIACION.md)).
 
 **Qué dice `❌ error_log`, y de quién es el fallo.** Lo lee una persona, así que dice el porqué y qué hacer; el detalle técnico (el JSON de Postiz, el stack de axios) se queda en la ejecución de n8n.
 
