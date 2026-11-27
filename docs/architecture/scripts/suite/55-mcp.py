@@ -38,8 +38,8 @@ c, b = mcp({"operacion": "borrar"})
 check("operación desconocida: 400", c == 400 and "error" in b, "(%d)" % c)
 c, b = mcp({"operacion": "postiz", "fila": "../../etc/passwd"})
 check("postiz con una fila mal formada: 400", c == 400, "(%d)" % c)
-c, b = mcp({"operacion": "postiz", "fila": "3b2a2405-a123-8100-8000-000000000001", "puntero": "../x"})
-check("postiz con un puntero mal formado: 400", c == 400, "(%d)" % c)
+c, b = mcp({"operacion": "postiz", "fila": "3b2a2405-a123-8100-8000-000000000001", "puntero": "pz-de-otra-fila"})
+check("postiz ignora cualquier puntero: no existe, solo cuenta el externalId", c == 200 and b["posts"] == [], "(%d)" % c)
 
 # --- 3 · postiz → sincronizar → postiz, sobre una fila de prueba (`Por aprobar`: no puede publicar)
 pid_mcp = fila({"Status": {"select": {"name": "Por aprobar"}}, "cuenta": {"select": {"name": "AMORISMO VOL III"}},
@@ -52,10 +52,9 @@ check("postiz de una fila sin post: ningún post y la ventana dicha", c == 200 a
 c, s = mcp({"operacion": "sincronizar"}, espera=130)
 check("sincronizar espera a que la pasada acabe", c == 200 and s == {"estado": "terminada"}, "(%d, %s)" % (c, s))
 post_mcp = leer(pid_mcp)["post_id"]
-c, despues = mcp({"operacion": "postiz", "fila": pid_mcp, "puntero": post_mcp})
+c, despues = mcp({"operacion": "postiz", "fila": pid_mcp})
 posts_mcp = despues["posts"] if c == 200 else []
-check("tras sincronizar, postiz ve el borrador, de la fila por identidad y por puntero",
-      c == 200 and bool(post_mcp) and len(posts_mcp) == 1 and posts_mcp[0]["id"] == post_mcp and posts_mcp[0]["estado"] == "DRAFT"
-      and sorted(posts_mcp[0]["coincide_por"]) == ["externalId", "postiz_post_id"], "(%d)" % c)
-c, sin_puntero = mcp({"operacion": "postiz", "fila": pid_mcp})
-check("sin puntero lo encuentra igual por la identidad externa", c == 200 and [p["coincide_por"] for p in sin_puntero["posts"]] == [["externalId"]], "(%d)" % c)
+check("tras sincronizar, postiz ve el borrador de la fila, localizado por su identidad externa",
+      c == 200 and bool(post_mcp) and len(posts_mcp) == 1 and posts_mcp[0]["id"] == post_mcp and posts_mcp[0]["estado"] == "DRAFT", "(%d)" % c)
+c, otra = mcp({"operacion": "postiz", "fila": pid_mcp, "puntero": "cualquier-cosa"})
+check("y un puntero que se le dé no cambia nada", c == 200 and otra == despues, "(%d)" % c)
