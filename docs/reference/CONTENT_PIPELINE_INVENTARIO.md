@@ -16,11 +16,11 @@
 | **Retirada y recuperación (IG)** (cron 06:20 y dentro de cada pasada del sync) | `rxVcGlxSZjzzI5ez` | [RECONCILIACION §4](../architecture/CONTENT_PIPELINE_RECONCILIACION.md) |
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | [RECONCILIACION §1](../architecture/CONTENT_PIPELINE_RECONCILIACION.md) |
 | **Carruseles · Replicar (IG)** (cron 05:00 + botón «Replicar») | `w4GOMzxTXzd26ybD` | Solo lanza por SSH `/opt/apps/carrusel-ig/replicar.sh`, que vuelve al instante; todo lo demás está en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md` |
-| **Pipeline · MCP** (webhook `postiz-mcp`) | el que asigne n8n al importarlo (se anota aquí) | Lo que el Worker `redes-mcp` pide al Beelink, y solo eso: `postiz` (qué posts de Postiz son de una fila, por su `externalId`), `sincronizar`, `reportar_averia` y `salud`. Lee Postiz, llama al webhook del sync y encola en el bus; **no toca Notion** (el calendario lo trabaja el Worker con su propio token, §2). Contrato y reparto: `personal-context-server/servers/redes-mcp/README.md` |
+| **Pipeline · MCP** (webhook `postiz-mcp`) | `8nFSyUOpgbOB176o` | Lo que el Worker `redes-mcp` pide al Beelink, y solo eso: `postiz` (qué posts de Postiz son de una fila, por su `externalId`), `sincronizar`, `reportar_averia` y `salud`. Lee Postiz, llama al webhook del sync y encola en el bus; **no toca Notion** (el calendario lo trabaja el Worker con su propio token, §2). Contrato y reparto: `personal-context-server/servers/redes-mcp/README.md` |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | API key de la organización `CITEM` (`30c506a6…`), la única que ve las cuentas |
 | Credencial Notion | `5rCv9a6s5FyI0swq` | Token de la integración `Notion SM - Postiz` (§2) |
 | Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token` (§2) |
-| Credencial MCP | la que asigne n8n al crearla (se anota aquí) | `X-MCP-Token` (§2); se llama **`Pipeline MCP (header auth)`** |
+| Credencial MCP | `i98PXFAbbqjnUX6S` | `X-MCP-Token` (§2); se llama **`Pipeline MCP (header auth)`** |
 
 **Puntos de entrada:**
 
@@ -29,7 +29,7 @@
 | `POST /webhook/postiz-sync-ig` | `X-Sync-Token` | `200` al terminar | Sync a demanda (scripts, curl) |
 | `POST /webhook/postiz-sync-<secreto>` | **el secreto va en la ruta** | **`202` al instante** | El botón `Sync now` de Notion ([SYNC §1](../architecture/CONTENT_PIPELINE_SYNC.md)) |
 | `POST /webhook/postiz-retirada-ig` | `X-Sync-Token` | `200` al terminar | Retirada/recuperación a demanda |
-| `POST /webhook/postiz-mcp` | `X-MCP-Token` (**distinto** del `X-Sync-Token`) | `200` al terminar; `sincronizar` responde `en_curso` si la pasada pasa de 90 s | El Worker `redes-mcp`. Una app de Access con *bypass* para esta ruta exacta lo deja pasar: la autenticación es la del webhook (`CLOUDFLARE_SECURITY_GUIDE` §3.2, en Instalar-Home-Server) |
+| `POST /webhook/postiz-mcp` | `X-MCP-Token` (**distinto** del `X-Sync-Token`) | `200` al terminar; `sincronizar` responde `en_curso` si la pasada pasa de 90 s | El Worker `redes-mcp`. Como los demás webhooks que llama alguien de fuera, la ruta está en la app de Access «n8n Webhooks (API externa)» (*bypass*) y en `rutas_abiertas` de `n8n` en `server/config/apps-publicas.json` de Instalar-Home-Server: la autenticación es la del webhook (`CLOUDFLARE_SECURITY_GUIDE` §3.2) |
 | `POST /webhook/postiz-status-<secreto>` | **el secreto va en la ruta** | `200` al terminar | Destino del webhook de Postiz |
 
 Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PATH`, `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_REPLICAR_BUTTON_PATH` (el botón «Replicar»).
