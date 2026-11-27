@@ -150,6 +150,9 @@ def borrar_post(post_id):
 def limpiar_fila(pid):
     """Vacía su Status (deja de reclamar), borra su post y la archiva. Idempotente."""
     try:
+        # Ya archivada (la limpió su propia prueba): Notion no deja editarla y no queda nada que hacer.
+        if api("https://api.notion.com/v1/pages/" + pid).get("in_trash"):
+            return
         post_id = leer(pid)["post_id"]
         api("https://api.notion.com/v1/pages/" + pid, {"properties": {"Status": {"select": None}}}, m="PATCH")
         if post_id:
