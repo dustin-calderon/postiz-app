@@ -18,7 +18,8 @@
 | [CONTENT_PIPELINE_RECONCILIACION.md](./CONTENT_PIPELINE_RECONCILIACION.md) | Cierre del bucle, borrar y recrear, identidad externa y retirada: sin duplicados ni huérfanos |
 | [CONTENT_PIPELINE_API_POSTIZ.md](../reference/CONTENT_PIPELINE_API_POSTIZ.md) | El cuerpo exacto de `POST /public/v1/posts` y lo que responde cada llamada |
 | [CONTENT_PIPELINE_INVENTARIO.md](../reference/CONTENT_PIPELINE_INVENTARIO.md) | Dónde vive cada pieza fuera del código: workflows de n8n, puntos de entrada, configuración y secretos |
-| [CONTENT_PIPELINE_OPERACION.md](../guides/CONTENT_PIPELINE_OPERACION.md) | Operarlo: la batería de pruebas, el historial de errores, rotar credenciales, el webhook de Postiz |
+| [CONTENT_PIPELINE_OPERACION.md](../guides/CONTENT_PIPELINE_OPERACION.md) | Operarlo: la batería de pruebas, el historial de errores, rotar credenciales, el webhook de Postiz, el MCP de redes |
+| `personal-context-server/servers/redes-mcp/README.md` | El MCP remoto de quien lleva las redes (María): sus tres herramientas, el contrato de su webhook («Pipeline · MCP», pieza del pipeline: [INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)) y cómo se despliega |
 
 **Relacionados:** [MEDIA_CLEANUP_PIPELINE.md](./MEDIA_CLEANUP_PIPELINE.md) · [ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md) · [VIDEO_FORMAT_SUPPORT.md](./VIDEO_FORMAT_SUPPORT.md) · la réplica de carruseles, en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`.
 
@@ -99,7 +100,7 @@ De aquí sale la regla más importante de toda la implementación:
 - ✗ **Postiz nunca escribe en Notion.** Quien cierra el bucle es n8n. Dos escritores = ninguna verdad.
 - ✗ **Nunca se aprueba dentro de Postiz.** Dos sitios de aprobación = ninguno fiable en tres semanas.
 - ✗ **Nunca se publica saltándose Notion** —ni desde la API de Postiz, ni con su CLI o su MCP—: las validaciones que Postiz no hace sólo las aplica el sync ([NOTION_SCHEMA §4](./CONTENT_PIPELINE_NOTION_SCHEMA.md)).
-- ✗ **Nunca hay un LLM dentro del camino de publicación.** La creatividad ocurre antes, en Notion: lo que genera contenido con un agente —la réplica de carruseles, o redactar copy por el MCP de Notion— escribe filas, y **una persona las aprueba**. Un LLM no aprueba su propia salida.
+- ✗ **Nunca hay un LLM dentro del camino de publicación.** La creatividad ocurre antes, en Notion: lo que genera contenido con un agente —la réplica de carruseles, o redactar copy por el MCP de Notion— escribe filas, y **una persona las aprueba**. Un LLM no aprueba su propia salida. El MCP de redes no cambia esto: sus tres herramientas no escriben en el calendario (`diagnosticar` lee, `reportar_averia` encola un aviso) y `sincronizar` solo hace lo que el botón `Sync now`; aprobar sigue siendo poner `Listo` en Notion, que una persona le ordena a su Claude.
 - ✗ **Nunca se editan a mano** `❌ postiz_post_id`, `❌ postiz_media`, `❌ release_url` ni `Status = Programado`.
 - ✓ **El `❌ postiz_post_id` dice la verdad, no el `Status`.** El estado es para las personas; el ID es para la máquina: si los dos se contradicen, manda el ID.
 - ✓ **Una fila = un post = una integración.**

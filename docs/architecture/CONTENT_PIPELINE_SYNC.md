@@ -30,6 +30,8 @@ No hay cola que procesar ni estado que recordar. La consecuencia importante: **l
 | `…/webhook/` + `N8N_SYNC_IG_BUTTON_PATH` | el secreto va en la ruta | **`202` al instante** | **← la que usa el botón** |
 | `…/webhook/postiz-sync-ig` | cabecera `X-Sync-Token` | `200` al terminar la pasada | para scripts y `curl`. Los del Beelink llaman a n8n en local, `http://127.0.0.1:5678/webhook/postiz-sync-ig`: Cloudflare corta con `524` una respuesta de más de 125 s, y una pasada larga o que espera turno los pasa aunque termine bien |
 
+**Un tercer disparador, la herramienta `sincronizar` del MCP de redes** ([INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)): su workflow, «Pipeline · MCP», llama en local al webhook con cabecera de arriba y espera hasta 90 s a que acabe la pasada; si tarda más responde `en_curso` y la pasada sigue sola (n8n no cancela una ejecución cuando el cliente corta). No es una tercera implementación: entra por la misma puerta, al mismo turno.
+
 El apartado **«Contenido» del botón se deja vacío** — el workflow no lee el cuerpo, relee el calendario por su cuenta.
 
 > ### ⚠️ El botón responde antes de trabajar
