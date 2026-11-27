@@ -103,6 +103,8 @@ GET /public/v1/posts?startDate=...&endDate=...   ← existe: GetPostsDto
                  (una fila en Por aprobar conserva Por aprobar)
 ```
 
+**Escribe solo si la fila sigue como se leyó.** Entre leer las filas y escribir en una pasa tiempo, y una persona puede haberla movido. Cada corrección lleva las condiciones en las que vale (`solo_si`): `Programado → Listo` solo si la fila **sigue** en `Programado`, y `Error` solo si sigue en `Listo` o `Programado`. Antes de escribir, `Notion: releer estado` + `Confirmar estado` releen el `Status` y descartan lo que ya no vale; así una fila que se pasó a `Por aprobar` no se aprueba ni se condena por una lectura vieja. `Publicado` se escribe siempre: es un hecho.
+
 **Cuándo corre.** Es un workflow aparte, `Retirada y recuperación (IG)` ([INVENTARIO §1](../reference/CONTENT_PIPELINE_INVENTARIO.md)). El sync lo llama **una vez por pasada, antes de crear** (cron y botón): así aplazar una pieza o vaciar su `Status` y pulsar `Sync now` la retira en el acto. Y corre solo a las **06:20**, 20 minutos después del cron del sync, cuando éste ya ha escrito los `❌ postiz_post_id` que ella va a leer. Separado del camino de creación corre siempre, también el día que no hay filas que crear (en n8n los nodos sin items no se ejecutan).
 
 > ### 🔴 Sin filtrar por `creationMethod`, la retirada borra el trabajo hecho a mano

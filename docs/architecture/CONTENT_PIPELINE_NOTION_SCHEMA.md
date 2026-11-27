@@ -97,7 +97,7 @@ Cualquier otro estado no crea nada, y ante un dato que falta el worker elige `dr
 
 `Por aprobar` sirve para el **dry-run** editorial, para revisar una pieza en la vista real de Postiz antes de soltarla, y es donde la réplica de carruseles deja sus filas. **`Listo` siempre quiere decir «publícalo»**: que la pieza esté ya en Postiz o no lo dice `❌ postiz_post_id`, no el estado. Pasar de `Por aprobar` a `Listo` lo recoge el sync en la siguiente pasada, o al pulsar el botón.
 
-> **No contradice "nunca se aprueba en Postiz"** ([NOTION_POSTIZ §5](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). Se aprueba siempre en Notion y con un gesto de una persona: `Por aprobar` → `Listo`. **Ningún camino automático escribe `Listo` sobre una fila que estaba en `Por aprobar`** —ni el sync, ni la retirada, ni la recuperación, ni la réplica—: sería aprobar sin que nadie lo haya visto. Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
+> **No contradice "nunca se aprueba en Postiz"** ([NOTION_POSTIZ §5](./CONTENT_PIPELINE_NOTION_POSTIZ.md)). Se aprueba siempre en Notion y con un gesto de una persona: `Por aprobar` → `Listo`. **Ningún camino automático escribe `Listo` sobre una fila que estaba en `Por aprobar`** —ni el sync, ni la retirada, ni la recuperación, ni la réplica—: sería aprobar sin que nadie lo haya visto. En la réplica no basta con pedírselo al agente, que lee captions ajenos: `frenar.py` devuelve a `Por aprobar` lo que deje aprobado antes de que corra el sync (`Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md`). Nadie promueve un draft desde la UI de Postiz — si lo hiciera, la siguiente pasada del sync lo revertiría.
 
 > ### ⚠️ Un borrador **no pasa por la validación del servidor**
 > Postiz sólo valida los `schedule` ([POSTIZ_FORK §5](./CONTENT_PIPELINE_POSTIZ_FORK.md)): un `draft` (`Por aprobar`) entra con lo único que se mira siempre, que no esté vacío del todo.
@@ -249,6 +249,7 @@ A partir de `Listo` nadie vuelve a tocar `Status` — pero **sí se puede seguir
 | `Formatear error`, cualquier otra respuesta | «Postiz respondió `<código>`: `<mensaje>`. No es un fallo de la fila…» | el sistema (la petición, la API key, el límite) |
 | `Formatear error`, sin respuesta | «Postiz no respondió (`<error de red>`). No es un fallo de la fila…» | el sistema |
 | `Formatear error de subida`, si el SSH falla | «n8n no pudo ejecutar la subida en el servidor…» | el sistema |
+| `Fila omitida` (subflow) | **nada**: una fila que cambia de estado durante la pasada no es un fallo, no deja `❌ error_log` ni dispara el bus | — |
 | `Interpretar payload` (receptor) | «Postiz dio error al publicar: `<cause.failure.message>`…» | Instagram o Postiz, al publicar |
 | `Reconciliar` (recuperación), con la `Fecha` ya pasada | «Postiz dio error al publicar, pero su aviso con el motivo no llegó…» o «Postiz ya no tiene este post…»: el motivo no viaja en `GET /posts` | Instagram o Postiz, al publicar |
 | `Reconciliar`, si en Postiz seguía el borrador | «La Fecha pasó y en Postiz seguía como borrador…» | la aprobación, que llegó sin tiempo |

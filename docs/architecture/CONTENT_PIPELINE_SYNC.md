@@ -61,7 +61,7 @@ Duplicar tampoco puede, y no por el turno: el margen de seguridad (§3) cubre la
 | `Status` = `Publicado` | **No tocar jamás** |
 | `Status` = `Por aprobar` | Crear o recrear como **borrador** (`draft`) si la `Fecha` cae dentro de los 15 días; la fila sigue en `Por aprobar` |
 | `Status` = `Listo` o `Programado` | Crear o recrear como **programado** (`schedule`) |
-| `Status` cambia entre que se lee la cola y se crea | Manda el que el subflow relee; uno que no sea `Por aprobar`, `Listo` ni `Programado` no se sincroniza |
+| `Status` cambia entre que se lee la cola y se crea | Manda el que el subflow relee **dos veces**: al empezar (`Preparar`) y justo antes del `POST` (`Fijar tipo`, que es quien decide `schedule` o `draft`, porque entre una y otra va la subida de ficheros, que tarda). Si ya no es `Por aprobar`, `Listo` ni `Programado`, la fila se **omite sin error ni alerta** (con un ítem, que el bucle del padre necesita) y se borra lo subido en esa pasada. Una tercera lectura tras el `POST` (`Decidir estado final`) evita pisar con `Programado` el estado que una persona haya puesto entretanto |
 | Dentro del margen de seguridad **y ya tiene `❌ postiz_post_id`** (§3) | **Saltar** — se reporta en la ejecución, **no** se escribe en `❌ error_log` (ver nota) |
 | `❌ postiz_post_id` vacío | Crear |
 | Tiene `❌ postiz_post_id`, aún no publicado | **Borrar y recrear** ([RECONCILIACION §2](./CONTENT_PIPELINE_RECONCILIACION.md)) |
@@ -75,6 +75,8 @@ Duplicar tampoco puede, y no por el turno: el margen de seguridad (§3) cubre la
 > Notion devuelve una fecha sin hora como `2026-08-10` a secas, y `new Date('2026-08-10')` la interpreta como **medianoche UTC**. Si el margen se evalúa antes que la comprobación de hora, esa fila puede caer dentro del margen y salir como «saltar» — es decir, **la fila sin hora nunca llega a `Error`**, que es justo lo contrario de la regla.
 >
 > El orden implementado es: **validaciones estructurales** (hora, offset, cuenta, copy, media, colaboradores) → y sólo con una fecha válida, **ventana → pasado → margen**. Cómo se escribe `Fecha` por API: [NOTION_SCHEMA §5](./CONTENT_PIPELINE_NOTION_SCHEMA.md).
+
+> **El margen y la aprobación.** Retirar la aprobación (pasar a `Por aprobar` o a `Error`, o vaciar `Status`) a menos de 5 minutos de la hora de un post ya en cola **no lo detiene**: la rama `saltar` no lo toca y la retirada usa el mismo margen, porque borrar-y-recrear en ese tramo puede perder el post. Es el mismo límite que ya tenían vaciar `Status` o mover la `Fecha`. Fuera del margen, la siguiente pasada lo convierte en borrador (`Por aprobar`) o lo retira.
 
 > **Sobre el margen y `❌ error_log`:** saltar por el margen de seguridad no es un error, es el sistema funcionando. Escribirlo en `❌ error_log` dejaría un mensaje de avería en una fila sana y acabaría entrenando al equipo a ignorar ese campo. Se reporta en la ejecución de n8n; la fila se recoge sola en la siguiente pasada.
 
@@ -109,7 +111,8 @@ Superadas las puertas, cada fila es **un solo post**, así que el subflow es lin
       └──► ESCRIBE ❌ postiz_media                      [write 1]
 5. POST /public/v1/posts                  (cuerpo exacto: API_POSTIZ)
       type                        = schedule si Status es Listo o Programado,
-                                    draft en cualquier otro caso (Por aprobar)
+                                    draft si es Por aprobar — con el Status releído
+                                    justo antes del POST («Fijar tipo»)
       posts[0].externalId         = id de la página de Notion
       value[0].content            = copy
       value[0].image[]            = ❌ postiz_media
