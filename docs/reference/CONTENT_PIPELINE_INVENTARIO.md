@@ -16,7 +16,7 @@
 | **Retirada y recuperación (IG)** (cron 06:20 y dentro de cada pasada del sync) | `rxVcGlxSZjzzI5ez` | [RECONCILIACION §4](../architecture/CONTENT_PIPELINE_RECONCILIACION.md) |
 | **Receptor de estado (webhook) → Notion** | `VMezjZaMTIU5dIUz` | [RECONCILIACION §1](../architecture/CONTENT_PIPELINE_RECONCILIACION.md) |
 | **Carruseles · Replicar (IG)** (cron 05:00 + botón «Replicar») | `w4GOMzxTXzd26ybD` | Solo lanza por SSH `/opt/apps/carrusel-ig/replicar.sh`, que vuelve al instante; todo lo demás está en `Instalar-Home-Server/docs/architecture/CARRUSEL-IG-TRADUCIDO.md` |
-| **Pipeline · MCP** (webhook `postiz-mcp`) | el que asigne n8n al importarlo (se anota aquí) | Lo único que el Worker `redes-mcp` puede hacer en el pipeline: `diagnosticar`, `sincronizar`, `reportar_averia` y `salud`. Lee Notion y Postiz, llama al webhook del sync y encola en el bus. Qué hace cada operación y por qué la lógica está aquí y no en el Worker: `personal-context-server/servers/redes-mcp/README.md` |
+| **Pipeline · MCP** (webhook `postiz-mcp`) | el que asigne n8n al importarlo (se anota aquí) | Lo que el Worker `redes-mcp` pide al Beelink, y solo eso: `postiz` (qué posts de Postiz son de una fila), `sincronizar`, `reportar_averia` y `salud`. Lee Postiz, llama al webhook del sync y encola en el bus; **no toca Notion** (el calendario lo trabaja el Worker con su propio token, §2). Contrato y reparto: `personal-context-server/servers/redes-mcp/README.md` |
 | Credencial Postiz | `h6bGMcfTHiZUD0dy` | API key de la organización `CITEM` (`30c506a6…`), la única que ve las cuentas |
 | Credencial Notion | `5rCv9a6s5FyI0swq` | Token de la integración `Notion SM - Postiz` (§2) |
 | Credencial webhook | `4jg5NXem2BvjFtFO` | `X-Sync-Token` (§2) |
@@ -57,11 +57,13 @@ Los secretos de ruta viven en `/opt/homeserver/.env` como `N8N_SYNC_IG_BUTTON_PA
 >
 > | Secreto | Dónde | Quién lo lee |
 > |---|---|---|
-> | **Token de Notion** — integración interna **`Notion SM - Postiz`** del espacio *DC Brand*, conectada a la base *Calendario Social Media* y al *Manual de uso — Social Media* | **Credencial de n8n** `5rCv9a6s5FyI0swq` (cabecera `Authorization: Bearer …`), cifrada | Sync, retirada, receptor y «Pipeline · MCP» |
+> | **Token de Notion** — integración interna **`Notion SM - Postiz`** del espacio *DC Brand*, conectada a la base *Calendario Social Media* y al *Manual de uso — Social Media* | **Credencial de n8n** `5rCv9a6s5FyI0swq` (cabecera `Authorization: Bearer …`), cifrada | Sync, retirada y receptor |
 > | | **`NOTION_API_KEY`** en `/opt/homeserver/.env`, mismo valor | Archivador de Drive, [`scripts/`](../architecture/scripts/) de pruebas y la réplica de carruseles (`Instalar-Home-Server`) |
 > | **`X-Sync-Token`** de los webhooks con cabecera | **Credencial de n8n** `4jg5NXem2BvjFtFO` | Los webhooks del sync y de la retirada, y «Pipeline · MCP», que la usa para llamar al sync |
 > | | `/opt/homeserver/.env`, **con dos nombres y el mismo valor**: `N8N_SYNC_IG_TOKEN` y `POSTIZ_SYNC_TOKEN` | Los scripts de pruebas leen el primero; `replicar.sh` (Instalar-Home-Server), el segundo |
-> | **`X-MCP-Token`** del webhook del MCP de redes — **propio, no el del sync**: abre tres operaciones fijas, no el sync entero | **Credencial de n8n** `Pipeline MCP (header auth)` | El webhook «Pipeline · MCP» |
+> | **Token de Notion del MCP de redes** — integración interna **propia** (`redes-mcp`), distinta de la de n8n: conectada solo a la base *Calendario Social Media* y al manual. Una integración tiene sus capacidades (leer, actualizar, insertar) en todo lo que se le conecta, no por página: que el manual solo se lea lo garantiza el código del Worker, que no escribe más que filas del calendario | **Secreto del Worker** `redes-mcp`, `NOTION_TOKEN` (solo ahí: ni en n8n ni en el `.env`) | El Worker |
+> | **Clave de las URL de subida** | **Secreto del Worker** `redes-mcp`, `SUBIDAS_CLAVE` (solo ahí) | El Worker: firma y comprueba las URL con las que Claude Code sube los diseños por partes |
+> | **`X-MCP-Token`** del webhook del MCP de redes — **propio, no el del sync**: abre cuatro operaciones fijas, no el sync entero | **Credencial de n8n** `Pipeline MCP (header auth)` | El webhook «Pipeline · MCP» |
 > | | `/opt/homeserver/.env` como `N8N_MCP_TOKEN` | La batería de pruebas ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)) |
 > | | **Secreto del Worker** `redes-mcp`, `PIPELINE_TOKEN` | El Worker, para llamar al webhook |
 > | **API key de Postiz** | Credencial de n8n `h6bGMcfTHiZUD0dy` | Los cinco workflows del pipeline |

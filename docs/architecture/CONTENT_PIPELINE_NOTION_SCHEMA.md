@@ -57,7 +57,7 @@ Los campos `❌` son **territorio exclusivo de n8n**. Si alguien se ve editándo
 > - `Plataforma` o `Status` → el sync falla entero y **no publica nada**. Al menos se nota.
 > - Cualquier otra → el sync sigue corriendo pero **deja de ver ese campo**, y la fila acaba en `Error` con un motivo engañoso («sin cuenta» con la cuenta puesta).
 >
-> **Se puede renombrar**, pero hay que actualizar los cuatro workflows y «Pipeline · MCP» (que lee `Status`, `Fecha`, `cuenta`, `Tipo`, `Name`, `❌ error_log`, `❌ postiz_post_id` y `❌ release_url` por su nombre) en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `Agendada` y `Validación`, y cualquier otra que se añada. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
+> **Se puede renombrar**, pero hay que actualizar los cuatro workflows y el Worker `redes-mcp` (`src/calendario.ts`: escribe por su nombre las propiedades de las personas y lee las `❌`; los tipos y las opciones las lee de Notion) en el mismo movimiento. Las propiedades libres —las que ningún workflow toca— son `Brand`, `Notas`, `Content Series`, `🌐 Projects`, `Agendada` y `Validación`, y cualquier otra que se añada. `Name` sólo se usa para etiquetar la ejecución en n8n: renombrarla es cosmético.
 
 > ### ⚠️ No basta con la URL: `MediaDto` exige `id` **y** `path`
 > Mandar sólo la URL en `value[0].image[]` devuelve **400**. Por eso `❌ postiz_media` guarda el objeto entero que devuelve la subida, no una lista de URLs. El detalle de los validadores: [API_POSTIZ §2](../reference/CONTENT_PIPELINE_API_POSTIZ.md).
