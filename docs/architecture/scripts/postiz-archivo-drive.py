@@ -42,6 +42,13 @@ CUENTAS = {
     "cmqjq77hg0001mw7y2xf6bg86": "Dustin Calderón",
     "cmqjqapu00003mw7yrudcwklj": "CITEM",
     "cmqjqfvnw0005mw7yoywgo6he": "AMORISMO VOL III",
+    "cmx0fv5tn008opa54kuss6g8n": "Los Repertoristas",
+    "cmx0iwc63008upa54z1bpbgg7": "Composición de teatro musical",
+    "cmx0djkq4008mpa54tjg2um7f": "Merchicales",
+    # 6ID y DCP se llaman en Postiz con letras decorativas de Unicode: sin
+    # entrada aqui, el respaldo de abajo las pondria en el nombre de la carpeta.
+    "cmx0h460l008qpa541x51l7zv": "6ID",
+    "cmx0is2ma008spa54o9o7dgiz": "DCP Music Records",
     # TikTok. Se llama igual que la de Instagram ("Dustin Calderon"), asi que
     # sin un nombre distinto un cross-post generaria LA MISMA carpeta y el
     # segundo post machacaria los masters del primero.

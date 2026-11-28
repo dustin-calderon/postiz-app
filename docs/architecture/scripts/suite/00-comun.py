@@ -118,8 +118,10 @@ def borrar(pid):
 # porque la 6b tambien crea posts por la API.
 APIK = sql('SELECT "apiKey" FROM "Organization" WHERE id=\'30c506a6-0a2c-4661-95bb-abec2e14b3f2\';')
 
-INTEG = sql("""SELECT id FROM "Integration" WHERE "deletedAt" IS NULL
-               AND "providerIdentifier"='instagram-standalone' LIMIT 1;""")
+# El canal de prueba de toda la batería, AMORISMO VOL III: con varias cuentas, un
+# `LIMIT 1` sin más caería en una cualquiera, quizá en una de uso diario o rota.
+INTEG = sql("""SELECT id FROM "Integration" WHERE id='cmqjqfvnw0005mw7yoywgo6he'
+               AND "deletedAt" IS NULL AND "providerIdentifier"='instagram-standalone';""")
 MARCA = "Suite de pruebas identidad externa"
 
 def _post_directo(external_id, etiqueta, fecha_iso):

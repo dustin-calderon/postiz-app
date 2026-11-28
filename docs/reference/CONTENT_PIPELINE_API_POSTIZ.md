@@ -8,7 +8,7 @@
 
 ## 1. El cuerpo de `POST /public/v1/posts`
 
-La forma exacta, para una de las tres cuentas (la fecha es ilustrativa):
+La forma exacta, para una cualquiera de las cuentas, [NOTION_SCHEMA §2.1](../architecture/CONTENT_PIPELINE_NOTION_SCHEMA.md) (la fecha es ilustrativa):
 
 ```json
 {

@@ -84,7 +84,7 @@ pnpm solo lanza los scripts de arranque, y lo único que baja (`pnpm dlx prisma`
 
 ## Restos en la base de Postiz: un nombre de canal viejo y dos organizaciones vacías
 
-**Qué pasa.** La integración de Instagram de CITEM (`cmqjqapu00003mw7yrudcwklj`) se llama en Postiz «CITEM Conservatorio Iberoamericano de Teatro Musical», un nombre retirado del ecosistema: la cuenta real es `citem.teatromusical` · «CITEM - Ecosistema Digital de Teatro Musical». Postiz cachea el nombre al conectar la integración y no lo refresca, así que lo arrastra cualquier informe o `post.txt` del archivo en Drive. Además, `Organization` tiene tres filas: la del pipeline (`CITEM`, `30c506a6…`, con las cuatro integraciones) y dos sin contenido (`CITEM`, `8019c9c4…`, y `Test`, `4d1bbcd5…`), cada una con su API key viva.
+**Qué pasa.** La integración de Instagram de CITEM ([NOTION_SCHEMA §2.1](architecture/CONTENT_PIPELINE_NOTION_SCHEMA.md)) se llama en Postiz «CITEM Conservatorio Iberoamericano de Teatro Musical», un nombre retirado del ecosistema: la cuenta real es `citem.teatromusical` · «CITEM - Ecosistema Digital de Teatro Musical». Postiz cachea el nombre al conectar la integración y no lo refresca, así que lo arrastra cualquier informe o `post.txt` del archivo en Drive. Además, `Organization` tiene tres filas: la del pipeline (`CITEM`, `30c506a6…`, con las integraciones de Instagram y TikTok) y dos sin contenido (`CITEM`, `8019c9c4…`, y `Test`, `4d1bbcd5…`), cada una con su API key viva.
 
 **Por qué se aplaza.** Nada del pipeline depende de ello: publica por el id de la integración y con la API key de `30c506a6…`.
 

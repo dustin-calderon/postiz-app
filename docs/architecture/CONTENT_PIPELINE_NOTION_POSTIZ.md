@@ -1,7 +1,7 @@
 # Pipeline de contenido — Notion → n8n → Postiz → Instagram
 
 > **Qué es esto:** la arquitectura del pipeline que publica en Instagram desde Notion —qué hace cada pieza y **por qué** es así—, y el mapa de los documentos que la detallan.
-> **Ámbito:** Instagram, **3 cuentas** (`instagram-standalone`), desde una sola tabla de Notion.
+> **Ámbito:** Instagram, **8 cuentas** (`instagram-standalone`, [NOTION_SCHEMA §2.1](./CONTENT_PIPELINE_NOTION_SCHEMA.md)), desde una sola tabla de Notion.
 >
 > ### ⚠️ Si el pipeline «no hace nada», mira primero si el backend está vivo
 > Una API caída detrás de un contenedor que se declara `healthy` se parece desde fuera a un fallo del pipeline. **→ [ARRANQUE_Y_SUPERVISION.md](./ARRANQUE_Y_SUPERVISION.md)** cubre esa capa: cómo arrancan los tres procesos, quién los vigila y cómo comprobar en un comando que un arranque fue bien.
@@ -127,9 +127,13 @@ Es la contrapartida de que sea SSoT de verdad. Si no responde, el sync se para e
 
 `API_LIMIT` = 300 creaciones/hora en Postiz (nuestro, [POSTIZ_FORK §3](./CONTENT_PIPELINE_POSTIZ_FORK.md)) + 100 publicaciones/24 h en Instagram (suyo, innegociable, **por cuenta**).
 
-Con el modelo de colaboradores, **una pieza compartida entre las tres cuentas es una sola fila**. A 3-5 piezas por semana, la ventana de 15 días contiene **~7-11 filas**, más las que sean carrusel o story compartidos, que sí se desdoblan ([NOTION_SCHEMA §2.4](./CONTENT_PIPELINE_NOTION_SCHEMA.md)). Digamos **10-20**. Cada pasada las borra y recrea todas: **~20 creaciones sobre un techo de 300**, que deja margen para las pulsaciones del botón y los reintentos del mismo día.
+Con el modelo de colaboradores, **una pieza compartida entre cuentas es una sola fila**; los carruseles y stories compartidos sí se desdoblan en una fila por cuenta ([NOTION_SCHEMA §2.4](./CONTENT_PIPELINE_NOTION_SCHEMA.md)). Cada pasada borra y recrea **todas** las filas de la ventana de 15 días, así que lo que gasta por hora es:
 
-Crece de forma lineal con ventana × frecuencia, y **por plataforma nueva**: YouTube no se comparte con colaboradores, así que cada pieza que vaya a YouTube es una fila más. Al añadirlo, rehacer esta cuenta **antes**, no después.
+> **creaciones por hora = filas en la ventana × pasadas de esa hora** ≤ **300**
+
+Las pasadas son el cron de las 06:00, cada pulsación del botón, los reintentos y la batería de pruebas ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)). Con *N* filas en la ventana caben **300 / N pasadas por hora**. Quien más pasadas lanza es la batería: **unas 20 en una ejecución**, así que es la primera en tocar el techo, con *N* ≈ 15. Las filas de la ventana se cuentan consultando el calendario por `Status` (`Listo`, `Programado`, `Por aprobar`) y `Fecha` dentro de los próximos 15 días.
+
+Crece de forma lineal con ventana × frecuencia × cuentas, y **por plataforma nueva**: YouTube no se comparte con colaboradores, así que cada pieza que vaya a YouTube es una fila más. Al añadirlo, rehacer esta cuenta **antes**, no después.
 
 > Es el precio de "reescribir siempre en vez de detectar cambios". A esta escala compensa de largo: la alternativa —hashes o `last_edited_time`— es estado que mantener y sincronizar. Si algún día no compensara, el arreglo es comparar antes de recrear, y sólo entonces ([POSTIZ_FORK §3](./CONTENT_PIPELINE_POSTIZ_FORK.md) dice cuándo).
 

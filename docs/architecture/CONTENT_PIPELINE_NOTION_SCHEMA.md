@@ -72,15 +72,27 @@ Los campos `❌` son **territorio exclusivo de n8n**. Si alguien se ve editándo
 
 ### 2.1 `cuenta` — una opción, un canal de Postiz
 
-Cada opción del select equivale a una integración de Postiz (`instagram-standalone`, [POSTIZ_FORK §9](./CONTENT_PIPELINE_POSTIZ_FORK.md)). **La correspondencia vive en un nodo de configuración de n8n**, no en una tabla de Notion — son valores fijos que cambian una vez al año:
+Cada opción del select equivale a una integración de Postiz de la organización `30c506a6-0a2c-4661-95bb-abec2e14b3f2` (`instagram-standalone`, [POSTIZ_FORK §9](./CONTENT_PIPELINE_POSTIZ_FORK.md)). **La correspondencia vive en un nodo de configuración de n8n** (el mapa `ACCOUNTS` del nodo `Planificar` del sync), no en una tabla de Notion — son valores fijos que cambian pocas veces. **Esta es la única lista de la documentación**: los demás documentos remiten aquí. En código hay dos copias que no pueden evitarse, `ACCOUNTS` (paso 4) y `CUENTAS` del archivador (paso 5); la batería comprueba que coinciden (paso 6).
 
-```
-"Dustin Calderón"  → cmqjq77hg0001mw7y2xf6bg86
-"CITEM"            → cmqjqapu00003mw7yrudcwklj
-"AMORISMO VOL III" → cmqjqfvnw0005mw7yoywgo6he
-```
+| Opción de `cuenta` | Username (`colaboradores`) | ID de la integración |
+|---|---|---|
+| `Dustin Calderón` | `thedustincalderon` | `cmqjq77hg0001mw7y2xf6bg86` |
+| `CITEM` | `citem.teatromusical` | `cmqjqapu00003mw7yrudcwklj` |
+| `AMORISMO VOL III` | `amorismoelmusical` | `cmqjqfvnw0005mw7yoywgo6he` |
+| `Los Repertoristas` | `losrepertoristas` | `cmx0fv5tn008opa54kuss6g8n` |
+| `Composición de teatro musical` | `composiciondeteatromusical` | `cmx0iwc63008upa54z1bpbgg7` |
+| `Merchicales` | `merchicales` | `cmx0djkq4008mpa54tjg2um7f` |
+| `6ID` | `6idmusic` | `cmx0h460l008qpa541x51l7zv` |
+| `DCP Music Records` | `dcpmusicrecords` | `cmx0is2ma008spa54o9o7dgiz` |
 
-Añadir una cuenta es una línea aquí, una opción en el select y, si el webhook de Postiz filtra por integración, marcarla allí ([OPERACION §5](../guides/CONTENT_PIPELINE_OPERACION.md)).
+**Dar de alta una cuenta**, en este orden:
+
+1. **Que pueda conectarse a Meta.** La app de Instagram «Postiz-IG» cuelga de la app de Meta «Postiz» (`2020305311913354`), que está en modo desarrollo. La cuenta tiene que ser **profesional**, ser **«Evaluador de Instagram»** de la app (*developers.facebook.com* → app Postiz → *Roles*) y **aceptar la invitación** en `instagram.com/accounts/manage_access/` con la sesión de esa cuenta.
+2. **Conectarla en Postiz** por **«Instagram (Standalone)»**. La vía «Instagram (Facebook Business)» no está configurada y falla con `client_id=undefined`. El webhook de Postiz recibe todas las integraciones, así que no hay que tocarlo ([OPERACION §5](../guides/CONTENT_PIPELINE_OPERACION.md)).
+3. **Notion:** la opción en `cuenta` y el username en `colaboradores`, con el conector MCP de Notion y `COMMENT` (§8: por la API REST se pierden las descripciones).
+4. **n8n:** una línea en `ACCOUNTS` del nodo `Planificar` del sync (`eKxZPM4zjwhNb3vf`) y volver a exportar su copia durable ([INVENTARIO §2](../reference/CONTENT_PIPELINE_INVENTARIO.md)).
+5. **Archivo de Drive:** una línea en `CUENTAS` de [`postiz-archivo-drive.py`](./scripts/postiz-archivo-drive.py) y actualizar su copia viva ([ARCHIVO_DRIVE](./ARCHIVO_DRIVE.md)). Sin ella, el archivo usa el nombre recortado de Postiz y deja un `AVISO` en el log.
+6. **Comprobarlo:** la batería ([OPERACION §1](../guides/CONTENT_PIPELINE_OPERACION.md)) recorre todas las opciones de `cuenta` y falla en la que no tenga su línea en `ACCOUNTS` (en la versión publicada del workflow) y en `CUENTAS`, una integración sana o un borrador creado por esa integración. Prueba el cableado hasta Postiz; un borrador no llega a Meta, así que el paso 1 solo se comprueba con la primera publicación real.
 
 > Se guarda el ID, no el nombre. Resolver por nombre contra `GET /public/v1/integrations` parece más cómodo, pero se rompe **en silencio** el día que alguien renombre un canal en Postiz.
 
@@ -143,7 +155,7 @@ const collaborators =
 | **Story** | ❌ **No** | El código los omite (`!isStory`) |
 
 > ### ⚠️ Un carrusel o una story compartidos son filas separadas
-> No hay forma de compartir un carrusel vía colaboradores. Si un carrusel tiene que salir en tres cuentas, son **tres filas** con su propia `cuenta` cada una — y ahí sí son tres posts independientes.
+> No hay forma de compartir un carrusel vía colaboradores. Si un carrusel tiene que salir en varias cuentas, son **tantas filas como cuentas**, cada una con su propia `cuenta` — y ahí sí son posts independientes.
 >
 > El worker lo valida **antes** de enviar: `colaboradores` con más de un asset o con `post_type = story` → `Error` con el motivo, sin gastar la llamada.
 

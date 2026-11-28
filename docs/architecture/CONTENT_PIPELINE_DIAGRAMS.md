@@ -40,7 +40,7 @@ flowchart LR
         DISCO[("/uploads<br/>Seagate")]
     end
 
-    IG["📷 Instagram<br/>3 cuentas standalone"]
+    IG["📷 Instagram<br/>8 cuentas standalone"]
 
     EQUIPO --> CAL
     CAL -->|"lee la cola"| A
@@ -461,9 +461,8 @@ flowchart TD
 | Receptor de estado                   | `VMezjZaMTIU5dIUz`                     |
 | Calendario de Notion                 | `186a2405-a123-81dc-832f-000b82a65c0c` |
 | Organización de Postiz               | `30c506a6-0a2c-4661-95bb-abec2e14b3f2` |
-| Dustin Calderón (IG)                 | `cmqjq77hg0001mw7y2xf6bg86`            |
-| CITEM (IG)                           | `cmqjqapu00003mw7yrudcwklj`            |
-| AMORISMO VOL III (IG)                | `cmqjqfvnw0005mw7yoywgo6he`            |
+
+Los IDs de las cuentas de Instagram (opción de `cuenta` → integración de Postiz) están en [NOTION_SCHEMA §2.1](./CONTENT_PIPELINE_NOTION_SCHEMA.md).
 
 Las rutas secretas de los webhooks **no se escriben aquí**: viven en `/opt/homeserver/.env`
 como `N8N_POSTIZ_WEBHOOK_PATH` y `N8N_SYNC_IG_BUTTON_PATH`.

@@ -135,9 +135,9 @@ await workflow.terminate();
 
 **Esta es la garantía que hace viable el modelo de reconciliación** ([RECONCILIACION §2](./CONTENT_PIPELINE_RECONCILIACION.md)). Sin ella, borrar y recrear dejaría workflows zombis publicando posts borrados.
 
-## 9. ⚠️ Las 3 cuentas usan `instagram-standalone`, no `instagram`
+## 9. ⚠️ Las cuentas de Instagram usan `instagram-standalone`, no `instagram`
 
-Las tres integraciones de Instagram tienen `providerIdentifier = 'instagram-standalone'` en la base de producción. Sus IDs, y qué opción de Notion corresponde a cada una: [NOTION_SCHEMA §2.1](./CONTENT_PIPELINE_NOTION_SCHEMA.md). Hay además una integración de TikTok, `cmqjs6xnx0001q07q9aohapuv`, fuera del pipeline.
+Todas las integraciones de Instagram del pipeline tienen `providerIdentifier = 'instagram-standalone'` en la base de producción. Sus IDs, qué opción de Notion corresponde a cada una y cómo se da de alta una nueva: [NOTION_SCHEMA §2.1](./CONTENT_PIPELINE_NOTION_SCHEMA.md). Hay además una integración de TikTok, `cmqjs6xnx0001q07q9aohapuv`, fuera del pipeline.
 
 > **Postiz cachea el nombre de la integración al conectarla** y no lo refresca solo. Si una cuenta cambia de nombre en Instagram, el nombre viejo sigue en la base de Postiz, y con él en cualquier informe o `post.txt` generado desde esa tabla ([ARCHIVO_DRIVE.md](./ARCHIVO_DRIVE.md)). No es un bug de datos ni se edita la base a mano: **se corrige reconectando la integración desde la UI de Postiz.**
 
