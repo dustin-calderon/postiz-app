@@ -37,7 +37,7 @@ check("ACCOUNTS no repite integración", len(set(ACCOUNTS.values())) == len(ACCO
 # El archivador de Drive lleva su propia copia del mapa (NOTION_SCHEMA §2.1, paso 5):
 # se compara con la copia VIVA, la que ejecuta el cron.
 try:
-    _arch = open("/opt/homeserver/scripts/postiz-archivo-drive.py", encoding="utf-8").read()
+    _arch = open("/opt/homeserver/scripts/archivo_drive_cuentas.py", encoding="utf-8").read()
     _cm = re.search(r"CUENTAS\s*=\s*\{(.*?)\n\}", _arch, re.S)
     CUENTAS_DRIVE = dict(re.findall(r'"([\w-]+)"\s*:\s*"([^"]+)"', _cm.group(1))) if _cm else {}
 except OSError as _e:

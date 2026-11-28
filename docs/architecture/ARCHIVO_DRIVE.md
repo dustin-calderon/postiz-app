@@ -66,7 +66,7 @@ Si un fichero ya no está en el disco, no se inventa nada: se anota en el log y 
 | Dato | Origen |
 |---|---|
 | Ficheros y su **orden** | `Post.image` (JSON de `MediaDto[]`) |
-| Nombre de la carpeta de cuenta | Mapa `integrationId` → nombre, en la cabecera del script |
+| Nombre de la carpeta de cuenta | Mapa `integrationId` → nombre, en `archivo_drive_cuentas.py` |
 | Línea `Cuenta:` de `post.txt` | `Integration.name`, completo |
 | Copy | `Post.content` |
 | Fecha | `Post.publishDate`, en hora de Madrid |
@@ -137,7 +137,7 @@ set -a && . /opt/homeserver/.env && set +a && python3 /opt/homeserver/scripts/po
 
 | Qué | Dónde |
 |---|---|
-| Los dos scripts | `/opt/homeserver/scripts/` en el Beelink, y copia en [`scripts/`](./scripts/). **Al tocar uno, se actualizan las dos copias** y se comparan con `md5sum`: `/opt/homeserver/scripts/` no entra en el backup diario |
+| Los scripts | `/opt/homeserver/scripts/` en el Beelink, y copia en [`scripts/`](./scripts/). El archivo curado son cinco ficheros: `postiz-archivo-drive.py` (bucle principal) y los módulos `archivo_drive_comun.py` (constantes, log, latido, accesos), `archivo_drive_cuentas.py` (mapa de cuentas), `archivo_drive_fuentes.py` (Postiz, Notion y registro local) y `archivo_drive_pieza.py` (carpeta, `post.txt` y subida). **Al tocar uno, se actualizan las dos copias** y se comparan con `md5sum`: `/opt/homeserver/scripts/` no entra en el backup diario |
 | Registro de piezas sin fila | `/opt/homeserver/scripts/.postiz-archivo-web.json` |
 | Log | `/var/log/postiz-archivo.log` |
 | Remoto de rclone | **`gdrive-work`** = `dustin@dustincalderon.com` (Workspace) |
