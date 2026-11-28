@@ -63,3 +63,10 @@ check("tras sincronizar, postiz ve el borrador de la fila, localizado por su ide
       c == 200 and bool(post_mcp) and len(posts_mcp) == 1 and posts_mcp[0]["id"] == post_mcp and posts_mcp[0]["estado"] == "DRAFT", "(%d)" % c)
 c, otra = mcp({"operacion": "postiz", "fila": pid_mcp, "puntero": "cualquier-cosa"})
 check("y un puntero que se le dé no cambia nada", c == 200 and otra == despues, "(%d)" % c)
+# `sincronizar` no espera su pasada: limpiar la fila con esa pasada aún en marcha
+# deja que la recree, y el reposo (7) encontraría su borrador vivo. Se espera a que
+# no quede ninguna y se limpia aquí, como las demás partes.
+for _ in range(36):
+    if pasadas_en_marcha() == "0": break
+    time.sleep(5)
+limpiar_fila(pid_mcp)
