@@ -84,6 +84,7 @@ Su valor es el **id de la página de Notion**, tal cual lo devuelve la API (con 
 | `POST /upload` (multipart, campo `file`) | **201** | `{id, name, originalName, path, thumbnail, alt}` |
 | `POST /posts` | **201** | `[{postId, integration, alreadyClaimed}]` — `alreadyClaimed` en [RECONCILIACION §3](../architecture/CONTENT_PIPELINE_RECONCILIACION.md) |
 | `DELETE /posts/:id` | **200** | `{"error":true}` ⚠️ |
+| `DELETE /posts/:id` de un post que no existe, ya borrado o de otra organización | **404** | `{"message":"Post not found","statusCode":404}` |
 
 > ### ⚠️ `DELETE` devuelve `{"error":true}` aunque funcione
 > El post y su comentario quedan correctamente soft-deleted, y aun así la respuesta es `{"error":true}` con 200: `deletePost` de `posts.service.ts` devuelve eso siempre.
