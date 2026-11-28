@@ -125,10 +125,10 @@ Cada una cierra un camino en el que el script diría `OK` mientras pierde trabaj
 
 La consulta a Notion pagina, así que no tiene límite de filas.
 
-`--seco` hace la pasada completa sin escribir en Drive ni en Notion:
+`--seco` hace la pasada completa sin escribir en Drive ni en Notion. Se lanza como root, igual que el cron (el cerrojo es de root):
 
 ```bash
-set -a && . /opt/homeserver/.env && set +a && python3 /opt/homeserver/scripts/postiz-archivo-drive.py --seco
+sudo bash -c 'set -a && . /opt/homeserver/.env && set +a && python3 /opt/homeserver/scripts/postiz-archivo-drive.py --seco'
 ```
 
 **Latido opcional.** `latido()` avisa a un monitor Push de Uptime Kuma al terminar cada pasada, solo si existe `POSTIZ_ARCHIVO_PING_URL` en `/opt/homeserver/.env`. Sin esa variable no hace nada. `--seco` no late: una pasada de prueba no debe dar el monitor por sano.
@@ -137,7 +137,7 @@ set -a && . /opt/homeserver/.env && set +a && python3 /opt/homeserver/scripts/po
 
 | Qué | Dónde |
 |---|---|
-| Los scripts | `/opt/homeserver/scripts/` en el Beelink, y copia en [`scripts/`](./scripts/). El archivo curado son cinco ficheros: `postiz-archivo-drive.py` (bucle principal) y los módulos `archivo_drive_comun.py` (constantes, log, latido, accesos), `archivo_drive_cuentas.py` (mapa de cuentas), `archivo_drive_fuentes.py` (Postiz, Notion y registro local) y `archivo_drive_pieza.py` (carpeta, `post.txt` y subida). **Al tocar uno, se actualizan las dos copias** y se comparan con `md5sum`: `/opt/homeserver/scripts/` no entra en el backup diario |
+| Los scripts | `/opt/homeserver/scripts/` en el Beelink, y copia en [`scripts/`](./scripts/). El archivo curado son cinco ficheros: `postiz-archivo-drive.py` (bucle principal) y los módulos `archivo_drive_comun.py` (constantes, log, latido, accesos), `archivo_drive_cuentas.py` (mapa de cuentas), `archivo_drive_fuentes.py` (Postiz, Notion y registro local) y `archivo_drive_pieza.py` (carpeta, `post.txt` y subida). **Al tocar uno, se actualizan las dos copias** y se comparan con `md5sum`; `postiz-archivo-drive.py` y `postiz-respaldo-drive.sh` llevan el bit de ejecución (el cron llama al respaldo directamente): `/opt/homeserver/scripts/` no entra en el backup diario |
 | Registro de piezas sin fila | `/opt/homeserver/scripts/.postiz-archivo-web.json` |
 | Log | `/var/log/postiz-archivo.log` |
 | Remoto de rclone | **`gdrive-work`** = `dustin@dustincalderon.com` (Workspace) |
