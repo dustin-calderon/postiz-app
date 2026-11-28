@@ -121,7 +121,7 @@ Cada una cierra un camino en el que el script diría `OK` mientras pierde trabaj
 - **Colisión de carpeta.** Dos piezas de la misma cuenta, del mismo día y con títulos que truncan igual dan la misma ruta, y `rclone copyto` sobrescribiría los másters de la primera. Si la carpeta ya tiene un `post.txt` con otro `Post ID:`, no se toca. La salida es renombrar una de las dos piezas en Notion.
 - **Verificación después de copiar.** Se relee la carpeta en Drive: faltar un fichero es un fallo, y **sobrar** también, porque indica restos de otra pieza o de otra pasada.
 - **La escritura en Notion se relee.** Si `❌ drive_url` no quedó guardado, la pieza cuenta como fallo; si no, se volvería a subir cada noche sin que nadie lo viera.
-- **Un cerrojo** (`/var/lock/postiz-archivo.lock`) impide dos pasadas a la vez.
+- **Un cerrojo** (`/opt/homeserver/scripts/.postiz-archivo.lock`) impide dos pasadas a la vez. No va en `/run/lock`: es sticky y, con `fs.protected_regular=2`, root no puede abrir el cerrojo que deje otro usuario (una pasada manual), y el cron fallaría. El respaldo sigue la misma regla.
 
 La consulta a Notion pagina, así que no tiene límite de filas.
 

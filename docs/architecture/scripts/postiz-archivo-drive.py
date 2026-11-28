@@ -26,7 +26,7 @@ from archivo_drive_comun import SECO, latido, log, notion
 from archivo_drive_fuentes import filas_notion, guardar_registro, publicados, registro_web
 from archivo_drive_pieza import archivar, carpeta_de
 
-CERROJO = "/var/lock/postiz-archivo.lock"
+CERROJO = "/opt/homeserver/scripts/.postiz-archivo.lock"  # no en /run/lock: alli (sticky, protected_regular) el cerrojo de otro usuario bloquea a root
 _CERROJO = None
 
 

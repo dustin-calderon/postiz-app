@@ -21,7 +21,7 @@ ORIGEN=/mnt/seagate/postiz-media
 DESTINO_ID=1RmJokTxS7zRGqAWh76J6EG7oY7grXh6A
 REMOTO=gdrive-work
 LOG=/var/log/postiz-archivo.log
-LOCK=/var/lock/postiz-respaldo.lock
+LOCK=/opt/homeserver/scripts/.postiz-respaldo.lock  # no en /run/lock: ver CERROJO en postiz-archivo-drive.py
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] respaldo: $1" >> "$LOG"; }
 
